@@ -219,7 +219,21 @@ function build() {
        (green), by the PHONE'S OWN LABELS ALONE (blue-green: what the phone could draw by itself at a walk's end; the
        roadmap, 2026-11-22: "as much processing... on the user's device as possible"), and off. */
     // three colours no one could take for each other: GREEN the vote's plants, BLUE the phone's own, ORANGE built things
-    const ways = [['GREEN: plants, by the pictures\' vote', meshOf(D.plants, 0x22c55e)], ['BLUE: plants, by the phone\'s labels alone', meshOf(D.plantsPhone, 0x3b82f6)], ['ORANGE: built things (walls, porch, pillars)', meshOf(D.built, 0xf59e0b)]].filter((w) => w[1]);
+    /* WHERE THE TWO DISAGREE (the owner, 2026-11-24: "The blue shapes and the green shapes are identical"; they are
+       not, by the walk's own count: 67% of what either drew is drawn by both, and the rest is mostly the edges of the
+       same 34 shapes, which no one can see by flipping between two colours). Only the square feet one drew and the
+       other did not: GREEN only by the pictures' vote, BLUE only by the phone's labels. */
+    const cellKey = (c) => `${Math.floor(c[0] / (D.plantCell || 0.3048))},${Math.floor(c[1] / (D.plantCell || 0.3048))}`;
+    const keysOf = (shapes) => new Set((shapes || []).flatMap((sh) => sh.cells.map(cellKey)));
+    const onlyIn = (shapes, other) => (shapes || []).map((sh) => ({ ...sh, cells: sh.cells.filter((c) => !other.has(cellKey(c))) })).filter((sh) => sh.cells.length);
+    let diff = null;
+    if (D.plants?.length && D.plantsPhone?.length) {
+      const kv = keysOf(D.plants), kp = keysOf(D.plantsPhone);
+      const a = meshOf(onlyIn(D.plants, kp), 0x22c55e), b = meshOf(onlyIn(D.plantsPhone, kv), 0x3b82f6);
+      D.layerDiff = { both: [...kv].filter((k) => kp.has(k)).length, vote: [...kv].filter((k) => !kp.has(k)).length, phone: [...kp].filter((k) => !kv.has(k)).length };
+      if (a || b) { diff = new THREE.Group(); for (const m of [a, b]) if (m) { scene.remove(m); diff.add(m); } scene.add(diff); }
+    }
+    const ways = [['GREEN: plants, by the pictures\' vote', meshOf(D.plants, 0x22c55e)], ['BLUE: plants, by the phone\'s labels alone', meshOf(D.plantsPhone, 0x3b82f6)], ['ONLY WHERE THEY DISAGREE: green the vote alone, blue the phone alone', diff], ['ORANGE: built things (walls, porch, pillars)', meshOf(D.built, 0xf59e0b)]].filter((w) => w[1]);
     plantMesh = ways[0]?.[1] || null;
     let at = 0;
     const show = () => { ways.forEach((w, i) => { w[1].visible = i === at; }); const b = $('#plants-toggle'); if (b) { b.classList.toggle('on', at < ways.length); b.textContent = at < ways.length ? `Shapes: ${ways[at][0]}` : 'Shapes: off'; } };
@@ -324,7 +338,7 @@ function tally() {
   const ft = (j) => (shown ? Math.round((hi[j] - lo[j]) * FT) : 0);
   let tl = [Infinity, Infinity], th = [-Infinity, -Infinity];
   for (const q of D.track) { if (q[1] < tl[0]) tl[0] = q[1]; if (q[1] > th[0]) th[0] = q[1]; if (q[3] < tl[1]) tl[1] = q[3]; if (q[3] > th[1]) th[1] = q[3]; }
-  $('#tally').textContent = `${D.plants?.length ? `Shapes (the "Shapes" button goes round them): GREEN plants by the pictures' vote, ${D.plants.length}; BLUE plants by the phone's labels alone, ${D.plantsPhone?.length ? D.plantsPhone.length : `NOT HERE (${D.layerNote?.phone || 'not loaded'})`}; ORANGE built things, ${D.built?.length || 'none'}. ` : ''}${D.trunks ? `Tree trunks found: ${D.trunks.length} (brown, drawn as seen)${(D.marks || []).length ? `; you marked ${D.marks.length} (green)` : ''}. ` : ''}Drawn now: ${shown.toLocaleString()} of ${D.n.toLocaleString()} points, lying ${ft(0)} x ${ft(2)} ft and ${ft(1)} ft high. Hidden: ${hu.toLocaleString()} unsure depth, ${hg.toLocaleString()} Google's, ${he.toLocaleString()} erased${ht ? `, ${ht.toLocaleString()} seen before the minute chosen` : ''}${bad ? `, ${bad.toLocaleString()} with no place` : ''}. `
+  $('#tally').textContent = `${D.plants?.length ? `Shapes (the "Shapes" button goes round them): GREEN plants by the pictures' vote, ${D.plants.length}; BLUE plants by the phone's labels alone, ${D.plantsPhone?.length ? D.plantsPhone.length : `NOT HERE (${D.layerNote?.phone || 'not loaded'})`}${D.layerDiff ? `; where they disagree: ${D.layerDiff.both.toLocaleString()} sq ft drawn by both, ${D.layerDiff.vote.toLocaleString()} by the vote alone, ${D.layerDiff.phone.toLocaleString()} by the phone alone` : ''}; ORANGE built things, ${D.built?.length || 'none'}. ` : ''}${D.trunks ? `Tree trunks found: ${D.trunks.length} (brown, drawn as seen)${(D.marks || []).length ? `; you marked ${D.marks.length} (green)` : ''}. ` : ''}Drawn now: ${shown.toLocaleString()} of ${D.n.toLocaleString()} points, lying ${ft(0)} x ${ft(2)} ft and ${ft(1)} ft high. Hidden: ${hu.toLocaleString()} unsure depth, ${hg.toLocaleString()} Google's, ${he.toLocaleString()} erased${ht ? `, ${ht.toLocaleString()} seen before the minute chosen` : ''}${bad ? `, ${bad.toLocaleString()} with no place` : ''}. `
     + `This walk: ${/^\d{13}$/.test(walk) ? new Date(Number(walk)).toLocaleString() : walk}, ${D.keys.length} photos. The path: ${D.track.length.toLocaleString()} poses, ${D.track.length ? Math.round((th[0] - tl[0]) * FT) : 0} x ${D.track.length ? Math.round((th[1] - tl[1]) * FT) : 0} ft. Read: ${U.read || ''}. Page of 21 Nov, c.`;
 }
 /* MARK TRUNKS (the owner, 2026-11-22: "I can tap trunks if you need me to"). In this mode a tap on a point puts a green

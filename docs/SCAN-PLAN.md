@@ -4550,6 +4550,14 @@ SKY THROUGH A BARE CROWN (the owner's second point; as first put to the features
 capped at 8 ft for exactly this. The owner's way is better than a cap: say WHEN the walk was made (plants.walk is
 its start, in milliseconds) and let the shade map's leaf calendar decide what sky seen through a canopy means.
 
+THE OWNER'S EYES ON THE BLUE LAYER (2026-11-24): "The blue shapes and the green shapes are identical." By the walk's
+own count they are not (run 544: 1,647 sq ft drawn by both, 289 by the vote alone, 510 by the phone alone; 67% the
+same of all either drew), and the page draws each from its own file. HARD: to the owner's eye, flipping between the
+two, they look the same. SPECULATION: the difference is mostly the fringes of the same 34 shapes, which flipping
+between two colours hides. So the 3D view has a fourth layer, ONLY WHERE THEY DISAGREE (green the vote alone, blue the
+phone alone), with the square feet of each in the page's text. If the 510 sq ft only the phone draws are plants, the
+phone's own labels are enough and the pictures need not go to a server for this.
+
 ## 61. "I'm not seeing the fused map at all": a walk was tied to one record of three (2026-11-24)
 
 The owner (through the features session, 2026-11-23): "I opened my property in the shade map but I'm not seeing the
