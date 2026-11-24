@@ -4569,6 +4569,13 @@ HARD (measured, run 548):
   8 trees moved, the walk not in leaf, with both kinds of open air. The first time it has run on a real walk and
   been counted. Nobody has LOOKED at it yet.
 
+- DOES A LENT WALK LAND IN THE RIGHT PLACE ON ANOTHER MAP? (the features session's caveat: a walk is fitted to its
+  own map's lidar as that map lined it up; run 550.) The ordinary save the owner opened: its point is 0.0 m from the
+  walk's map's point and its lidar line-up 0.00 m from the walk's map's (both moved 1.23 m, both 251 x 172 columns):
+  the lent walk lands exactly. The third, older save: its point 13.4 m away (which `plants.origin` answers) and its
+  line-up 0.35 m from the walk's map's (moved 0.89 m): a lent walk sits about a foot off there, one box, and nothing
+  corrects that yet.
+
 So nothing failed; the design did. A walk belongs to a place and was kept with a record.
 
 THE FIX (the core session's, 2026-11-24): a walk follows the place. The main site hands a map that has no walk of
@@ -4576,9 +4583,13 @@ its own the plants of the account's nearest other map within 80 m, with the poin
 (`plants.origin`) and `borrowed: true`; nothing is copied, and a borrowed part posted back is dropped (docs/MAPS.md
 "A walk follows the place"; worker/src/unified.js plantsOfPlace, dropBorrowed; tools/unified-maps.test.js). The scan
 page draws and fuses a borrowed walk from its own point (app.js askPlants, scan/lib/fuse-walk.js). The shade side
-must read `plants.origin` too (two lines in the features session's files, asked 2026-11-24 00:42 UTC); THE MAIN
-SITE IS NOT DEPLOYED WITH THE LENDING UNTIL IT DOES, since a borrowed walk fused from the wrong map's point would be
-off by however far apart the two maps' points are (not measured).
+reads `plants.origin` too (the features session's commit 7363217, with 90e14d2: the shade page now says under the
+trees and the light what the walk did, or why it did nothing); the main site is deployed with the lending only once
+that is merged, since a borrowed walk fused from the wrong map's point would be off by however far apart the two
+maps' points are (0 m and 13.4 m here).
+
+NOT DONE: carrying the walk's map's line-up with a lent walk, so a reader can move it by the difference (0.35 m on
+the one map where it differs). To be agreed with the features session before the record changes.
 
 SPECULATION: 80 m is a guess at "the same lot" (two geocodes of one address are metres apart; a neighbour's lot
 mapped by the same account would be lent the walk too, which is harmless in itself, the plants being placed on the
