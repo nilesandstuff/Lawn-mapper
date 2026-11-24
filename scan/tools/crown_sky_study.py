@@ -60,6 +60,21 @@ def sky_blue(img):
     return (b > 140) & (b - r >= 45) & (b - g >= 15)
 
 
+def sky_own(img):
+    """THE PICTURE'S OWN SKY (run 566: the controls' patches were blue in the middle, 97 / 129 / 159, yet only 27% of
+    their views passed "95% of the pixels over fixed thresholds": pixel noise, and each picture's exposure). This
+    picture's sky colour is the median of its plainly blue pixels (blue 30 over red, no less than green, blue 80 or
+    more, 0.5% of the frame at the least); a pixel is sky when within 40 of that colour and still bluer than red by 10.
+    A twig is darker or browner, a white cloud far paler: neither counts. None when the picture holds too little sky."""
+    r, g, b = (img[..., i].astype(np.int32) for i in range(3))
+    plain = (b - r >= 30) & (b >= g) & (b >= 80)
+    if plain.mean() < 0.005:
+        return np.zeros(img.shape[:2], bool)
+    ref = np.median(img[plain].astype(np.int32), axis=0)
+    dd = np.sqrt(((img.astype(np.int32) - ref[None, None, :]) ** 2).sum(2))
+    return (dd <= 40) & (b - r >= 10)
+
+
 def sky_bright(img):
     """THE RELATIVE TEST (run 564: the plain-sky controls' pixels were blue in the middle at 108 / 141 / 162, a quarter
     of them darker, 79 / 104 / 114, which the strict test's "blue over 140" throws out; this camera's sky is darker than
@@ -88,6 +103,16 @@ def main():
         return 0
     T = fit["T"]
     recs, kind, flags = TR.read_walk(d)
+    # the phone's own label of each point (labels-NNNN.bin byte 0: ARCore's label + 1), the cloud parts' order
+    parts_ = []
+    for n_ in sorted(x for x in os.listdir(d) if re.fullmatch(r"cloud-\d+\.bin", x)):
+        m_ = os.path.getsize(os.path.join(d, n_)) // 24
+        lp = os.path.join(d, n_.replace("cloud-", "labels-"))
+        lb = np.fromfile(lp, dtype=np.uint8) if os.path.exists(lp) else np.zeros(0, np.uint8)
+        parts_.append(lb.reshape(-1, 4)[:, 0] if len(lb) == 4 * m_ else np.zeros(m_, np.uint8))
+    labs_all = np.concatenate(parts_) if parts_ else None
+    if labs_all is not None and len(labs_all) != len(recs):
+        labs_all = None
     pk = PL.phone_kinds(d, len(recs))
     lab = pk if pk is not None else kind
     track = PL.read_track(d)
@@ -238,7 +263,7 @@ def main():
         if blue.mean() > 0.01:
             pics_blue += 1
         integ = np.pad(blue.astype(np.int32).cumsum(0).cumsum(1), ((1, 0), (1, 0)))
-        bright = sky_bright(img)
+        bright = sky_own(img)
         integB = np.pad(bright.astype(np.int32).cumsum(0).cumsum(1), ((1, 0), (1, 0)))
         dS, dB = distance_transform_edt(blue), distance_transform_edt(bright)   # pixels to the nearest non-sky
         fpx = Pm[0, 0] * W_ / 2                               # pixels per unit at depth 1
@@ -276,11 +301,14 @@ def main():
     # fewest do. No lidar and no fit in it.
     TT = t_[ok]
     Pw = np.stack([x_[ok], y_[ok], z_[ok], np.ones(int(ok.sum()))], 1)
-    stand_pt = (y_[ok] - g_[ok]) >= 0.3
+    hpt = y_[ok] - g_[ok]
+    stand_pt = (hpt >= 0.3) & (hpt <= 2.0)          # LOW SOLIDS: walls, shrubs, fences, a foot to six feet up: rarely against sky
+    lab_ok = labs_all[ok] if labs_all is not None else None
+    sky_pt = (lab_ok == 2) if lab_ok is not None else np.zeros(len(hpt), bool)   # what the PHONE labelled sky (label + 1 = 2)
     order = np.argsort(TT)
     TTs = TT[order]
     WAYS = ("as kept", "upside down", "mirrored", "turned right", "turned left")
-    land = np.zeros((len(WAYS), 2)); dims_off = 0; npix = 0
+    land = np.zeros((len(WAYS), 2)); landS = np.zeros((len(WAYS), 2)); dims_off = 0; npix = 0
     for k in keys[:: max(1, len(keys) // 200)]:
         try:
             img = np.asarray(Image.open(os.path.join(d, k["name"])).convert("RGB"))
@@ -290,28 +318,38 @@ def main():
         if k.get("w") and k.get("h") and (int(k["w"]), int(k["h"])) != (W_, H_):
             dims_off += 1
         a_, b_ = np.searchsorted(TTs, k["t"] - 0.3), np.searchsorted(TTs, k["t"] + 0.3)
-        sel = order[a_:b_]
-        sel = sel[stand_pt[sel]]
+        sel0 = order[a_:b_]
+        sel = sel0[stand_pt[sel0]]
+        sel_sky = sel0[sky_pt[sel0]]
         if len(sel) < 20:
             continue
         V = np.asarray(k["view"], np.float64).reshape(4, 4).T
         Pm = np.asarray(k["proj"], np.float64).reshape(4, 4).T
-        cam = Pw[sel] @ np.linalg.inv(V).T
-        clip = cam @ Pm.T
-        wq = np.where(np.abs(clip[:, 3]) < 1e-9, 1e-9, clip[:, 3])
-        u, v = (clip[:, 0] / wq + 1) / 2, (1 - clip[:, 1] / wq) / 2
-        inn = (-cam[:, 2] > 0.3) & (u > 0.02) & (u < 0.98) & (v > 0.02) & (v < 0.98)
-        u, v = u[inn], v[inn]
-        if not len(u):
+        sky = sky_own(img)
+        if not sky.any():
             continue
-        sky = sky_bright(img)
-        for wi, (cu, cv_) in enumerate(((u, v), (u, 1 - v), (1 - u, v), (1 - v, u), (v, 1 - u))):
-            cc = np.clip((cu * W_).astype(np.int64), 0, W_ - 1); rr = np.clip((cv_ * H_).astype(np.int64), 0, H_ - 1)
-            land[wi, 0] += sky[rr, cc].sum(); land[wi, 1] += len(cc)
+        Vi = np.linalg.inv(V)
+        for which, pick in ((0, sel), (1, sel_sky)):
+            if not len(pick):
+                continue
+            cam = Pw[pick] @ Vi.T
+            clip = cam @ Pm.T
+            wq = np.where(np.abs(clip[:, 3]) < 1e-9, 1e-9, clip[:, 3])
+            u, v = (clip[:, 0] / wq + 1) / 2, (1 - clip[:, 1] / wq) / 2
+            inn = (-cam[:, 2] > 0.3) & (u > 0.02) & (u < 0.98) & (v > 0.02) & (v < 0.98)
+            u, v = u[inn], v[inn]
+            for wi, (cu, cv_) in enumerate(((u, v), (u, 1 - v), (1 - u, v), (1 - v, u), (v, 1 - u))):
+                cc = np.clip((cu * W_).astype(np.int64), 0, W_ - 1); rr = np.clip((cv_ * H_).astype(np.int64), 0, H_ - 1)
+                if which == 0:
+                    land[wi, 0] += sky[rr, cc].sum(); land[wi, 1] += len(cc)
+                else:
+                    landS[wi, 0] += sky[rr, cc].sum(); landS[wi, 1] += len(cc)
         npix += 1
     if npix:
-        print(f"\nTHE PICTURES' OWN GEOMETRY ({npix} pictures, the walk's own standing points taken within 0.3 s of each; {dims_off} pictures whose size is not the one their record gives): "
-              f"the share of those points landing on SKY (by the relative test), the picture " + "; ".join(f"{WAYS[i]} {100 * land[i, 0] / max(1, land[i, 1]):.1f}%" for i in range(len(WAYS))) + ". The right way is the lowest; a few per cent is the depth's own bleed onto sky.")
+        print(f"\nTHE PICTURES' OWN GEOMETRY ({npix} pictures with sky in them; the walk's own points taken within 0.3 s of each; {dims_off} pictures whose size is not the one their record gives), the share landing on the picture's own sky, the picture "
+              + ", ".join(WAYS) + ":")
+        print(f"  LOW SOLIDS (1 to 6 ft over their ground; {int(land[0, 1]):,} landings): " + " / ".join(f"{100 * land[i, 0] / max(1, land[i, 1]):.1f}%" for i in range(len(WAYS))) + ". The right way is the LOWEST.")
+        print(f"  WHAT THE PHONE LABELLED SKY ({int(landS[0, 1]):,} landings): " + " / ".join(f"{100 * landS[i, 0] / max(1, landS[i, 1]):.1f}%" for i in range(len(WAYS))) + ". The right way is the HIGHEST.")
     print(f"\nCOLOUR AGAINST DEPTH: CAN THE PICTURES SAY WHERE THE LIDAR'S CROWN IS NOT? (crown_sky_study.py; blocks 2 ft x 2 ft x half a metre; a block CLEAN when {CLEAN_SHARE:.0%} of its pixels are sky blue in {CLEAN_VIEWS} pictures or more)")
     print(f"  {used:,} pictures looked at ({len(keys):,} kept after the start cut), {pics_blue:,} with blue sky in them; {nb:,} blocks: the lidar's crown 8-130 ft up, and the walk's own crown and air 8-66 ft up.")
     if ctl_blocked[1]:
@@ -347,13 +385,13 @@ def main():
     # BY THE SHARE OF ITS VIEWS THAT ARE CLEAN (run 560: with hundreds of pictures, "clean in 3" is chance: 68.5% of the
     # depth's crown blocks and 79.6% of its air passed it). Does any share separate crown from air, all views or near?
     for lab_, cn, vn, need in (("STRICT BLUE, ALL VIEWS", clean_n, views, 10), (f"STRICT BLUE, NEAR VIEWS (within {NEAR_M:.0f} m)", cleanN, viewsN, 5),
-                               ("RELATIVE BLUE, ALL VIEWS", cleanB, views, 10), (f"RELATIVE BLUE, NEAR VIEWS (within {NEAR_M:.0f} m)", cleanBN, viewsN, 5)):
+                               ("OWN SKY, ALL VIEWS", cleanB, views, 10), (f"OWN SKY, NEAR VIEWS (within {NEAR_M:.0f} m)", cleanBN, viewsN, 5)):
         sh = np.where(vn > 0, cn / np.maximum(1, vn), np.nan)
         cc = ctl & (views >= 5)
         if lab_.endswith("ALL VIEWS") and not cc.any():
             print(f"  {lab_}: CONTROLS: none of the {int(ctl.sum())} was seen 5 times steeply enough.")
         if lab_.endswith("ALL VIEWS") and cc.any():
-            qq = np.percentile(cleanB[cc] / np.maximum(1, views[cc]) if lab_.startswith("RELATIVE") else clean_n[cc] / np.maximum(1, views[cc]), [25, 50, 75])
+            qq = np.percentile(cleanB[cc] / np.maximum(1, views[cc]) if lab_.startswith("OWN") else clean_n[cc] / np.maximum(1, views[cc]), [25, 50, 75])
             print(f"  {lab_}: CONTROLS (plain sky, 30 m up, seen 35 degrees up or more; {int(cc.sum())} blocks): the share of views clean {qq[0]:.2f} / {qq[1]:.2f} / {qq[2]:.2f}. Near 1.00 if the test and the aim are right.")
         c_ = dep_crown & (vn >= need)
         a_ = dep_air & (vn >= need)
@@ -374,7 +412,7 @@ def main():
     # R metres of sky round it, for the depth's crown, the depth's air and the plain-sky controls
     need = 10
     c_, a_, k_ = dep_crown & (views >= need), dep_air & (views >= need), ctl & (views >= 5)
-    for nm, arr in (("STRICT BLUE", openS), ("RELATIVE BLUE", openB)):
+    for nm, arr in (("STRICT BLUE", openS), ("OWN SKY", openB)):
         for ri, R in enumerate(OPEN_R_M):
             sh = arr[ri] / np.maximum(1, views)
             med = lambda m: float(np.median(sh[m])) if m.any() else float("nan")  # noqa: E731

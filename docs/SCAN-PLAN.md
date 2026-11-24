@@ -4603,9 +4603,14 @@ at 35-40 degrees up), not a wrong aim. RUN 565 (the relative test; a control vie
 - Crown and air: the relative test, all views, 0.12 / 0.19 / 0.25 against 0.12 / 0.18 / 0.22; within 12 m 0.00 / 0.00 /
   0.12 against 0.04 / 0.12 / 0.20 (a little apart, near only). The owner's open-sky rule (0.5-4 ft of clear sky round a
   block): crown and air alike at every width (e.g. 1 ft: 0.15 against 0.14 of views).
-SPECULATION: what is left points at the PICTURES' GEOMETRY (where a picture's pixels are taken to look), not at the
-sky or the owner's idea. NEXT (run 566): the walk's own standing points from within 0.3 s of each picture put back
-into it, as kept, upside down, mirrored and turned: the share landing on sky says whether the projection is right.
+RUN 566 (the walk's own standing points from within 0.3 s of each picture put back into it): on sky as kept 21.2%,
+upside down 16.7%, mirrored 13.0%, turned right 10.6%, turned left 17.2%. NOT DECISIVE: a wrong way scatters points at
+random (10-20% sky), while branch points really do sit against sky (the depth bleeds onto it round twigs: 27% of the
+plant points 8 ft up are sky-coloured, plants.py), and the skyline study (SCAN-H14), using the pictures as kept,
+matched roofs to 0.6-1.5 degrees, which a quarter turn would have ruined.
+NEXT (run 567): two-sided: LOW SOLIDS (1-6 ft, rarely against sky; the right way lowest) and the points the PHONE
+labelled sky (the right way highest); and the sky judged by each picture's OWN sky colour (the median of its plainly
+blue pixels, a pixel within 40 of it), since fixed thresholds failed on pixel noise and exposure.
 
 ## 63. The marks kept with the map, not only on the phone (2026-11-24)
 
