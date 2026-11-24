@@ -72,6 +72,9 @@ async function main() {
         const marks = await pg.evaluate(() => document.querySelector('#points')?.textContent || '');
         if (!/R1/.test(marks) || !/R2/.test(marks)) faults.push(`${path}: the marks kept with the map were not shown ("${marks.replace(/\s+/g, ' ').slice(0, 80)}")`);
         if (!SURF_ASKS) faults.push(`${path}: the walk's ground on the map was never asked for`);
+        // the layer boxes and the colours' slider (2026-11-24): there, and a box can be switched off without a fault
+        const lay = await pg.evaluate(() => { const b = document.querySelectorAll('#layers input[data-layer]'); const t = document.querySelector('#layers input[data-layer="turf"]'); if (t) { t.click(); t.click(); } const sl = document.querySelector('#layer-alpha'); if (sl) { sl.value = '30'; sl.dispatchEvent(new Event('input')); } return b.length; });
+        if (lay < 5) faults.push(`${path}: the map's layer boxes are not all there (${lay})`);
         if (MARK_PUTS) faults.push(`${path}: the marks kept with the map were written back over (${MARK_PUTS}) with nothing changed`);
         // the placed things: listed, and one taken away with two taps (kept as gone, not deleted) and put back
         const rows = () => pg.evaluate(() => [...document.querySelectorAll('#things-list li')].map((li) => li.textContent.replace(/\s+/g, ' ').trim()));
@@ -90,6 +93,6 @@ async function main() {
     }
   } finally { await br.close(); srv.close(); }
   if (faults.length) { console.log(`The built page does NOT run in a browser; not deploying:\n  ${faults.join('\n  ')}`); process.exit(1); }
-  console.log('The built page runs in a browser: it opens with and without a map, both workers load, the marks kept with the map are shown, the plants of a walk go into the record of the map, and a placed thing can be taken away and put back.');
+  console.log('The built page runs in a browser: it opens with and without a map, both workers load, the marks kept with the map are shown, the layer boxes work, the plants of a walk go into the record of the map, and a placed thing can be taken away and put back.');
 }
 main().catch((e) => { console.log(`Page check could not run: ${e.message}`); process.exit(1); });

@@ -274,6 +274,7 @@ async function loadMap(id) {
   st.frame = frameFor(bboxOf(st.origin, pts, 12), m.lat);
   loadPoints(); loadPins(); listPoints();
   askMarks(id);
+  layerControls();
   $('#setup').hidden = false;
   // which map: the owner has more than one of the same house (2026-11-09), so its date and size say which
   const saved = m.at ? new Date(m.at) : null;
@@ -573,11 +574,15 @@ function drawMap() {
      are not grass), UNDER the traced lawn's line, so where the two disagree shows. */
   if (st.surfaces?.kinds && st.frame && st.origin) {
     const S = st.surfaces, c = S.cellM || 0.3048, [oe, on] = Array.isArray(S.origin) ? toLocal(st.origin, S.origin) : [0, 0];
+    // turf in light blue-green (the owner, 2026-11-24: the faint green was too near the trees' dark green), each kind
+    // switched on and off by its box under the map, all of them as strong as the slider says
+    const A = layerAlpha(), fill = { 1: `rgba(79, 224, 210, ${A})`, 2: `rgba(184, 184, 204, ${A})`, 3: `rgba(192, 132, 74, ${A})` };
+    const on_ = { 1: layerOn('turf'), 2: layerOn('paved'), 3: layerOn('bare') };
     for (let r = 0; r < S.h; r++) for (let q = 0; q < S.w; q++) {
       const k = S.kinds[r * S.w + q];
-      if (!k) continue;
+      if (!k || !on_[k]) continue;
       const e0 = oe + (S.i0 + q) * c, n0 = on + (S.j0 + r) * c, a = px([e0, n0 + c]), b = px([e0 + c, n0]);
-      g.fillStyle = k === 2 ? 'rgba(150, 150, 165, 0.55)' : k === 3 ? 'rgba(160, 110, 60, 0.55)' : 'rgba(170, 235, 120, 0.35)';
+      g.fillStyle = fill[k];
       g.fillRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(1, Math.abs(b[0] - a[0])), Math.max(1, Math.abs(b[1] - a[1])));
     }
   }
@@ -593,19 +598,19 @@ function drawMap() {
   };
   for (const p of st.pins) if (p.map) dot(p.map, CSS.pin, p.name, 7);
   // a walk's plants (askPlants): each square foot where plant was seen 3 ft up or more, darker the higher it reached
-  if (st.plants?.boxes?.length && st.frame && st.origin) {
+  if (st.plants?.boxes?.length && st.frame && st.origin && layerOn('plants')) {
     const c = st.plants.cellM || 0.3048, top = new Map();
     // a walk made on another map of this lot (plants.origin, the main site's plantsOfPlace) is measured from that map's point
     const [oe, on] = Array.isArray(st.plants.origin) ? toLocal(st.origin, st.plants.origin) : [0, 0];
     for (const [i, j, , hi] of st.plants.boxes) { const k = `${i},${j}`; if (!(top.get(k) >= hi)) top.set(k, hi); }
     for (const [k, hi] of top) {
       const [i, j] = k.split(',').map(Number), a = px([oe + i * c, on + (j + 1) * c]), b = px([oe + (i + 1) * c, on + j * c]);
-      g.fillStyle = `rgba(30, ${hi >= 24 ? 110 : 170}, 60, ${hi >= 24 ? 0.6 : 0.42})`;
+      g.fillStyle = `rgba(30, ${hi >= 24 ? 110 : 170}, 60, ${Math.min(1, layerAlpha() * (hi >= 24 ? 1.1 : 0.8))})`;
       g.fillRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(1, Math.abs(b[0] - a[0])), Math.max(1, Math.abs(b[1] - a[1])));
     }
   }
   // the things placed on earlier walks (things.js), by their ids, so the list under the map says which is which
-  for (const t of st.placed || []) if (!t.gone && t.at) dot(t.at, THING_CSS[t.kind] || '#ddd', t.id, 7);
+  if (layerOn('things')) for (const t of st.placed || []) if (!t.gone && t.at) dot(t.at, THING_CSS[t.kind] || '#ddd', t.id, 7);
   roofMarks(g, u);
   for (const p of shownPoints()) dot(p.map, p.kind === 'ref' ? CSS.ref : CSS.check, p.name, 14, p === st.dragging);
   // WHILE DRAGGING, A MAGNIFIER: the photo round the point four times closer, in the top corner away from the finger
@@ -2151,6 +2156,30 @@ async function askThings() {
   askPlants(map);
   askSurfaces(map);
 }
+/* THE MAP'S LAYERS (the owner, 2026-11-24: "Can you have checkboxes for each type of object, and maybe just make the
+   turf color light blue-green for viewing purposes. Also add a slider to control opacity of the colors."): a box for
+   each kind drawn over the photo and one slider for how strong the colours are; remembered on this phone only. */
+// (function declarations and st, not const or let: the map can be drawn before this part of the file has run)
+function layers() {
+  if (st.layers) return st.layers;
+  let v = null;
+  try { v = JSON.parse(localStorage.getItem('scan-layers') || 'null'); } catch { v = null; }
+  st.layers = v && typeof v === 'object' ? v : {};
+  return st.layers;
+}
+function layerOn(k) { return layers()[k] !== false; }
+function layerAlpha() { const a = Number(layers().alpha); return Number.isFinite(a) ? Math.max(0.1, Math.min(1, a)) : 0.55; }
+function layerControls() {
+  const box = $('#layers'); if (!box || box.dataset.wired) return;
+  box.dataset.wired = '1';
+  const save = () => { try { localStorage.setItem('scan-layers', JSON.stringify(layers())); } catch { /* this visit only */ } };
+  for (const cb of box.querySelectorAll('input[data-layer]')) {
+    cb.checked = layerOn(cb.dataset.layer);
+    cb.addEventListener('change', () => { layers()[cb.dataset.layer] = cb.checked; save(); drawMap(); });
+  }
+  const sl = $('#layer-alpha');
+  if (sl) { sl.value = String(Math.round(layerAlpha() * 100)); sl.addEventListener('input', () => { layers().alpha = Number(sl.value) / 100; save(); drawMap(); }); }
+}
 /* A WALK'S GROUND ON THE MAP (scan/tools/surfaces.py, surfaces-keep.mjs): paving and grass as the walk's ground points
    were labelled by the phone, drawn under the traced lawn for the owner's eyes. Read only; nothing is written. */
 async function askSurfaces(map) {
@@ -2165,7 +2194,7 @@ async function askSurfaces(map) {
     st.surfaces = { ...j, kinds };
     let paved = 0, grass = 0, bare = 0; for (const k of kinds) { if (k === 2) paved++; else if (k === 1) grass++; else if (k === 3) bare++; }
     const sq = (n) => Math.round(n * (j.cellM / 0.3048) ** 2).toLocaleString();
-    log(`a walk's ground on the map: ${sq(grass)} sq ft of grass (pale green), ${sq(paved)} of paving (grey), ${sq(bare)} of bare ground in patches of 4 sq ft or more (brown, not counted as grass)`);
+    log(`a walk's ground on the map: ${sq(grass)} sq ft of turf (blue-green), ${sq(paved)} of paving (grey), ${sq(bare)} of bare ground in patches of 4 sq ft or more (brown, not counted as turf)`);
     drawMap();
   } catch { /* nothing drawn */ }
 }
