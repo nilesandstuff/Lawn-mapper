@@ -977,6 +977,7 @@ async function startAR(engine, { anyway = false } = {}) {
   const overlay = $('#overlay');
   pagePerf.stage('AR asked'); st.wperf = newPerf(); st.wperfAsked = performance.now(); st.wperfShapes = false;
   st.walk = newWalk({ engine, phone: navigator.userAgent });
+  tellApp(st.upStatus || { pending: 0 });   // the keep-running service starts now, while the app is in front
   st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.occ = null; st.occFull = 0; st.occAt = 0; st.walkGround = new Map(); st.spikes = { pictures: 0, cells: 0, flagged: 0 }; st.walkAsk = null; st.walkAt = 0; st.walkStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null }; st.crumbs = newCrumbs();
   st.walk.checks = [];
   st.L = newLocate(); st.L.spacing = st.lid.overlay?.picture?.marks?.spacing ?? null; st.sight = null; st.sightPaused = false; st.sightEndedAt = 0; st.roofsDone = null; st.resighted = new Set(); st.resightOf = null; st.rescan = null;
@@ -2037,6 +2038,7 @@ function finish() {
   }
   st.twin = null;
   st.tracker = null; st.walk = null; st.L = null; st.ar = null; st.drawer = null;
+  setTimeout(() => tellApp(st.outbox?.status?.() || st.upStatus || { pending: 0 }), 0);   // the walk over: the service runs until the outbox is empty
   st.replayOf = null; st.replayImage = null; st.replaySmall = false; // a replay is one walk; the next starts from the camera again
   $('#overlay').hidden = true; document.body.classList.remove('in-ar');
   const list = kept(); list.push(s); keep(list);
@@ -2070,7 +2072,14 @@ async function startOutbox() {
 function tellApp(u) {
   const N = window.LawnARNative;
   if (!N || typeof N.partsPending !== 'function') return;
-  const n = u.off ? 0 : u.pending || 0, now = Date.now(), was = st.toldApp || { n: 0, at: 0 };
+  /* KEPT ON FROM THE WALK'S START TO THE LAST PART GONE (2026-11-24; the owner: "The background upload doesn't appear
+     to be working"; two walks that evening stopped sending part way, one with 247 of its 491 pictures up). The page
+     said "none left" whenever it caught up during a walk, and the app stopped its keep-running service; asked to start
+     it again with the app already in the background (the owner gone to another app, or the screen off), Android
+     refuses a new service of that kind, the page is paused and the parts wait. Now, while a walk is on, at least one
+     part is said to wait, so the service started in the foreground stays started until the walk ends and the outbox
+     is empty. */
+  const n = u.off ? 0 : Math.max(u.pending || 0, st.walk ? 1 : 0), now = Date.now(), was = st.toldApp || { n: 0, at: 0 };
   if ((n > 0) === (was.n > 0) && now - was.at < 4000) return;
   st.toldApp = { n, at: now };
   try { N.partsPending(n, u.bytes || 0); } catch { /* an older app */ }

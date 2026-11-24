@@ -4566,6 +4566,19 @@ labels when the walk kept them (`kinds: 'phone'` in the record), the vote only w
 finds fences and the built things: ARCore has no label for a fence. TO TEST at the owner's next property (a fence,
 a move about 2026-12-01): pictures again there, for the fence.
 
+## 66. The background upload stopped part way (2026-11-24)
+
+The owner: "I did 2 small walks. They're still uploading... The background upload doesn't appear to be working."
+HARD (task walks, run 577, about an hour after): the walk of 21:48 UTC (11 min, 491 pictures) had 247 pictures in the
+bucket; the walk of 22:04 (7 min) next to nothing. Both saved their reference (their summaries are posted at the walk's
+end). CAUSE, read from the code (not seen on the phone): the page told the app "no parts left" whenever its outbox
+caught up during a walk, and the app stopped its keep-running service (PartsService); started again only when parts
+next waited, by then often with the app in the background, which Android refuses for a new service of that kind, so
+the page was paused and the parts waited on the phone. FIX (page only, the scan site): from the walk's start until the
+walk has ended and the outbox is empty, at least one part is said to wait, so the service started in the foreground
+stays started (app.js tellApp). Parts already waiting go when the app next opens, as before. Not yet seen to work: the
+next walk will say.
+
 ## 65. The ground as the walk saw it: paving and grass, against the traced lawn (2026-11-24)
 
 The owner: "Until the next walk, what's next? Lawn shape refinement and driveway marking?" (the goal's "automatically
