@@ -4595,8 +4595,17 @@ cleared, air 78%, the phantom crown found.
   156 / 173 / 213 (a quarter / the middle / three quarters); blue 53%, white or grey 14%, dark 22%. So the strict test
   ("blue over 140") throws out a camera's darker blue sky; the white is the owner's light clouds.
 SPECULATION: the dark 22% are mostly crowns NEAR the phone in the line of sight (a tree a few metres off fills the view
-at 35-40 degrees up), not a wrong aim. NEXT (run 565): a relative test (blue 25 over red, no less than green, blue 90 or
-more), and a control view counted only when the lidar has nothing standing in its line of sight.
+at 35-40 degrees up), not a wrong aim. RUN 565 (the relative test; a control view counted only with nothing of the lidar's in its line of sight):
+- 1,997 of 2,827 steep control views (71%) HAD a lidar crown or roof in the line of sight: the owner's trees, near the
+  phone, as supposed.
+- The 830 left: blue 58%, white or grey 13%, DARK 27%; clean by the relative test 0.17 / 0.27 / 0.45 of their views.
+  Plain sky with nothing of the lidar's in the way should be near 1.00.
+- Crown and air: the relative test, all views, 0.12 / 0.19 / 0.25 against 0.12 / 0.18 / 0.22; within 12 m 0.00 / 0.00 /
+  0.12 against 0.04 / 0.12 / 0.20 (a little apart, near only). The owner's open-sky rule (0.5-4 ft of clear sky round a
+  block): crown and air alike at every width (e.g. 1 ft: 0.15 against 0.14 of views).
+SPECULATION: what is left points at the PICTURES' GEOMETRY (where a picture's pixels are taken to look), not at the
+sky or the owner's idea. NEXT (run 566): the walk's own standing points from within 0.3 s of each picture put back
+into it, as kept, upside down, mirrored and turned: the share landing on sky says whether the projection is right.
 
 ## 63. The marks kept with the map, not only on the phone (2026-11-24)
 

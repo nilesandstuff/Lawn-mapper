@@ -269,6 +269,49 @@ def main():
             openB[ri, idx] += mB >= R
         cleanBN[idx[nr]] += shareB[nr] >= CLEAN_SHARE
         used += 1
+    # THE PICTURES' OWN GEOMETRY, BY THE WALK'S OWN POINTS (run 565: plain sky with nothing of the lidar's in the way read
+    # dark in 27% of views, and crown and air did not separate: is the projection itself right?). The points the phone
+    # took within 0.3 s of a picture, a foot or more over their ground (walls, trunks, branches, not sky), put into that
+    # picture: how many land on sky, in the picture as kept and turned or flipped. The right way is the one where
+    # fewest do. No lidar and no fit in it.
+    TT = t_[ok]
+    Pw = np.stack([x_[ok], y_[ok], z_[ok], np.ones(int(ok.sum()))], 1)
+    stand_pt = (y_[ok] - g_[ok]) >= 0.3
+    order = np.argsort(TT)
+    TTs = TT[order]
+    WAYS = ("as kept", "upside down", "mirrored", "turned right", "turned left")
+    land = np.zeros((len(WAYS), 2)); dims_off = 0; npix = 0
+    for k in keys[:: max(1, len(keys) // 200)]:
+        try:
+            img = np.asarray(Image.open(os.path.join(d, k["name"])).convert("RGB"))
+        except Exception:
+            continue
+        H_, W_ = img.shape[:2]
+        if k.get("w") and k.get("h") and (int(k["w"]), int(k["h"])) != (W_, H_):
+            dims_off += 1
+        a_, b_ = np.searchsorted(TTs, k["t"] - 0.3), np.searchsorted(TTs, k["t"] + 0.3)
+        sel = order[a_:b_]
+        sel = sel[stand_pt[sel]]
+        if len(sel) < 20:
+            continue
+        V = np.asarray(k["view"], np.float64).reshape(4, 4).T
+        Pm = np.asarray(k["proj"], np.float64).reshape(4, 4).T
+        cam = Pw[sel] @ np.linalg.inv(V).T
+        clip = cam @ Pm.T
+        wq = np.where(np.abs(clip[:, 3]) < 1e-9, 1e-9, clip[:, 3])
+        u, v = (clip[:, 0] / wq + 1) / 2, (1 - clip[:, 1] / wq) / 2
+        inn = (-cam[:, 2] > 0.3) & (u > 0.02) & (u < 0.98) & (v > 0.02) & (v < 0.98)
+        u, v = u[inn], v[inn]
+        if not len(u):
+            continue
+        sky = sky_bright(img)
+        for wi, (cu, cv_) in enumerate(((u, v), (u, 1 - v), (1 - u, v), (1 - v, u), (v, 1 - u))):
+            cc = np.clip((cu * W_).astype(np.int64), 0, W_ - 1); rr = np.clip((cv_ * H_).astype(np.int64), 0, H_ - 1)
+            land[wi, 0] += sky[rr, cc].sum(); land[wi, 1] += len(cc)
+        npix += 1
+    if npix:
+        print(f"\nTHE PICTURES' OWN GEOMETRY ({npix} pictures, the walk's own standing points taken within 0.3 s of each; {dims_off} pictures whose size is not the one their record gives): "
+              f"the share of those points landing on SKY (by the relative test), the picture " + "; ".join(f"{WAYS[i]} {100 * land[i, 0] / max(1, land[i, 1]):.1f}%" for i in range(len(WAYS))) + ". The right way is the lowest; a few per cent is the depth's own bleed onto sky.")
     print(f"\nCOLOUR AGAINST DEPTH: CAN THE PICTURES SAY WHERE THE LIDAR'S CROWN IS NOT? (crown_sky_study.py; blocks 2 ft x 2 ft x half a metre; a block CLEAN when {CLEAN_SHARE:.0%} of its pixels are sky blue in {CLEAN_VIEWS} pictures or more)")
     print(f"  {used:,} pictures looked at ({len(keys):,} kept after the start cut), {pics_blue:,} with blue sky in them; {nb:,} blocks: the lidar's crown 8-130 ft up, and the walk's own crown and air 8-66 ft up.")
     if ctl_blocked[1]:
