@@ -4587,6 +4587,16 @@ HARD (run 570, the walk of 2026-11-20, 1 ft squares, 105,227 ground points):
   and 228). The paving in 14 pieces: the largest 908 sq ft, 64 ft long, 11 ft 3 in wide over a straight 12 ft; the
   second 252 sq ft, 28 ft long, 7 ft 9 in wide over a straight 20 ft, and the pictures' vote read that one 7 ft 10 in.
   Which (if either) is the drive, and its true width, only the owner can say.
+THE OWNER (2026-11-24): "11 ft 8 inches is the measurement i have, the grass peaks over the edges a bit, so 5 inch
+margin of error is right on the very edge of what I'd consider acceptable. But yes, that walk wasn't particularly
+focused on the edges." HARD: the largest paving piece, at 2 ft squares, read 11 ft 3 in against the tape's 11 ft 8 in:
+5 in short (4%), over a straight 12 ft, on a walk not aimed at the drive. And: "the original lawn trace itself just
+doesn't line up with the lidar brightness very well in that viewer (2-3 meters off). And the lidar brightness map is
+just too coarse to be sure of edges." And: "We don't specifically need to label bare dirt, atleast now, but sometimes
+turf runs up against edges of bare dirt, so we atleast need to not count bare areas larger than like 4 sqft as grass."
+BUILT: the phone's "terrain" is grass and bare ground alike, so a square is BARE when half or more of its ground points
+the pictures' vote called bare ground, and bare pieces of 4 sq ft or more are taken out of the grass (brown on the map);
+smaller ones stay grass.
 BUILT for the owner's eyes: the phone's squares kept with the map (surfaces.py --keep, surfaces-keep.mjs:
 surfaces/<map>.json in the twin bucket; GET /api/scan/surfaces?map=), drawn on the start page's map under the traced
 lawn: paving grey, grass pale green (app.js askSurfaces).

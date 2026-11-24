@@ -28,6 +28,7 @@ FT = 3.28084
 CELL = 0.3048          # m: a foot
 GROUND_M = 0.2         # m: a ground point is within this of the ground under it
 MIN_PTS = 3            # points to call a square
+BARE_MIN_SQFT = 4      # a bare patch this big or more is not grass (the owner, 2026-11-24)
 PHONE_PAVED, PHONE_GRASS = (5, 6), (7,)    # labels-NNNN.bin byte 0 is ARCore's label + 1: road 5, sidewalk 6, terrain 7
 
 
@@ -172,10 +173,25 @@ def main():
         print("  The traced lawn: not read (no lawn.json): nothing compared with it.")
     out = {}
     SQ = (CELL * FT) ** 2           # square feet in a square
+    # BARE GROUND IS NOT GRASS (the owner, 2026-11-24: "sometimes turf runs up against edges of bare dirt, so we atleast
+    # need to not count bare areas larger than like 4 sqft as grass"). The phone's "terrain" is grass and bare ground
+    # alike; the pictures' vote tells them apart. A square is BARE when half or more of its ground points the vote
+    # called bare ground; bare pieces of BARE_MIN_SQFT or more are taken out of the grass, smaller ones left in.
+    BARE = (K == TR.KINDS.index("bare ground")) if kind is not None else np.zeros(len(L), bool)
+    Bg, Tg = grid(BARE), grid(np.ones(len(L), bool))
+    bare_sq = (Bg >= MIN_PTS) & (Bg * 2 >= Tg)
+    from scipy import ndimage
+    blab, bn = ndimage.label(bare_sq, structure=np.ones((3, 3)))
+    bsize = np.bincount(blab.ravel())
+    big_bare = bare_sq & (bsize[blab] * (CELL * FT) ** 2 >= BARE_MIN_SQFT)
     for name, (pav, gra) in ways.items():
         P, G = grid(pav), grid(gra)
         paved = (P >= MIN_PTS) & (P >= 2 * G)
-        grass = (G >= MIN_PTS) & (G >= 2 * P)
+        grass0 = (G >= MIN_PTS) & (G >= 2 * P)
+        grass = grass0 & ~big_bare
+        if kind is not None:
+            print(f"  {name}: of {int(grass0.sum() * (CELL * FT) ** 2):,} sq ft called grass, {int((grass0 & big_bare).sum() * (CELL * FT) ** 2):,} lie in bare patches of {BARE_MIN_SQFT} sq ft or more by the pictures' vote and are NOT counted as grass "
+                  f"({int(bare_sq.sum() * (CELL * FT) ** 2):,} sq ft called bare in all, {int(big_bare.sum() * (CELL * FT) ** 2):,} of it in such patches).")
         print(f"  {name}: {int(pav.sum()):,} points paved, {int(gra.sum()):,} grass; squares PAVED {int(paved.sum() * SQ):,} sq ft, GRASS {int(grass.sum() * SQ):,} sq ft.")
         if lawn_in is not None:
             print(f"     Against the traced lawn: grass inside it {int((grass & lawn_in).sum() * SQ):,} sq ft, grass OUTSIDE it {int((grass & ~lawn_in).sum() * SQ):,} (lawn the trace may be missing); "
@@ -198,15 +214,16 @@ def main():
         out[name] = {"paved": int(paved.sum()), "grass": int(grass.sum())}
         if keep and name == "THE PHONE'S OWN LABELS":
             # FOR THE START PAGE'S MAP (the owner's eyes on the lawn trace): one byte a square, rows south to north,
-            # 0 not called, 1 grass, 2 paved; the square at column c, row r has its south-west corner (i0 + c) * cellM
+            # 0 not called, 1 grass, 2 paved, 3 bare (a patch of BARE_MIN_SQFT or more); the square at column c, row r has its south-west corner (i0 + c) * cellM
             # east and (j0 + r) * cellM north of the map's point
             import base64
             import zlib
             g8 = np.zeros((H, W), np.uint8)
             g8[grass] = 1
+            g8[big_bare & ~paved] = 3
             g8[paved] = 2
             json.dump({"v": 1, "cellM": CELL, "i0": i0, "j0": j0, "w": int(W), "h": int(H), "from": "the walk's ground points by the phone's own labels",
-                       "what": "one byte a square, rows south to north: 0 not called, 1 grass, 2 paved", "enc": "zlib+base64",
+                       "what": "one byte a square, rows south to north: 0 not called, 1 grass, 2 paved, 3 bare ground (a patch of 4 sq ft or more)", "enc": "zlib+base64",
                        "kinds": base64.b64encode(zlib.compress(g8.tobytes(), 9)).decode()}, open(keep, "w"))
             print(f"     Kept for the start page's map: {os.path.basename(keep)} ({os.path.getsize(keep) / 1e3:.0f} KB).")
     return 0

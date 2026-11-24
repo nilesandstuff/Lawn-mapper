@@ -569,14 +569,15 @@ function drawMap() {
   const traces = (v) => { for (const r of st.parcel) ring(r, 'rgba(255,255,255,.8)', [6 * v, 4 * v], 2 * v); for (const r of st.lawn) ring(r, CSS.lawn, null, 2 * v); };
   /* A WALK'S GROUND (askSurfaces; scan/tools/surfaces.py, 2026-11-24, the owner: "Lawn shape refinement and driveway
      marking?"): each square foot the walk's ground points called paving (grey) or grass (pale green), by the phone's
-     own labels, UNDER the traced lawn's line, so where the two disagree shows. */
+     own labels, or bare ground in a patch of 4 sq ft or more (brown; the owner: bare areas "larger than like 4 sqft"
+     are not grass), UNDER the traced lawn's line, so where the two disagree shows. */
   if (st.surfaces?.kinds && st.frame && st.origin) {
     const S = st.surfaces, c = S.cellM || 0.3048, [oe, on] = Array.isArray(S.origin) ? toLocal(st.origin, S.origin) : [0, 0];
     for (let r = 0; r < S.h; r++) for (let q = 0; q < S.w; q++) {
       const k = S.kinds[r * S.w + q];
       if (!k) continue;
       const e0 = oe + (S.i0 + q) * c, n0 = on + (S.j0 + r) * c, a = px([e0, n0 + c]), b = px([e0 + c, n0]);
-      g.fillStyle = k === 2 ? 'rgba(150, 150, 165, 0.55)' : 'rgba(170, 235, 120, 0.35)';
+      g.fillStyle = k === 2 ? 'rgba(150, 150, 165, 0.55)' : k === 3 ? 'rgba(160, 110, 60, 0.55)' : 'rgba(170, 235, 120, 0.35)';
       g.fillRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(1, Math.abs(b[0] - a[0])), Math.max(1, Math.abs(b[1] - a[1])));
     }
   }
@@ -2162,8 +2163,9 @@ async function askSurfaces(map) {
     const kinds = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());
     if (kinds.length < j.w * j.h || st.map !== map) return;
     st.surfaces = { ...j, kinds };
-    let paved = 0, grass = 0; for (const k of kinds) { if (k === 2) paved++; else if (k === 1) grass++; }
-    log(`a walk's ground on the map: ${Math.round(grass * (j.cellM / 0.3048) ** 2).toLocaleString()} sq ft of grass, ${Math.round(paved * (j.cellM / 0.3048) ** 2).toLocaleString()} sq ft of paving (pale green and grey)`);
+    let paved = 0, grass = 0, bare = 0; for (const k of kinds) { if (k === 2) paved++; else if (k === 1) grass++; else if (k === 3) bare++; }
+    const sq = (n) => Math.round(n * (j.cellM / 0.3048) ** 2).toLocaleString();
+    log(`a walk's ground on the map: ${sq(grass)} sq ft of grass (pale green), ${sq(paved)} of paving (grey), ${sq(bare)} of bare ground in patches of 4 sq ft or more (brown, not counted as grass)`);
     drawMap();
   } catch { /* nothing drawn */ }
 }
