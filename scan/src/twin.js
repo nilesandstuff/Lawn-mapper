@@ -231,6 +231,40 @@ export async function plants(request, env, url, { isAdmin }) {
 }
 
 /**
+ * WHAT THE OWNER ERASED ON THE MAP (core session, 2026-11-24; the owner: "Give me an eraser so I can show the parts
+ * that are wrong... I'll only be able to edit based on the alignment to the photo"): edits/<map>.json, the squares of
+ * a walk's ground and plants the owner marked as not matching the photo, each with its kind. Nothing the walk made is
+ * changed by it; studies read it as the owner's own look. The one it replaces is kept under edits/backup/. Admin only.
+ *   GET /api/scan/edits?map=   the file, or { none: true }
+ *   PUT /api/scan/edits?map=   { v: 1, at, erased: [[layer 'g' or 'p', i, j, kind], ...] } (at most MAX_EDITS_BYTES)
+ */
+const MAX_EDITS_BYTES = 1024 * 1024;
+export async function edits(request, env, url, { isAdmin }) {
+  if (url.pathname !== '/api/scan/edits') return null;
+  if (!(await isAdmin(request, env))) return json({ error: 'Not found' }, 404);
+  if (!env.TWIN) return json({ error: 'no-bucket' }, 503);
+  const map = url.searchParams.get('map') || '';
+  if (!MAP.test(map)) return json({ error: 'which map?' }, 400);
+  const key = `edits/${map}.json`;
+  if (request.method === 'GET') {
+    const o = await env.TWIN.get(key);
+    if (!o) return json({ none: true });
+    return new Response(o.body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' } });
+  }
+  if (request.method === 'PUT') {
+    const text = await request.text();
+    if (text.length > MAX_EDITS_BYTES) return json({ error: `at most ${MAX_EDITS_BYTES} bytes` }, 413);
+    let j = null;
+    try { j = JSON.parse(text); } catch { j = null; }
+    if (!j || j.v !== 1 || !Array.isArray(j.erased) || typeof j.at !== 'string') return json({ error: 'not a set of edits' }, 400);
+    try { const old = await env.TWIN.get(key); if (old) await env.TWIN.put(`edits/backup/${map}-${Date.now()}.json`, old.body); } catch { /* the new set is kept either way */ }
+    await env.TWIN.put(key, text, { httpMetadata: { contentType: 'application/json' } });
+    return json({ ok: true, map, erased: j.erased.length, at: j.at });
+  }
+  return json({ error: 'method' }, 405);
+}
+
+/**
  * A WALK'S GROUND ON THE MAP (core session, 2026-11-24; scan/tools/surfaces.py, surfaces-keep.mjs): surfaces/<map>.json,
  * the walk's paving and grass by the phone's own labels, drawn by the start page under the traced lawn. Read only; the
  * admin only.   GET /api/scan/surfaces?map=   the file, or { none: true }

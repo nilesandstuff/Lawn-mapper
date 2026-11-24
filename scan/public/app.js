@@ -274,7 +274,7 @@ async function loadMap(id) {
   st.frame = frameFor(bboxOf(st.origin, pts, 12), m.lat);
   loadPoints(); loadPins(); listPoints();
   askMarks(id);
-  layerControls();
+  layerControls(); eraserControls(); askErased(id);
   $('#setup').hidden = false;
   // which map: the owner has more than one of the same house (2026-11-09), so its date and size say which
   const saved = m.at ? new Date(m.at) : null;
@@ -578,11 +578,14 @@ function drawMap() {
     // switched on and off by its box under the map, all of them as strong as the slider says
     const A = layerAlpha(), fill = { 1: `rgba(79, 224, 210, ${A})`, 2: `rgba(184, 184, 204, ${A})`, 3: `rgba(192, 132, 74, ${A})` };
     const on_ = { 1: layerOn('turf'), 2: layerOn('paved'), 3: layerOn('bare') };
+    const er = st.erased, showEr = layerOn('erased') && layers().erased === true;
     for (let r = 0; r < S.h; r++) for (let q = 0; q < S.w; q++) {
       const k = S.kinds[r * S.w + q];
-      if (!k || !on_[k]) continue;
+      if (!k) continue;
+      const gone = er && er.has(`g:${S.i0 + q},${S.j0 + r}`);
+      if (gone ? !showEr : !on_[k]) continue;
       const e0 = oe + (S.i0 + q) * c, n0 = on + (S.j0 + r) * c, a = px([e0, n0 + c]), b = px([e0 + c, n0]);
-      g.fillStyle = fill[k];
+      g.fillStyle = gone ? `rgba(230, 60, 60, ${A})` : fill[k];
       g.fillRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(1, Math.abs(b[0] - a[0])), Math.max(1, Math.abs(b[1] - a[1])));
     }
   }
@@ -604,8 +607,9 @@ function drawMap() {
     const [oe, on] = Array.isArray(st.plants.origin) ? toLocal(st.origin, st.plants.origin) : [0, 0];
     for (const [i, j, , hi] of st.plants.boxes) { const k = `${i},${j}`; if (!(top.get(k) >= hi)) top.set(k, hi); }
     for (const [k, hi] of top) {
+      if (st.erased?.has(`p:${k}`) && !(layers().erased === true)) continue;
       const [i, j] = k.split(',').map(Number), a = px([oe + i * c, on + (j + 1) * c]), b = px([oe + (i + 1) * c, on + j * c]);
-      g.fillStyle = `rgba(30, ${hi >= 24 ? 110 : 170}, 60, ${Math.min(1, layerAlpha() * (hi >= 24 ? 1.1 : 0.8))})`;
+      g.fillStyle = st.erased?.has(`p:${k}`) ? `rgba(230, 60, 60, ${layerAlpha()})` : `rgba(30, ${hi >= 24 ? 110 : 170}, 60, ${Math.min(1, layerAlpha() * (hi >= 24 ? 1.1 : 0.8))})`;
       g.fillRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(1, Math.abs(b[0] - a[0])), Math.max(1, Math.abs(b[1] - a[1])));
     }
   }
@@ -775,6 +779,9 @@ function wireMap() {
     if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d0: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, s0: st.view.s, base: toBase([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]) }; if (drag) delete drag.grab; drag = null; st.dragging = null; pan = null; downAt = null; return; }
     if (ptrs.size > 2) return;
     const xy = canvasXY(ev), b = toBase(xy);
+    // THE ERASER (2026-11-24): one finger erases, two still move and zoom the map
+    if (st.eraser && ptrs.size === 1) { st.eraseStroke = []; eraseAt(unpx(b)); downAt = null; pan = null; drag = null; drawMap(); return; }
+    if (st.eraser && st.eraseStroke) { undoStroke(st.eraseStroke); st.eraseStroke = null; }
     downAt = xy; moved = false; downT = ev.pointerType === 'mouse' ? -Infinity : performance.now();
     const hit = hitAt(b);
     // a point keeps where the finger took hold of it, so it moves beside the finger, not under it
@@ -786,6 +793,7 @@ function wireMap() {
     ptrs.set(ev.pointerId, canvasXY(ev));
     if (pinch && ptrs.size >= 2) { const [a, b] = [...ptrs.values()], mid = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; st.view.s = Math.max(1, Math.min(MAX_ZOOM, pinch.s0 * Math.hypot(a[0] - b[0], a[1] - b[1]) / pinch.d0)); st.view.ox = mid[0] - pinch.base[0] * st.view.s; st.view.oy = mid[1] - pinch.base[1] * st.view.s; clampView(); drawMap(); return; }
     const xy = canvasXY(ev);
+    if (st.eraser && st.eraseStroke && ptrs.size === 1) { eraseAt(unpx(toBase(xy))); drawMap(); return; }
     if (downAt && !moved && Math.hypot(xy[0] - downAt[0], xy[1] - downAt[1]) > SLIDE * cssK()) {
       moved = true;
       // slid before the hold was up: the finger meant the map, not the point
@@ -795,6 +803,7 @@ function wireMap() {
   });
   const up = (ev, cancelled) => {
     ptrs.delete(ev.pointerId);
+    if (st.eraser && st.eraseStroke) { if (st.eraseStroke.length) { st.eraseUndo.push(st.eraseStroke); saveErased(); } st.eraseStroke = null; downAt = null; pan = null; drag = null; drawMap(); return; }
     if (pinch) { if (ptrs.size < 2) pinch = null; downAt = null; drag = null; pan = null; return; }
     const xy = canvasXY(ev);
     if (drag && moved && drag.roof && dragFrom) { drag.map = dragFrom.slice(); delete drag.grab; drag = null; st.dragging = null; flash('A roof corner stays where the lidar has it. Delete it to choose another.'); drawMap(); return; }
@@ -2174,11 +2183,80 @@ function layerControls() {
   box.dataset.wired = '1';
   const save = () => { try { localStorage.setItem('scan-layers', JSON.stringify(layers())); } catch { /* this visit only */ } };
   for (const cb of box.querySelectorAll('input[data-layer]')) {
-    cb.checked = layerOn(cb.dataset.layer);
+    cb.checked = cb.dataset.layer === 'erased' ? layers().erased === true : layerOn(cb.dataset.layer);   // what was erased: hidden unless asked
     cb.addEventListener('change', () => { layers()[cb.dataset.layer] = cb.checked; save(); drawMap(); });
   }
   const sl = $('#layer-alpha');
   if (sl) { sl.value = String(Math.round(layerAlpha() * 100)); sl.addEventListener('input', () => { layers().alpha = Number(sl.value) / 100; save(); drawMap(); }); }
+}
+/* THE ERASER (the owner, 2026-11-24: "There's definitely some errors. Give me an eraser so I can show the parts that
+   are wrong. To be clear, I'll only be able to edit based on the alignment to the photo... I can't say whether the
+   errors are alignment issues or legitimate mismarked grass/soil/pavement"). A square erased is the owner saying "this
+   does not match the photo", no more: kept with its kind, beside the map on the server (src/twin.js edits), so the
+   walk can be measured against it later; nothing the walk made is changed. Only kinds shown can be erased. */
+function eraseAt(m) {
+  const R = (Number($('#eraser-size')?.value) || 2) / 3.281;
+  if (!st.erased) st.erased = new Map();
+  const S = st.surfaces;
+  if (S?.kinds) {
+    const c = S.cellM || 0.3048, [oe, on] = Array.isArray(S.origin) ? toLocal(st.origin, S.origin) : [0, 0];
+    const q0 = Math.floor((m[0] - R - oe) / c) - S.i0, q1 = Math.floor((m[0] + R - oe) / c) - S.i0;
+    const r0 = Math.floor((m[1] - R - on) / c) - S.j0, r1 = Math.floor((m[1] + R - on) / c) - S.j0;
+    const vis = { 1: layerOn('turf'), 2: layerOn('paved'), 3: layerOn('bare') };
+    for (let r = Math.max(0, r0); r <= Math.min(S.h - 1, r1); r++) for (let q = Math.max(0, q0); q <= Math.min(S.w - 1, q1); q++) {
+      const k = S.kinds[r * S.w + q];
+      if (!k || !vis[k]) continue;
+      const ce = oe + (S.i0 + q + 0.5) * c, cn = on + (S.j0 + r + 0.5) * c;
+      if (Math.hypot(ce - m[0], cn - m[1]) > R) continue;
+      const key = `g:${S.i0 + q},${S.j0 + r}`;
+      if (!st.erased.has(key)) { st.erased.set(key, k); st.eraseStroke?.push(key); }
+    }
+  }
+  if (st.plants?.boxes?.length && layerOn('plants')) {
+    const c = st.plants.cellM || 0.3048, [oe, on] = Array.isArray(st.plants.origin) ? toLocal(st.origin, st.plants.origin) : [0, 0];
+    for (const [i, j] of st.plants.boxes) {
+      const ce = oe + (i + 0.5) * c, cn = on + (j + 0.5) * c;
+      if (Math.hypot(ce - m[0], cn - m[1]) > R) continue;
+      const key = `p:${i},${j}`;
+      if (!st.erased.has(key)) { st.erased.set(key, 'plant'); st.eraseStroke?.push(key); }
+    }
+  }
+}
+function undoStroke(keys) { for (const k of keys || []) st.erased?.delete(k); }
+let erasedTimer = null;
+function saveErased() {
+  const map = st.map; if (!map || !st.erased) return;
+  const KIND = { 1: 'turf', 2: 'paving', 3: 'porous', plant: 'plant' };
+  const cells = [...st.erased].map(([key, k]) => { const [layer, ij] = key.split(':'); const [i, j] = ij.split(',').map(Number); return [layer, i, j, KIND[k] || String(k)]; });
+  const body = JSON.stringify({ v: 1, at: new Date().toISOString(), cellM: st.surfaces?.cellM || 0.3048, groundWalk: st.surfaces?.walk || null, plantsAt: st.plants?.at || null, erased: cells });
+  const note = $('#eraser-note'); if (note) note.textContent = `${cells.length} square${cells.length === 1 ? '' : 's'} erased`;
+  clearTimeout(erasedTimer);
+  erasedTimer = setTimeout(async () => {
+    try {
+      const r = await fetch(`/api/scan/edits?map=${encodeURIComponent(map)}`, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body, signal: AbortSignal.timeout(SEND_TIMEOUT_MS) });
+      if (note) note.textContent = r.ok ? `${cells.length} square${cells.length === 1 ? '' : 's'} erased, kept with the map` : `NOT kept (the site answered ${r.status})`;
+    } catch { if (note) note.textContent = 'NOT kept yet: no signal (it is tried again at the next erase)'; }
+  }, 1200);
+}
+async function askErased(map) {
+  st.erased = new Map(); st.eraseUndo = [];
+  try {
+    const r = await fetch(`/api/scan/edits?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' });
+    const j = r.ok ? await r.json() : null;
+    if (st.map !== map || !j || j.none || !Array.isArray(j.erased)) return;
+    const K = { turf: 1, paving: 2, porous: 3, plant: 'plant' };
+    for (const [layer, i, j2, kind] of j.erased) st.erased.set(`${layer}:${i},${j2}`, K[kind] ?? kind);
+    const note = $('#eraser-note'); if (note) note.textContent = `${st.erased.size} square${st.erased.size === 1 ? '' : 's'} erased before`;
+    drawMap();
+  } catch { /* none read */ }
+}
+function eraserControls() {
+  const b = $('#eraser'); if (!b || b.dataset.wired) return;
+  b.dataset.wired = '1'; st.eraseUndo = st.eraseUndo || [];
+  b.addEventListener('click', () => { st.eraser = !st.eraser; b.setAttribute('aria-pressed', String(st.eraser)); b.textContent = st.eraser ? 'Eraser ON (one finger erases, two move the map)' : 'Eraser'; });
+  const sz = $('#eraser-size'), ft = $('#eraser-ft');
+  if (sz && ft) sz.addEventListener('input', () => { ft.textContent = `${sz.value} ft`; });
+  $('#eraser-undo')?.addEventListener('click', () => { const last = st.eraseUndo.pop(); if (!last) return; undoStroke(last); saveErased(); drawMap(); });
 }
 /* A WALK'S GROUND ON THE MAP (scan/tools/surfaces.py, surfaces-keep.mjs): paving and grass as the walk's ground points
    were labelled by the phone, drawn under the traced lawn for the owner's eyes. Read only; nothing is written. */
@@ -2194,7 +2272,7 @@ async function askSurfaces(map) {
     st.surfaces = { ...j, kinds };
     let paved = 0, grass = 0, bare = 0; for (const k of kinds) { if (k === 2) paved++; else if (k === 1) grass++; else if (k === 3) bare++; }
     const sq = (n) => Math.round(n * (j.cellM / 0.3048) ** 2).toLocaleString();
-    log(`a walk's ground on the map: ${sq(grass)} sq ft of turf (blue-green), ${sq(paved)} of paving (grey), ${sq(bare)} of bare ground in patches of 4 sq ft or more (brown, not counted as turf)`);
+    log(`a walk's ground on the map: ${sq(grass)} sq ft of turf (blue-green), ${sq(paved)} of paving (grey), ${sq(bare)} of porous ground (bare soil, woodchips, moss) in patches of 4 sq ft or more (brown, not counted as turf)`);
     drawMap();
   } catch { /* nothing drawn */ }
 }

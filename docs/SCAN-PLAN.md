@@ -4604,6 +4604,18 @@ TRIED AND DROPPED: sliding the traced lawn to where it best fits the walk (the o
 lidar's brightness), scored within 10 ft of paving with paving inside counted three times: on a simulated lot it found
 the true slide across a drive (9.4 ft against 9.3) but invented an 8.6 ft slide ALONG it, pulled by the grass round the
 drive's ends. Not trustworthy as a number; not run on the owner's walk.
+THE OWNER (2026-11-24, later): the faint green was too near the trees' green -> turf drawn light blue-green, a box
+for each kind (turf, paving, porous ground, plants, placed things) and a slider for the colours' strength (scan site
+run 576). "I'm deciding that woodchips and moss count as bare soil, so let's call it 'porous ground'. I'm undecided if
+stones should fall into that category. There's no stones on my property, there's a little bit of moss and plenty of
+woodchips." -> kind 3 is POROUS GROUND (bare soil, woodchips, moss). NOT KNOWN: whether the pictures' vote calls
+woodchips or moss "bare ground" at all (its classes come from a model trained on other scenes): the owner's erasures
+will say. And: "There's definitely some errors. Give me an eraser so I can show the parts that are wrong. To be clear,
+I'll only be able to edit based on the alignment to the photo.... I can't say whether the errors are alignment issues
+or legitimate mismarked grass/soil/pavement." BUILT: an eraser on the start page's map (one finger erases, two move
+the map; a size in feet; undo; "show what I erased" in red); each erased square kept with its kind beside the map
+(edits/<map>.json in the twin bucket, GET/PUT /api/scan/edits?map=), changing nothing the walk made: the owner's own
+look, "does not match the photo", for the walk to be measured against.
 BUILT for the owner's eyes: the phone's squares kept with the map (surfaces.py --keep, surfaces-keep.mjs:
 surfaces/<map>.json in the twin bucket; GET /api/scan/surfaces?map=), drawn on the start page's map under the traced
 lawn: paving grey, grass pale green (app.js askSurfaces).

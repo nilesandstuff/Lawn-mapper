@@ -20,7 +20,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR
 
 let THINGS = { v: 1, things: [{ id: 't1', kind: 'gutter-out', at: [1, 1], h: 0.1, grade: 'corners3', seen: [{ at: [1, 1], h: 0.1, walk: 'w', grade: 'corners3', t: 1 }] }, { id: 't4', kind: 'gutter-out', at: [3, 1], h: 0.1, grade: 'unsure', seen: [{ at: [3, 1], h: 0.1, walk: 'w', grade: 'unsure', t: 1 }] }] }, PUTS = 0;
 const TOOL = [];
-let MARK_PUTS = 0, SURF_ASKS = 0;
+let MARK_PUTS = 0, SURF_ASKS = 0, EDITS = null;
 const srv = http.createServer((q, s) => {
   const u = new URL(q.url, 'http://x');
   const json = (o, code = 200) => { s.statusCode = code; s.setHeader('Content-Type', 'application/json'); s.end(JSON.stringify(o)); };
@@ -35,6 +35,11 @@ const srv = http.createServer((q, s) => {
   if (u.pathname === '/api/scan/marks') {
     if (q.method === 'PUT') { MARK_PUTS++; return json({ ok: true }); }
     return json({ v: 1, at: '2026-11-24T00:00:00.000Z', points: [{ id: 'm1', name: 'R1', kind: 'ref', map: [2, 3] }, { id: 'm2', name: 'R2', kind: 'ref', map: [5, 1] }] });
+  }
+  // what the owner erased (2026-11-24): kept on PUT
+  if (u.pathname === '/api/scan/edits') {
+    if (q.method === 'PUT') { let b = ''; q.on('data', (c) => { b += c; }); q.on('end', () => { try { EDITS = JSON.parse(b); } catch { EDITS = null; } json({ ok: true }); }); return; }
+    return json({ none: true });
   }
   // a walk's ground kept with the map (2026-11-24): drawn under the traced lawn (a page error here fails the check)
   if (u.pathname === '/api/scan/surfaces') { SURF_ASKS++; return json({ v: 1, cellM: 0.3048, i0: 0, j0: 0, w: 4, h: 2, kinds: deflateSync(Buffer.from([1, 1, 2, 2, 0, 1, 2, 0])).toString('base64') }); }
@@ -75,6 +80,13 @@ async function main() {
         // the layer boxes and the colours' slider (2026-11-24): there, and a box can be switched off without a fault
         const lay = await pg.evaluate(() => { const b = document.querySelectorAll('#layers input[data-layer]'); const t = document.querySelector('#layers input[data-layer="turf"]'); if (t) { t.click(); t.click(); } const sl = document.querySelector('#layer-alpha'); if (sl) { sl.value = '30'; sl.dispatchEvent(new Event('input')); } return b.length; });
         if (lay < 5) faults.push(`${path}: the map's layer boxes are not all there (${lay})`);
+        // the eraser: on, one stroke across the map's middle, kept with the map
+        const box = await pg.evaluate(() => { document.querySelector('#eraser')?.click(); const sz = document.querySelector('#eraser-size'); if (sz) { sz.value = '8'; sz.dispatchEvent(new Event('input')); } document.querySelector('#map').scrollIntoView({ block: 'center' }); const r = document.querySelector('#map').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2, w: r.width }; });
+        await pg.mouse.move(box.x - box.w * 0.3, box.y); await pg.mouse.down();
+        for (let i = 0; i <= 12; i++) await pg.mouse.move(box.x - box.w * 0.3 + (box.w * 0.6 * i) / 12, box.y);
+        await pg.mouse.up(); await pg.waitForTimeout(1800);
+        const note = await pg.evaluate(() => document.querySelector('#eraser-note')?.textContent || '');
+        if (!EDITS || !Array.isArray(EDITS.erased)) faults.push(`${path}: an eraser stroke was not kept with the map ("${note}")`);
         if (MARK_PUTS) faults.push(`${path}: the marks kept with the map were written back over (${MARK_PUTS}) with nothing changed`);
         // the placed things: listed, and one taken away with two taps (kept as gone, not deleted) and put back
         const rows = () => pg.evaluate(() => [...document.querySelectorAll('#things-list li')].map((li) => li.textContent.replace(/\s+/g, ' ').trim()));
@@ -93,6 +105,6 @@ async function main() {
     }
   } finally { await br.close(); srv.close(); }
   if (faults.length) { console.log(`The built page does NOT run in a browser; not deploying:\n  ${faults.join('\n  ')}`); process.exit(1); }
-  console.log('The built page runs in a browser: it opens with and without a map, both workers load, the marks kept with the map are shown, the layer boxes work, the plants of a walk go into the record of the map, and a placed thing can be taken away and put back.');
+  console.log('The built page runs in a browser: it opens with and without a map, both workers load, the marks kept with the map are shown, the layer boxes and the eraser work, the plants of a walk go into the record of the map, and a placed thing can be taken away and put back.');
 }
 main().catch((e) => { console.log(`Page check could not run: ${e.message}`); process.exit(1); });

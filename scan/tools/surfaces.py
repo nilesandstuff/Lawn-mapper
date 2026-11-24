@@ -173,7 +173,8 @@ def main():
         print("  The traced lawn: not read (no lawn.json): nothing compared with it.")
     out = {}
     SQ = (CELL * FT) ** 2           # square feet in a square
-    # BARE GROUND IS NOT GRASS (the owner, 2026-11-24: "sometimes turf runs up against edges of bare dirt, so we atleast
+    # POROUS GROUND IS NOT GRASS (the owner, 2026-11-24, later the same day: "woodchips and moss count as bare soil, so
+    # let's call it 'porous ground'. I'm undecided if stones should fall into that category"; and before: "sometimes turf runs up against edges of bare dirt, so we atleast
     # need to not count bare areas larger than like 4 sqft as grass"). The phone's "terrain" is grass and bare ground
     # alike; the pictures' vote tells them apart. A square is BARE when half or more of its ground points the vote
     # called bare ground; bare pieces of BARE_MIN_SQFT or more are taken out of the grass, smaller ones left in.
@@ -190,8 +191,8 @@ def main():
         grass0 = (G >= MIN_PTS) & (G >= 2 * P)
         grass = grass0 & ~big_bare
         if kind is not None:
-            print(f"  {name}: of {int(grass0.sum() * (CELL * FT) ** 2):,} sq ft called grass, {int((grass0 & big_bare).sum() * (CELL * FT) ** 2):,} lie in bare patches of {BARE_MIN_SQFT} sq ft or more by the pictures' vote and are NOT counted as grass "
-                  f"({int(bare_sq.sum() * (CELL * FT) ** 2):,} sq ft called bare in all, {int(big_bare.sum() * (CELL * FT) ** 2):,} of it in such patches).")
+            print(f"  {name}: of {int(grass0.sum() * (CELL * FT) ** 2):,} sq ft called grass, {int((grass0 & big_bare).sum() * (CELL * FT) ** 2):,} lie in POROUS GROUND (bare soil, woodchips, moss: the pictures' vote's bare ground) in patches of {BARE_MIN_SQFT} sq ft or more and are NOT counted as grass "
+                  f"({int(bare_sq.sum() * (CELL * FT) ** 2):,} sq ft called porous in all, {int(big_bare.sum() * (CELL * FT) ** 2):,} of it in such patches).")
         print(f"  {name}: {int(pav.sum()):,} points paved, {int(gra.sum()):,} grass; squares PAVED {int(paved.sum() * SQ):,} sq ft, GRASS {int(grass.sum() * SQ):,} sq ft.")
         if lawn_in is not None:
             print(f"     Against the traced lawn: grass inside it {int((grass & lawn_in).sum() * SQ):,} sq ft, grass OUTSIDE it {int((grass & ~lawn_in).sum() * SQ):,} (lawn the trace may be missing); "
@@ -223,7 +224,7 @@ def main():
             g8[big_bare & ~paved] = 3
             g8[paved] = 2
             json.dump({"v": 1, "cellM": CELL, "i0": i0, "j0": j0, "w": int(W), "h": int(H), "from": "the walk's ground points by the phone's own labels",
-                       "what": "one byte a square, rows south to north: 0 not called, 1 grass, 2 paved, 3 bare ground (a patch of 4 sq ft or more)", "enc": "zlib+base64",
+                       "what": "one byte a square, rows south to north: 0 not called, 1 grass, 2 paved, 3 porous ground: bare soil, woodchips, moss (a patch of 4 sq ft or more)", "enc": "zlib+base64",
                        "kinds": base64.b64encode(zlib.compress(g8.tobytes(), 9)).decode()}, open(keep, "w"))
             print(f"     Kept for the start page's map: {os.path.basename(keep)} ({os.path.getsize(keep) / 1e3:.0f} KB).")
     return 0

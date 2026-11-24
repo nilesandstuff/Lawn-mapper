@@ -134,10 +134,17 @@
       <div id="layers" class="dim" style="margin:6px 0 0;display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center">
         <label><input type="checkbox" data-layer="turf" checked> <span style="color:#4fe0d2">&#9632;</span> Turf</label>
         <label><input type="checkbox" data-layer="paved" checked> <span style="color:#b8b8cc">&#9632;</span> Paving</label>
-        <label><input type="checkbox" data-layer="bare" checked> <span style="color:#c0844a">&#9632;</span> Bare ground</label>
+        <label><input type="checkbox" data-layer="bare" checked> <span style="color:#c0844a">&#9632;</span> Porous ground</label>
         <label><input type="checkbox" data-layer="plants" checked> <span style="color:#2e9e4a">&#9632;</span> Plants</label>
         <label><input type="checkbox" data-layer="things" checked> Placed things</label>
         <label style="display:flex;align-items:center;gap:6px">Colours <input type="range" id="layer-alpha" min="10" max="100" step="5" value="55" aria-label="How strong the colours are"></label>
+      </div>
+      <div id="eraser-row" class="dim" style="margin:6px 0 0;display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center">
+        <button type="button" id="eraser" aria-pressed="false">Eraser</button>
+        <label style="display:flex;align-items:center;gap:6px">Size <input type="range" id="eraser-size" min="1" max="8" step="1" value="2" aria-label="How wide the eraser is, in feet"> <span id="eraser-ft">2 ft</span></label>
+        <button type="button" id="eraser-undo" class="plain">Undo</button>
+        <label><input type="checkbox" data-layer="erased"> Show what I erased</label>
+        <span id="eraser-note"></span>
       </div>
       <p id="roof-note" class="dim" style="margin:4px 0 0" hidden></p>
       <ol id="points"></ol>
