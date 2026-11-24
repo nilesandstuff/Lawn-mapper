@@ -89,8 +89,10 @@ async function main() {
   const row = (await sql(`SELECT data FROM map_tools WHERE owner_kind = 'user' AND owner_id = ? AND tool = 'scan' AND map_key = ?`, [uid, key]))[0];
   let plants = null;
   try { plants = row ? JSON.parse(row.data)?.plants || null : null; } catch { plants = null; }
-  const from = plants?.boxes?.length ? 'the plants its record holds' : keptJ?.boxes?.length ? 'the plants kept by the workflow (the record holds none)' : null;
+  let from = plants?.boxes?.length ? 'the plants its record holds' : keptJ?.boxes?.length ? 'the plants kept by the workflow (the record holds none)' : null;
   if (!plants?.boxes?.length) plants = keptJ;
+  // the workflow's plants when they are newer than the record's (the start page has not opened the map since)
+  else if (keptJ?.boxes?.length && String(keptJ.at) > String(plants.at || '')) { plants = keptJ; from = 'the plants kept by the workflow (newer than the record\'s)'; }
   if (!lidarKeyOfWalk || !plants?.boxes?.length) { console.log(`  THE FUSING, RUN HERE: not run (${!lidarKeyOfWalk ? 'the walk\'s map has no lidar model' : 'there are no plants to fuse'}).`); return; }
   try {
     const F = await import('../../public/shade/fuse.js');
@@ -108,7 +110,7 @@ async function main() {
     const openBare = plants.clearHigh ? await F.openHighFromSeen(plants.clearHigh, at0, F.fusedGrid(lidar.meta)) : null;
     const fused = F.fuseModel(lidar, plants, at0, { open, openHigh, ...(openBare ? { openBare } : {}) });
     const f = fused.meta?.fused || {}, g = fused.meta?.grid || {}, lg = lidar.meta?.grid || {};
-    console.log(`  THE FUSING, RUN HERE on the walk's map's lidar model (${lg.w} x ${lg.h} columns, ${list_.length} overflow parts${partsOfWalk.length !== list_.length ? `, ${partsOfWalk.length} kept` : ''}) and ${from}: MADE, in ${((Date.now() - t0) / 1000).toFixed(1)} s. Version ${f.version ?? '?'}; grid ${g.w} x ${g.h}; ${f.refined ?? '?'} cells refined, ${f.added ?? '?'} added, ${f.trimmed ?? '?'} trimmed, ${(f.moved || []).length} trees moved; the walk in leaf: ${f.walkInLeaf ?? '?'}; with open air ${open ? 'yes' : 'no'}, above 8 ft ${openHigh ? 'yes' : 'no'}.`);
+    console.log(`  THE FUSING, RUN HERE on the walk's map's lidar model (${lg.w} x ${lg.h} columns, ${list_.length} overflow parts${partsOfWalk.length !== list_.length ? `, ${partsOfWalk.length} kept` : ''}) and ${from}: MADE, in ${((Date.now() - t0) / 1000).toFixed(1)} s. Version ${f.version ?? '?'}; grid ${g.w} x ${g.h}; ${f.refined ?? '?'} cells refined, ${f.added ?? '?'} added, ${f.trimmed ?? '?'} trimmed${f.trimmedBare != null ? ` (${f.trimmedBare} of them by air seen empty in any season)` : ''}, ${(f.moved || []).length} trees moved${f.removed ? `, ${f.removed.length} lidar trees taken away as gone${f.removed.length ? ` (each: columns, crown cells 8-30 ft, share in empty air: ${f.removed.map((g) => `${g.columns}/${g.crownCells}/${g.clearShare}`).join('; ')})` : ''}` : ''}; the walk in leaf: ${f.walkInLeaf ?? '?'}; with open air ${open ? 'yes' : 'no'}, above 8 ft ${openHigh ? 'yes' : 'no'}, empty in any season ${openBare ? 'yes' : 'no'}.`);
     // HOW MUCH OF THE LIDAR'S CROWN SITS IN AIR THE WALK SAW EMPTY IN ANY SEASON (clear-measure.js; SCAN-PLAN 62)
     const pc = keptJ?.clearHigh ? keptJ : plants;
     if (pc?.clearHigh) {
