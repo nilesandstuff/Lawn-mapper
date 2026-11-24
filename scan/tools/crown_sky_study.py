@@ -53,6 +53,15 @@ def sky_blue(img):
     return (b > 140) & (b - r >= 45) & (b - g >= 15)
 
 
+def sky_bright(img):
+    """THE LOOSER TEST (run 561: by the strict one, crown and air alike were clean in 9% of their views, which says the
+    test, not the scene): pale sky counts too. Bright (within 75% of the picture's own 99th-percentile brightness) and
+    no less blue than red or green. A bare twig against it is darker."""
+    r, g, b = (img[..., i].astype(np.int32) for i in range(3))
+    lum = r + g + b
+    return (lum >= 0.75 * np.percentile(lum, 99)) & (b >= r) & (b >= g - 5)
+
+
 def main():
     a = sys.argv[1:]
     if not a or not os.path.isdir(a[0]):
@@ -143,6 +152,16 @@ def main():
     bc, br = sq % w, sq // w
     be, bn = (i0 + bc + 0.5) * CELL, (j0 + br + 0.5) * CELL
     bh = FROM + (sl + 0.5) * SLAB                              # metres over the ground, the map's
+    # CONTROLS: blocks 45 m up, every 6 m over the walk's squares; seen only steeply (35 degrees up or more), nothing
+    # but sky can stand behind them, so they say how much of plain sky each test calls sky
+    cg_e, cg_n = np.meshgrid(np.arange((i0 + 0.5) * CELL, (i0 + w) * CELL, 6.0), np.arange((j0 + 0.5) * CELL, (j0 + h) * CELL, 6.0))
+    nctl = cg_e.size
+    be, bn = np.r_[be, cg_e.ravel()], np.r_[bn, cg_n.ravel()]
+    bh = np.r_[bh, np.full(nctl, 45.0)]
+    ctl = np.r_[np.zeros(len(keys_all), bool), np.ones(nctl, bool)]
+    keys_all = np.r_[keys_all, np.full(nctl, -1)]
+    sl = np.r_[sl, np.full(nctl, nsl)]
+    sq = np.r_[sq, np.zeros(nctl, np.int64)]
     # into the session: the inverse of the fit, the height over the walk's own ground
     ux, uy = be - T["tx"], bn - T["ty"]
     X = (np.cos(th) * ux + np.sin(th) * uy) / s_
@@ -155,6 +174,7 @@ def main():
     # the same counted on NEAR views only: where the block is wide in the picture against the pictures' own pointing
     # error (2-5 degrees, SCAN-H14 to H16), i.e. within NEAR_M
     cleanN, viewsN = np.zeros(nb, np.int32), np.zeros(nb, np.int32)
+    cleanB, cleanBN = np.zeros(nb, np.int32), np.zeros(nb, np.int32)     # the looser test, all views and near
     keys = []
     for n in sorted(x for x in os.listdir(d) if re.fullmatch(r"keys-\d+\.json", x)):
         keys += json.load(open(os.path.join(d, n)))
@@ -174,12 +194,17 @@ def main():
         wq = np.where(np.abs(clip[:, 3]) < 1e-9, 1e-9, clip[:, 3])
         nx, ny = clip[:, 0] / wq, clip[:, 1] / wq
         vis = (zc > 1.0) & (zc < RANGE_M) & (np.abs(nx) < 0.97) & (np.abs(ny) < 0.97)
+        if ctl.any():   # a control counts only when seen steeply
+            camp = V[:3, 3]
+            el = np.degrees(np.arctan2(P4[:, 1] - camp[1], np.hypot(P4[:, 0] - camp[0], P4[:, 2] - camp[2])))
+            vis &= ~ctl | (el >= 35)
         if not vis.any():
             continue
         blue = sky_blue(img)
         if blue.mean() > 0.01:
             pics_blue += 1
         integ = np.pad(blue.astype(np.int32).cumsum(0).cumsum(1), ((1, 0), (1, 0)))
+        integB = np.pad(sky_bright(img).astype(np.int32).cumsum(0).cumsum(1), ((1, 0), (1, 0)))
         fpx = Pm[0, 0] * W_ / 2                               # pixels per unit at depth 1
         idx = np.flatnonzero(vis)
         px = ((nx[idx] + 1) / 2 * W_).astype(np.int64)
@@ -189,12 +214,15 @@ def main():
         y0, y1 = np.clip(py - r, 0, H_), np.clip(py + r + 1, 0, H_)
         area = np.maximum(1, (x1 - x0) * (y1 - y0))
         share = (integ[y1, x1] - integ[y0, x1] - integ[y1, x0] + integ[y0, x0]) / area
+        shareB = (integB[y1, x1] - integB[y0, x1] - integB[y1, x0] + integB[y0, x0]) / area
         views[idx] += 1
         clean_n[idx] += share >= CLEAN_SHARE
         hazy_n[idx] += share < HAZY_SHARE
         nr = zc[idx] <= NEAR_M
         viewsN[idx[nr]] += 1
         cleanN[idx[nr]] += share[nr] >= CLEAN_SHARE
+        cleanB[idx] += shareB >= CLEAN_SHARE
+        cleanBN[idx[nr]] += shareB[nr] >= CLEAN_SHARE
         used += 1
     print(f"\nCOLOUR AGAINST DEPTH: CAN THE PICTURES SAY WHERE THE LIDAR'S CROWN IS NOT? (crown_sky_study.py; blocks 2 ft x 2 ft x half a metre; a block CLEAN when {CLEAN_SHARE:.0%} of its pixels are sky blue in {CLEAN_VIEWS} pictures or more)")
     print(f"  {used:,} pictures looked at ({len(keys):,} kept after the start cut), {pics_blue:,} with blue sky in them; {nb:,} blocks: the lidar's crown 8-130 ft up, and the walk's own crown and air 8-66 ft up.")
@@ -222,8 +250,15 @@ def main():
         print(f"     {lo}-{hi} ft: {int((is_l & (hft >= lo) & (hft < hi)).sum()):,} blocks, {int(m.sum()):,} seen; clean {int((m & verdict_clean & ~verdict_hazy).sum()):,}; mixed {int((m & verdict_clean & verdict_hazy).sum()):,}.")
     # BY THE SHARE OF ITS VIEWS THAT ARE CLEAN (run 560: with hundreds of pictures, "clean in 3" is chance: 68.5% of the
     # depth's crown blocks and 79.6% of its air passed it). Does any share separate crown from air, all views or near?
-    for lab_, cn, vn, need in (("ALL VIEWS", clean_n, views, 10), (f"NEAR VIEWS (within {NEAR_M:.0f} m)", cleanN, viewsN, 5)):
+    for lab_, cn, vn, need in (("STRICT BLUE, ALL VIEWS", clean_n, views, 10), (f"STRICT BLUE, NEAR VIEWS (within {NEAR_M:.0f} m)", cleanN, viewsN, 5),
+                               ("BRIGHT SKY, ALL VIEWS", cleanB, views, 10), (f"BRIGHT SKY, NEAR VIEWS (within {NEAR_M:.0f} m)", cleanBN, viewsN, 5)):
         sh = np.where(vn > 0, cn / np.maximum(1, vn), np.nan)
+        cc = ctl & (views >= 5)
+        if lab_.endswith("ALL VIEWS") and not cc.any():
+            print(f"  {lab_}: CONTROLS: none of the {int(ctl.sum())} was seen 5 times steeply enough.")
+        if lab_.endswith("ALL VIEWS") and cc.any():
+            qq = np.percentile(cleanB[cc] / np.maximum(1, views[cc]) if lab_.startswith("BRIGHT") else clean_n[cc] / np.maximum(1, views[cc]), [25, 50, 75])
+            print(f"  {lab_}: CONTROLS (plain sky, 45 m up, seen 35 degrees up or more; {int(cc.sum())} blocks): the share of views clean {qq[0]:.2f} / {qq[1]:.2f} / {qq[2]:.2f}. Near 1.00 if the test and the aim are right.")
         c_ = dep_crown & (vn >= need)
         a_ = dep_air & (vn >= need)
         if c_.sum() < 20 or a_.sum() < 20:
