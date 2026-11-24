@@ -4566,6 +4566,38 @@ labels when the walk kept them (`kinds: 'phone'` in the record), the vote only w
 finds fences and the built things: ARCore has no label for a fence. TO TEST at the owner's next property (a fence,
 a move about 2026-12-01): pictures again there, for the fence.
 
+## 62. Can a leaf-off walk take lidar branches away? (2026-11-24)
+
+The owner: "right now, we are only adding branches that are missing from lidar because bare branches are harder to
+see... Is there any path to removing lidar branches during bare branch walks?" The fusing trims a lidar crown by the
+walk's open air above 8 ft only after a walk IN LEAF, because ONE line through a bare crown usually misses every twig
+(the owner, 2026-11-23). But a bare crown still stops SOME lines, so many lines through a block with nothing seen in
+it say the block is air. scan/tools/bare_study.py (run 552, the walk of 2026-11-20 at the owner's lot, leaf-off, the
+phone's own labels; no lidar read) measured how many.
+
+HARD (run 552):
+- THE PHONE SEES BARE CROWNS WELL. Inside the 287 columns (2 ft) of crown 8 ft up or more crossed by 5 m of line or
+  more, a line ends on something at 0.58 / 0.92 / 1.34 per metre (a quarter / the middle / three quarters). A line
+  across 2 m of the sparsest quarter is stopped 69% of the time.
+- THE WALK AGAINST ITSELF (alternate 10 s stretches; one half's lines clear a 2 ft x 2 ft x 0.5 m block when that many
+  metres of them crossed it with nothing seen; the other half says where crowns are): crown blocks cleared WRONGLY:
+  1 m of line 22.0% (74 of 337), 2 m 11.9%, 4 m 5.0%, 8 m 1.2% (4 of 337), 16 m 0.9%. In the blocks cleared away from
+  crowns the other half saw something in 1.2-1.8%, NOT falling as the rule tightens (so a floor of strays and depth
+  error, SPECULATION, not crowns).
+- WHERE IT REACHES: half the walk, at 8 m of line, clears air over 2,344 sq ft at 8-16 ft up, 264 sq ft at 16-30 ft,
+  next to none above 30 ft (4 m: 4,668 / 1,396 / 16). Lines toward open sky leave no point, so the tops of crowns
+  get no evidence either way.
+
+SO: YES, A PATH, FOR THE LOWER CROWN. A block of air 8-30 ft up that the walk's lines crossed for 8 m or more with
+nothing seen in it is air even in leaf-off months, wrong about 1 time in 100 by the walk's own test. Above about 30 ft
+a ground walk cannot say; the lidar stays the witness there.
+
+NOT BUILT (to do, in this order): (1) how much LIDAR crown lies in such blocks at the owner's lot (the measure that
+matters; nothing above says the lidar is wrong anywhere); (2) the walk's side out of the map's record into a file of
+its own: the phone's plants filled it to its 52 KB (run 552: 2,455 boxes, with both open-air grids, 52 KB), so nothing
+more fits; (3) a grid of those blocks beside `seenHigh`, and the fusing trimming lidar cubes in them whatever the
+season: the leaf-calendar condition is the features session's rule, to be agreed with it.
+
 ## 61. "I'm not seeing the fused map at all": a walk was tied to one record of three (2026-11-24)
 
 The owner (through the features session, 2026-11-23): "I opened my property in the shade map but I'm not seeing the
