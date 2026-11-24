@@ -4608,7 +4608,12 @@ upside down 16.7%, mirrored 13.0%, turned right 10.6%, turned left 17.2%. NOT DE
 random (10-20% sky), while branch points really do sit against sky (the depth bleeds onto it round twigs: 27% of the
 plant points 8 ft up are sky-coloured, plants.py), and the skyline study (SCAN-H14), using the pictures as kept,
 matched roofs to 0.6-1.5 degrees, which a quarter turn would have ruined.
-NEXT (run 567): two-sided: LOW SOLIDS (1-6 ft, rarely against sky; the right way lowest) and the points the PHONE
+RUN 567: the points 1-6 ft up landed on sky 11.3% as kept, 3.5% upside down, 6.9% mirrored, 3.1% turned right, 6.9%
+turned left (1,030 landings, 57 pictures); the phone's own sky points, 3 landings (nothing to say). The picture's own
+sky colour made plain sky read 0.00 / 0.00 / 0.09 clean: worse; dropped. BUT the phone was held 0.85 m up, so a point
+1-6 ft up can stand against the sky; NEXT (run 568): only points LOWER THAN THE CAMERA (below the horizon, where no sky
+is), against a random pixel's chance of being sky.
+(Run 567 as planned:) two-sided: LOW SOLIDS (1-6 ft, rarely against sky; the right way lowest) and the points the PHONE
 labelled sky (the right way highest); and the sky judged by each picture's OWN sky colour (the median of its plainly
 blue pixels, a pixel within 40 of it), since fixed thresholds failed on pixel noise and exposure.
 

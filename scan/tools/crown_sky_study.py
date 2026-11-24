@@ -263,7 +263,7 @@ def main():
         if blue.mean() > 0.01:
             pics_blue += 1
         integ = np.pad(blue.astype(np.int32).cumsum(0).cumsum(1), ((1, 0), (1, 0)))
-        bright = sky_own(img)
+        bright = sky_bright(img)
         integB = np.pad(bright.astype(np.int32).cumsum(0).cumsum(1), ((1, 0), (1, 0)))
         dS, dB = distance_transform_edt(blue), distance_transform_edt(bright)   # pixels to the nearest non-sky
         fpx = Pm[0, 0] * W_ / 2                               # pixels per unit at depth 1
@@ -308,7 +308,7 @@ def main():
     order = np.argsort(TT)
     TTs = TT[order]
     WAYS = ("as kept", "upside down", "mirrored", "turned right", "turned left")
-    land = np.zeros((len(WAYS), 2)); landS = np.zeros((len(WAYS), 2)); dims_off = 0; npix = 0
+    land = np.zeros((len(WAYS), 2)); landS = np.zeros((len(WAYS), 2)); dims_off = 0; npix = 0; base = [0.0, 0]
     for k in keys[:: max(1, len(keys) // 200)]:
         try:
             img = np.asarray(Image.open(os.path.join(d, k["name"])).convert("RGB"))
@@ -319,16 +319,22 @@ def main():
             dims_off += 1
         a_, b_ = np.searchsorted(TTs, k["t"] - 0.3), np.searchsorted(TTs, k["t"] + 0.3)
         sel0 = order[a_:b_]
-        sel = sel0[stand_pt[sel0]]
         sel_sky = sel0[sky_pt[sel0]]
+        # BELOW THE CAMERA (run 567: points 1-6 ft up landed on sky 11.3% as kept, 3-7% turned or flipped; but the phone
+        # was held 0.85 m up, so a wall's top or a shrub over it can stand against the sky). A point lower than the
+        # camera is seen below the horizon, where no sky is: none should land on sky the right way round.
+        camY = np.asarray(k["view"], np.float64)[13]
+        sel0 = sel0[y_[ok][sel0] < camY - 0.2]
+        sel = sel0[stand_pt[sel0]]
         if len(sel) < 20:
             continue
         V = np.asarray(k["view"], np.float64).reshape(4, 4).T
         Pm = np.asarray(k["proj"], np.float64).reshape(4, 4).T
-        sky = sky_own(img)
-        if not sky.any():
+        sky = sky_bright(img)
+        if sky.mean() < 0.005:
             continue
         Vi = np.linalg.inv(V)
+        base[0] += sky.mean(); base[1] += 1
         for which, pick in ((0, sel), (1, sel_sky)):
             if not len(pick):
                 continue
@@ -348,7 +354,8 @@ def main():
     if npix:
         print(f"\nTHE PICTURES' OWN GEOMETRY ({npix} pictures with sky in them; the walk's own points taken within 0.3 s of each; {dims_off} pictures whose size is not the one their record gives), the share landing on the picture's own sky, the picture "
               + ", ".join(WAYS) + ":")
-        print(f"  LOW SOLIDS (1 to 6 ft over their ground; {int(land[0, 1]):,} landings): " + " / ".join(f"{100 * land[i, 0] / max(1, land[i, 1]):.1f}%" for i in range(len(WAYS))) + ". The right way is the LOWEST.")
+        print(f"  (A pixel picked at random in these pictures is sky {100 * base[0] / max(1, base[1]):.0f}% of the time, by the relative test.)")
+        print(f"  SOLIDS BELOW THE CAMERA (a foot or more over their ground, and lower than the phone; {int(land[0, 1]):,} landings): " + " / ".join(f"{100 * land[i, 0] / max(1, land[i, 1]):.1f}%" for i in range(len(WAYS))) + ". The right way is the LOWEST.")
         print(f"  WHAT THE PHONE LABELLED SKY ({int(landS[0, 1]):,} landings): " + " / ".join(f"{100 * landS[i, 0] / max(1, landS[i, 1]):.1f}%" for i in range(len(WAYS))) + ". The right way is the HIGHEST.")
     print(f"\nCOLOUR AGAINST DEPTH: CAN THE PICTURES SAY WHERE THE LIDAR'S CROWN IS NOT? (crown_sky_study.py; blocks 2 ft x 2 ft x half a metre; a block CLEAN when {CLEAN_SHARE:.0%} of its pixels are sky blue in {CLEAN_VIEWS} pictures or more)")
     print(f"  {used:,} pictures looked at ({len(keys):,} kept after the start cut), {pics_blue:,} with blue sky in them; {nb:,} blocks: the lidar's crown 8-130 ft up, and the walk's own crown and air 8-66 ft up.")
@@ -385,13 +392,13 @@ def main():
     # BY THE SHARE OF ITS VIEWS THAT ARE CLEAN (run 560: with hundreds of pictures, "clean in 3" is chance: 68.5% of the
     # depth's crown blocks and 79.6% of its air passed it). Does any share separate crown from air, all views or near?
     for lab_, cn, vn, need in (("STRICT BLUE, ALL VIEWS", clean_n, views, 10), (f"STRICT BLUE, NEAR VIEWS (within {NEAR_M:.0f} m)", cleanN, viewsN, 5),
-                               ("OWN SKY, ALL VIEWS", cleanB, views, 10), (f"OWN SKY, NEAR VIEWS (within {NEAR_M:.0f} m)", cleanBN, viewsN, 5)):
+                               ("RELATIVE BLUE, ALL VIEWS", cleanB, views, 10), (f"RELATIVE BLUE, NEAR VIEWS (within {NEAR_M:.0f} m)", cleanBN, viewsN, 5)):
         sh = np.where(vn > 0, cn / np.maximum(1, vn), np.nan)
         cc = ctl & (views >= 5)
         if lab_.endswith("ALL VIEWS") and not cc.any():
             print(f"  {lab_}: CONTROLS: none of the {int(ctl.sum())} was seen 5 times steeply enough.")
         if lab_.endswith("ALL VIEWS") and cc.any():
-            qq = np.percentile(cleanB[cc] / np.maximum(1, views[cc]) if lab_.startswith("OWN") else clean_n[cc] / np.maximum(1, views[cc]), [25, 50, 75])
+            qq = np.percentile(cleanB[cc] / np.maximum(1, views[cc]) if lab_.startswith("RELATIVE") else clean_n[cc] / np.maximum(1, views[cc]), [25, 50, 75])
             print(f"  {lab_}: CONTROLS (plain sky, 30 m up, seen 35 degrees up or more; {int(cc.sum())} blocks): the share of views clean {qq[0]:.2f} / {qq[1]:.2f} / {qq[2]:.2f}. Near 1.00 if the test and the aim are right.")
         c_ = dep_crown & (vn >= need)
         a_ = dep_air & (vn >= need)
@@ -412,7 +419,7 @@ def main():
     # R metres of sky round it, for the depth's crown, the depth's air and the plain-sky controls
     need = 10
     c_, a_, k_ = dep_crown & (views >= need), dep_air & (views >= need), ctl & (views >= 5)
-    for nm, arr in (("STRICT BLUE", openS), ("OWN SKY", openB)):
+    for nm, arr in (("STRICT BLUE", openS), ("RELATIVE BLUE", openB)):
         for ri, R in enumerate(OPEN_R_M):
             sh = arr[ri] / np.maximum(1, views)
             med = lambda m: float(np.median(sh[m])) if m.any() else float("nan")  # noqa: E731
