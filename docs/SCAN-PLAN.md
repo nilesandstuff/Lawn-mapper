@@ -4566,6 +4566,24 @@ labels when the walk kept them (`kinds: 'phone'` in the record), the vote only w
 finds fences and the built things: ARCore has no label for a fence. TO TEST at the owner's next property (a fence,
 a move about 2026-12-01): pictures again there, for the fence.
 
+## 65. The ground as the walk saw it: paving and grass, against the traced lawn (2026-11-24)
+
+The owner: "Until the next walk, what's next? Lawn shape refinement and driveway marking?" (the goal's "automatically
+refine the lawn trace"). The lidar's ground alone could not say which strip was the drive (24). scan/tools/surfaces.py
+(task `surfaces`): the walk's own GROUND points (within 0.2 m of the ground under them) with the phone's labels (road,
+sidewalk: paved; terrain: grass) and, apart, the pictures' vote, on the map by the walk's corners, in squares; a square
+called when 3 points or more say so and twice as many as say the other; against the traced lawn (lawn-prep.mjs: the map
+record's shapes); and each piece of paving's longest straight run of one width, the width from the points' spread
+across it (four times their median distance from the middle; the squares' own edges lose a foot). On a simulated lot a
+12 ft drive read 11 ft 10 in over 74 ft of 98 (1 ft squares), 12 ft 0 in over 100 ft (2 ft).
+
+HARD (run 570, the walk of 2026-11-20, 1 ft squares, 105,227 ground points):
+- by the phone's labels: grass called on 5,203 sq ft, paving on 893; the traced lawn covers 30,001 sq ft of the squares
+  the walk spans, so most of it had too few points to call. Grass OUTSIDE the trace 337 sq ft, paving INSIDE it 146;
+  the vote alike (243 and 134). Where the walk saw the ground well, the trace mostly agrees with it.
+- the paving broke into 30 pieces, the largest 529 sq ft, 55 ft long, 8 ft 9 in wide over a straight 13 ft: NOT a
+  reading of the drive. The walk went round the lawn; the drive had few points. Run 571: 2 ft squares as well.
+
 ## 64. Can colour say where the lidar's crown is not, where depth cannot reach? (2026-11-24)
 
 The owner's idea (CLAUDE.md, "Remember that last sentence"): tree or sky seen from a place, against what the lidar says
