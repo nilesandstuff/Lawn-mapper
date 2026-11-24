@@ -4624,7 +4624,19 @@ label only on DEPTH POINTS, and the sky has no depth (3 of a walk's points label
 label of every cell of the grid kept with each picture (72 x 128, sky included, in the picture's own frame) as
 key-NNNN.sem (app.js keySem; the scan site's parts; no app update: the page is the scan site's); crown_sky_study.py
 reads it as a third sky (the block's own patch, and the owner's open sky round it). On the simulated yard, 2 ft round
-in 40% of views: crown 0%, air 83%. NO WALK HAS IT YET: the next walk will be the first. Live on the scan site 2026-11-24 ~19:36 UTC (run 569; log's end:
+in 40% of views: crown 0%, air 83%. THE OWNER'S NEXT STEP (2026-11-24): "I wonder if the scene semantics segmentation would be the thing to go with for
+trees, because it actually makes a tree shape... So from one angle, we get the profile of the tree, and then if we get
+another angle from 90 degrees offset, then we have the whole shape of a tree and only need to place it from a handful of
+real measured points." That is shape from silhouettes (space carving): every picture's pose is known, so each tree
+outline is a cone the tree must lie in; a SKY cell empties its whole line of sight (the strongest evidence, the
+carving above), a TREE cell only allows. PLAN, in order: (1) the next walk's key-NNNN.sem, 72 x 128 (about a foot a
+cell at 60 ft): check the labels sit on the picture (the walk's own points labelled tree landing on tree cells), then
+carve the lidar's crown by the phone's sky; (2) the trees' hull from the pictures alone (blocks seen as tree in enough
+views and never as sky), placed by the walk's own trunk and branch points, against the lidar's crown and the walk's
+depth 8-30 ft; (3) if (2) is worth it: an app update keeping ARCore's whole label picture (256 wide, about 3.5 times
+finer; the page cannot ask for it without one: the bridge gives labels only on a depth grid, and a 256-wide grid of
+that is a megabyte of text a picture).
+NO WALK HAS IT YET: the next walk will be the first. Live on the scan site 2026-11-24 ~19:36 UTC (run 569; log's end:
 live, the page check passed).
 (Run 567 as planned:) two-sided: LOW SOLIDS (1-6 ft, rarely against sky; the right way lowest) and the points the PHONE
 labelled sky (the right way highest); and the sky judged by each picture's OWN sky colour (the median of its plainly
