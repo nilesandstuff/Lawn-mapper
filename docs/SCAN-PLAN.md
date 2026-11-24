@@ -4533,6 +4533,13 @@ HARD (run 544, the walk of 2026-11-20): 3,357 of 14,198 squares have a band of o
 from 9 to 14 ft up, the highest to 39 ft; 9 KB deflated; with the plants and the open air from the ground, 47 KB of
 the 52 KB allowed. NOT CHECKED against anything, and nothing reads it yet.
 
+THE OWNER'S EYES ON THE PLANTS ON THE MAP (2026-11-23, evening): "The green squares are decent." (the walk's plants
+drawn on the start page's aerial photo: they sit about where the plants are.) And: "I'm not seeing any blue shapes
+at all" in the 3D view. NOT KNOWN which it was: the phone's-labels shapes were drawn in a teal too near the vote's
+green to tell apart, or their file was not read. The page could not say. Since: plain blue for the phone's, orange
+for built things, and the page names each layer it found and says when one is not there and why. The question of
+whether the phone's labels alone are good enough is still open.
+
 ALL OF IT LIVE (2026-11-23, about 22:00 UTC): the features session's fusing versions 2 and 3 merged (PRs 47, 48) and
 the main site deployed (its report); the scan page passes plants.seenHigh to the fusing as the shade page does
 (scan/lib/fuse-walk.js), live with the scan site's own redeploy on the merge (run 546, its log's end read: live,
