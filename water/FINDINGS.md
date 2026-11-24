@@ -2947,6 +2947,26 @@ WHAT THIS SAYS, AS MEASURED: the best of 81 offsets always beats zero a little, 
 the map's line-up; each score now records how its map's lidar was lined up, SCORING 7). Even there three quarters
 of the spread remains: the patches of H99 are mostly not a simple offset.
 
+### H101. The first walks scored on the fused model and on the lidar alone: no difference these walks can show (water session, 2026-11-24)
+
+The owner, 2026-11-24: "make it use the fused map when available. Not all lawns will have fused maps, so we need to
+support both... you'll still get shade as it's calculated by the shade map." Built that day: the shade map's light
+worker stands on the fused file (the lidar refined by a yard walk, half-metre grid; docs/MAPS.md) where a map has
+one, on the lidar's points otherwise; each walk on a fused map is scored twice. First real run, 03:40-04:21 UTC: one
+lot has a fused model (fusing version 3), with five walks on it. Measured minus modelled, F, the walker's air:
+  walk   squares   on the fused model        on the lidar alone
+  W1     159       -5.9, RMS 5.9, rank 0.29   -5.9, RMS 6.0, rank 0.27
+  W4      10       -3.9, RMS 4.0, rank 0.80   -1.0, RMS 3.4, rank -0.05
+  W5     643       -3.5, RMS 6.1, rank 0.62   -3.2, RMS 6.0, rank 0.61
+  W6     255       -6.1, RMS 7.2, rank 0.68   -5.9, RMS 7.0, rank 0.73
+  W7    2285       -6.7, RMS 7.1, rank 0.02   -7.0, RMS 7.4, rank -0.07
+WHAT THIS SAYS, AS MEASURED: the two agree to within 0.3 F RMS on every walk of more than ten squares, neither
+ahead. THESE WALKS CANNOT TELL THEM APART: all five were made at dusk or after (no square of any had the sun's beam
+on it; one of 2285 on W7), and what the fused model changes first is where plants throw shade in direct sun. What
+differs without the beam is the sky each square sees and the weeks of shade behind its soil, and that came to a few
+tenths. A walk in direct sun on this lot is the test. The whole path ran: the file handed to the builder, the
+worker's 'model' path on the finer grid, both scores kept, no fused file set aside.
+
 ## SPECULATION
 
 ### S8. Paving beside a lawn raises the lawn's water use at its edge
