@@ -370,6 +370,9 @@ jobs:
           case "$WALK" in
             *:doubled:dry) node scan/tools/things-fix.mjs "${WALK%%:*}" dry | tee placed.txt ;;
             *:doubled) node scan/tools/things-fix.mjs "${WALK%%:*}" | tee placed.txt ;;
+            # "<walk>:fused": why is there no fused map? the owner's maps of the walk's place, which holds the walk's plants,
+            # which has a fused model, and the fusing run here on the real files (scan/tools/fuse-check.mjs). No ids, no places.
+            *:fused) node scan/tools/fuse-check.mjs "${WALK%%:*}" | tee placed.txt ;;
             *) node scan/tools/placed.mjs "$WALK" | tee placed.txt ;;
           esac
 
