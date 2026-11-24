@@ -2303,6 +2303,39 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
       && at4(hiNov).every((v) => v === 1) && at4(hiJul).every((v) => v === 0) && at4(hiEver).every((v) => v === 0) && hiJul.arrays.mu[fAt(8.25, 15.25) * nz + L(6.5)] === 1,
     `nov ${at4(hiNov)}; jul ${at4(hiJul)}; evergreen ${at4(hiEver)}; above ${hiJul.arrays.mu[fAt(8.25, 15.25) * nz + L(6.5)]}`);
 
+  /* AIR SEEN EMPTY IN ANY SEASON (plants.clearHigh, decimetres, fusing 4): the same band 3-5 m up on the tree's west
+     side, but seen empty by lines a bare crown would have stopped some of: it trims the deciduous crown after a
+     leaf-off walk too; above it the lidar stands, and the tree is not taken away for so small a part. */
+  const bandsOf = (inside, lo, hi, unitDm) => {
+    const b = new Uint8Array(2 * hw * hh).fill(255);
+    for (let r = 0; r < hh; r++) for (let c = 0; c < hw; c++) { const e = (c + 0.5) * 0.6096, n = (r + 0.5) * 0.6096; if (inside(e, n)) { b[2 * (r * hw + c)] = lo; b[2 * (r * hw + c) + 1] = hi; } }
+    return { cellM: 0.6096, i0: 0, j0: 0, w: hw, h: hh, unitDm, needM: 8, notSeen: 255, enc: 'zlib+base64', bands: zdef2(Buffer.from(b)).toString('base64') };
+  };
+  const openBare = await openHighFromSeen(bandsOf((e, n) => e > 7 && e < 9 && n > 13 && n < 17, 30, 50, 1), origin, fusedGridH(lidar.meta));
+  const bareNov = fuseModel(decidL, { cellM: cm, boxes: [], walk: Date.UTC(2025, 10, 20) }, origin, { openHigh, openBare });
+  check('fuse: air seen empty in any season (clearHigh, 3-5 m up) trims a deciduous crown after a leaf-off walk too (seenHigh alone does not); above it the lidar stands; so small a part takes no tree away',
+    Math.abs(openBare.lo[fAt(8, 15)] - 3) < 1e-6 && at4(bareNov).every((v) => v === 0) && at4(hiNov).every((v) => v === 1) && bareNov.arrays.mu[fAt(8.25, 15.25) * nz + L(6.5)] === 1
+      && bareNov.meta.fused.trimmedBare > 0 && bareNov.meta.fused.removed.length === 0 && bareNov.meta.fused.seenOpenBare === true && bareNov.meta.fused.version === 4 && bareNov.arrays.walk[fAt(8.25, 15.25)] === 2,
+    `bare ${at4(bareNov)}; seenHigh alone ${at4(hiNov)}; trimmedBare ${bareNov.meta.fused.trimmedBare}; removed ${bareNov.meta.fused.removed.length}`);
+  /* A TREE GONE (the owner, 2026-11-24): its whole crown from 8 to 30 ft seen empty and no plant seen in its footprint
+     -> taken away, every layer (the 1.5 m layer under the band too); the roof is the lidar's. With one plant seen in
+     its footprint, or a second tree touching it that the walk did not see through (one clump: a woodline), it stays. */
+  const overTree = (e, n) => e > 6.5 && e < 13.5 && n > 11.5 && n < 18.5;
+  const bareAll = await openHighFromSeen(bandsOf(overTree, 24, 92, 1), origin, fusedGridH(lidar.meta));
+  const goneOut = fuseModel(decidL, { cellM: cm, boxes: [], walk: Date.UTC(2025, 10, 20) }, origin, { openBare: bareAll });
+  const treeLeft = (o) => { let s = 0; for (let e = 7.25; e < 13; e += 0.5) for (let n = 12.25; n < 18; n += 0.5) for (let l = 0; l < nz; l++) s += o.arrays.mu[fAt(e, n) * nz + l] + (o.arrays.muOn ? o.arrays.muOn[fAt(e, n) * nz + l] : 0); return s; };
+  const { lidarInClear } = await import('../scan/lib/clear-measure.js');
+  const measured = lidarInClear(decidL, bareAll, 2);
+  const plantIn = fuseModel(decidL, { cellM: cm, boxes: [[33, 49, 0, 15]], walk: Date.UTC(2025, 10, 20) }, origin, { openBare: bareAll });
+  const twoMu = Float32Array.from(decidL.arrays.mu), twoOn = Float32Array.from(decidL.arrays.muOn), twoKind = Uint8Array.from(kind);
+  for (let e = 0.5; e < 30; e++) for (let n = 0.5; n < 30; n++) { const c = colAt(e, n); if (Math.hypot(e - 16, n - 15) <= 3) { twoKind[c] = 2; for (let z = 1.5; z <= 9; z++) { twoMu[c * nz + Math.floor(100 + z - z0)] = 1.0; twoOn[c * nz + Math.floor(100 + z - z0)] = 1.8; } } }
+  const woodline = fuseModel({ meta: lidar.meta, arrays: { ground, kind: twoKind, mu: twoMu, muOn: twoOn } }, { cellM: cm, boxes: [], walk: Date.UTC(2025, 10, 20) }, origin, { openBare: bareAll });
+  check('fuse: a lidar tree whose crown from 8 to 30 ft the walk saw clean through, with no plant seen under it, is taken away whole, every layer, both copies; counted as clear-measure.js counts it; the roof stands; one plant seen under it, or a touching tree not seen through, keeps it',
+    goneOut.meta.fused.removed.length === 1 && treeLeft(goneOut) === 0 && goneOut.arrays.kind[fAt(10.25, 15.25)] === 0 && goneOut.arrays.walk[fAt(10.25, 15.25)] === 3
+      && measured.clumps.mostlyClear.length === 1 && Math.abs(goneOut.arrays.mu[fAt(22, 5) * nz + L(2)] - 4.6) < 1e-3
+      && plantIn.meta.fused.removed.length === 0 && treeLeft(plantIn) > 0 && woodline.meta.fused.removed.length === 0 && woodline.arrays.mu[fAt(16.25, 15.25) * nz + L(5)] === 1,
+    `removed ${JSON.stringify(goneOut.meta.fused.removed)}; left ${treeLeft(goneOut)}; clear-measure ${measured.clumps.mostlyClear.length}; with a plant ${plantIn.meta.fused.removed.length}; woodline ${woodline.meta.fused.removed.length}`);
+
   /* WHERE THE WALK SAW OPEN AIR (plants.seen): the lidar's skirt under the tree, 1.5-2.5 m up on its east side, seen open
      to 2.4 m -> emptied there; a cube seen open in half its cells keeps its density in the other half. */
   const { openFromSeen, fusedGrid } = await import('../public/shade/fuse.js');

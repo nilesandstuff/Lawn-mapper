@@ -1820,6 +1820,23 @@ cubes (summer copy denser than mu) keep the lidar's density evenly: the walk saw
 will be. It may still move the tree and add plant the lidar did not have. A walk in leaf, or an evergreen, refines
 at every height. Tested on the synthetic lot: November keeps a crown cube 1.0 / 1.0, July moves it to 2.0 / 0.
 
+2026-11-24 (FUSE_VERSION 4; asked by the core session with the owner's go, "Yes i think we should build what we
+know now"). The owner's three reasons for a walk to take lidar crown AWAY: branches cut since the flight, whole
+trees gone, lidar shapes drifted off the real canopy. The core session's plants.clearHigh (docs/SCAN-PLAN.md 62:
+above 8 ft, half-metre blocks the walk's lines crossed for 8 m or more with nothing seen; a bare crown stops 0.58
+to 1.34 lines a metre, so that is air in any season; held against itself it cleared 1.2% of crown blocks wrongly;
+it reaches 8-30 ft only) is read by the same band reader as seenHigh and trims a lidar cube as seenHigh does, but
+with no season or deciduous test (where both bands speak, their union). Counted apart as meta.fused.trimmedBare.
+And a lidar tree clump (8-neighbour, so touching canopies are one clump and a woodline is never taken this way)
+with 90% or more of its crown cells from 8 to 30 ft (8 or more of them) in that air, and no plant the walk saw in
+its footprint, is taken away whole, every layer and both copies (meta.fused.removed; walk array 3 where it stood);
+counted the way scan/lib/clear-measure.js counts it, and the test checks the two agree. Tested on the synthetic
+lot only: a leaf-off walk's clear band 3-5 m up empties a deciduous crown's cubes that seenHigh left at 1.0; a
+whole crown seen clear is removed; one plant box under it, or a second tree touching it that was not seen through,
+keeps it. At the owner's lot the core session's count (fuse-check, run 554) says it takes no whole tree (none of
+153 clumps has more than half its 8-30 ft crown in that air) and puts 170 half-metre cells of crown in cleared
+air (25 of them deciduous). NOT MEASURED: whether the light improves against the shade readings.
+
 ## Speculation
 
 - FENCES (2026-10-27, IN USE, unmeasured; fences.js): drawn by the visitor
