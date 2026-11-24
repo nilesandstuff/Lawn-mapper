@@ -97,6 +97,11 @@ walks.forEach((w, k) => {
   }
   for (const r of results.filter((x) => x.walk === w.walk)) {
     let d = {}; try { d = JSON.parse(r.detail || '{}') || {}; } catch { /* none */ }
+    // which 3D model the shade stood on (2026-11-24): the fused model where the map has one, and the same walk on the lidar alone beside it
+    if (d.shape) {
+      const la = d.lidarAlone, sp = (x) => (x && Number.isFinite(x.rmse) ? `mean ${F(x.bias)} RMS ${(x.rmse * 1.8).toFixed(1)} rho ${Number.isFinite(x.rho) ? x.rho.toFixed(2) : '-'}` : '-');
+      console.log(`      the shade stood on: ${d.shape.model === 'fused' ? `THE FUSED MODEL (the lidar and a yard walk; fusing version ${d.shape.from?.version ?? '-'})` : `the lidar${d.shape.why ? ` (${d.shape.why})` : d.fusedAt ? ' (a fused model exists but was not used)' : ''}`}${d.shape.model === 'fused' ? (la ? `  | fused: ${sp(r)}  | the lidar alone: ${sp(la)}  (${la.n} squares; sun ${F(la.sun?.bias)}, shade ${F(la.shade?.bias)})` : '  | the lidar alone: not scored yet') : ''}`);
+    }
     if (d.align) console.log(`      the map: lidar ${d.align.shade ? (d.align.confident === true ? 'fitted to the photo' : d.align.confident === false ? `on the datum alone (fit not confident${d.align.why ? `: ${d.align.why}` : ''})` : 'shift kept, no fit recorded') : 'no shade part'}, moved ${d.align.shiftM ?? '-'} m; photo ${d.align.provider || '-'}${d.align.lineup ? ' with a line-up' : ''}; lawn ${d.align.trace || '-'}`);
     const sh = d.sunShade || {}, b = d.bands || {};
     console.log(`    ${r.model}  ${r.kind}: n ${r.n}  mean ${F(r.bias)}  RMS ${r.rmse === null ? '-' : (r.rmse * 1.8).toFixed(1)}  rho ${f(r.rho)}  | sun ${F(sh.sun?.bias)} (${sh.sun?.n ?? 0})  shade ${F(sh.shade?.bias)} (${sh.shade?.n ?? 0})  | 60-70 ${F(b['60-70']?.bias)} (${b['60-70']?.n ?? 0})  70-80 ${F(b['70-80']?.bias)} (${b['70-80']?.n ?? 0})`);

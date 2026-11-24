@@ -15,11 +15,12 @@ const ID = /^[^\u0000-\u001f\u007f]{1,200}$/;
 /** A job, checked. kind 'model' (a map's scoring kit to build), 'walk' (a walk to score) or 'soil' (a field visit's
  *  soil temperatures to check, 2026-11-17; its visit id kept in walk). -> { row } or { error } */
 export function cleanJob(kind, mapId, { walk = null, modelAt = null } = {}, now = Date.now()) {
-  if (kind !== 'model' && kind !== 'walk' && kind !== 'soil') return { error: 'kind: model, walk or soil' };
+  // 'lidar' (2026-11-24): a walk on a map with a fused model, scored a second time on the lidar alone
+  if (kind !== 'model' && kind !== 'walk' && kind !== 'soil' && kind !== 'lidar') return { error: 'kind: model, walk, soil or lidar' };
   const map_id = typeof mapId === 'string' ? mapId : '';
   if (!ID.test(map_id)) return { error: 'a map id' };
   const w = walk === null || walk === undefined ? null : String(walk);
-  if ((kind === 'walk' || kind === 'soil') && (!w || !ID.test(w))) return { error: kind === 'soil' ? 'a visit id' : 'a walk id' };
+  if ((kind === 'walk' || kind === 'soil' || kind === 'lidar') && (!w || !ID.test(w))) return { error: kind === 'soil' ? 'a visit id' : 'a walk id' };
   return { row: { key: `${kind}|${map_id}|${w || ''}`, kind, map_id, walk: w, model_at: modelAt === null || modelAt === undefined ? null : String(modelAt).slice(0, 64), queued: now, state: 'queued', tries: 0, detail: null } };
 }
 

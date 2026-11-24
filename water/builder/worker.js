@@ -57,7 +57,7 @@ export class WaterBuilder extends DurableObject {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (!['/score', '/points', '/health'].includes(url.pathname)) return new Response('not found', { status: 404 });
+    if (!['/score', '/points', '/fused', '/health'].includes(url.pathname)) return new Response('not found', { status: 404 });
     const stub = env.WATER_BUILDER_DO.get(env.WATER_BUILDER_DO.idFromName('builder')); // one container: one map at a time
     return stub.fetch(request);
   },

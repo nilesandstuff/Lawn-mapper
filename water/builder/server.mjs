@@ -32,10 +32,21 @@ async function weatherFor(lat, lng, t0, t1) {
 }
 
 /** The map worked out (kept: a second request while it is still being worked out waits for the same one), or why not. */
-async function mapFor(record, id, base) {
+/* THE FUSED MODELS HANDED OVER (headless.mjs answers the page's request from here): 'map id|part' -> gzipped bytes,
+   with the write time of the one held for each map. One map's at a time: a model is megabytes. */
+globalThis.WATER_FUSED = new Map();
+const fusedAt = new Map();
+function keepFused(id, part, at, bytes) {
+  if (fusedAt.get(id) !== at) { globalThis.WATER_FUSED.clear(); fusedAt.clear(); fusedAt.set(id, at); }
+  globalThis.WATER_FUSED.set(`${id}|${part}`, bytes);
+}
+
+async function mapFor(record, id, base, { lidarOnly = false } = {}) {
   if (!Number.isFinite(record?.lng) || !Number.isFinite(record?.lat)) return { why: 'the map has no place' };
   const site = siteOf(record, id);
-  const key = `${id}|${record.at || ''}|${JSON.stringify(record.shapes || []).length}`;
+  // the lidar alone when asked (the second score of a walk on a fused map), else the fused model if one was handed over
+  if (lidarOnly) site.noFused = true;
+  const key = `${id}|${record.at || ''}|${JSON.stringify(record.shapes || []).length}|${lidarOnly ? 'lidar' : fusedAt.get(id) || ''}`;
   if (!open.has(key)) { open.clear(); open.set(key, openMap({ site, inputs: inputsOf(site.water), base })); }
   let run;
   try { run = await open.get(key); } catch (e) { open.delete(key); throw e; }
@@ -62,9 +73,9 @@ export async function points({ record, id, base, visit, view = 'soil' }) {
   return result.error ? { ok: false, why: result.error } : { ok: true, result };
 }
 
-export async function score({ record, id, walk, base, weather: frozen = null }) {
+export async function score({ record, id, walk, base, weather: frozen = null, lidarOnly = false }) {
   if (!record || !walk || !base) return { ok: false, why: 'record, walk and base are needed' };
-  const { run, site, why } = await mapFor(record, id, base);
+  const { run, site, why } = await mapFor(record, id, base, { lidarOnly });
   if (!run) return { ok: false, why };
   /* the plan's own lawn cells, asked of the worker for every place a record falls (two passes: walkRecords' lawnAt is
      synchronous). Until 2026-11-17 this called a run.cellAt the builder never had, so every record on a map with no
@@ -98,6 +109,14 @@ const server = http.createServer(async (req, res) => {
       const t = Date.now(), out = await score(JSON.parse(b || '{}'));
       console.log(`score ${out.ok ? 'ok' : 'failed'} in ${Math.round((Date.now() - t) / 1000)} s${out.result ? `, ${out.result.n} squares` : ''}`);
       return send(200, out);
+    }
+    if (req.method === 'POST' && req.url.startsWith('/fused?')) {
+      const u = new URL(req.url, 'http://x'), chunks = [];
+      for await (const c of req) chunks.push(c);
+      const bytes = Buffer.concat(chunks);
+      keepFused(u.searchParams.get('id') || '', Number(u.searchParams.get('part') || 0), u.searchParams.get('at') || '', bytes);
+      console.log(`fused part ${u.searchParams.get('part') || 0} kept, ${Math.round(bytes.length / 1024)} KB`);
+      return send(200, { ok: true });
     }
     if (req.method === 'POST' && req.url === '/points') {
       let b = ''; for await (const c of req) b += c;

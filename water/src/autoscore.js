@@ -65,6 +65,28 @@ export async function runQueue(env, { max = 1, base = waterBase(env) } = {}) {
   return out;
 }
 
+/**
+ * THE MAP'S FUSED MODEL HANDED TO THE BUILDER (2026-11-24; docs/MAPS.md "The fused model"): the main site's private
+ * fusedOf, its overflow parts with it, kept by the builder to answer the page's own request for the file. A map with
+ * none hands over nothing, said too, so a file held from before is not used. -> the fused file's write time, or null
+ */
+async function sendFused(env, id) {
+  const post = (part, at, bytes) => env.WATER_BUILDER.fetch(`https://water-builder/fused?id=${encodeURIComponent(id)}&part=${part}&at=${encodeURIComponent(at)}`, { method: 'POST', body: bytes });
+  const f = typeof env.MAIN.fusedOf === 'function' ? await env.MAIN.fusedOf(id, 0).catch(() => null) : null;
+  if (!f?.bytes) { await (await post(0, '', new Uint8Array(0))).body?.cancel(); return null; }
+  const at = String(f.modelAt || 'unknown');
+  await (await post(0, at, f.bytes)).body?.cancel();
+  for (let part = 1; part <= 8; part++) {
+    const o = await env.MAIN.fusedOf(id, part).catch(() => null);
+    if (!o?.bytes) break;
+    await (await post(part, at, o.bytes)).body?.cancel();
+  }
+  return at;
+}
+
+/** A score's numbers, cut down to what is kept beside another (the lidar alone beside the fused). */
+const brief = (r) => ({ n: r.n, bias: r.bias, rmse: r.rmse, rho: r.rho, sun: r.sunShade?.sun || null, shade: r.sunShade?.shade || null, live: r.station ? { bias: r.station.bias, rmse: r.station.rmse } : null });
+
 async function scoreOne(env, job, base) {
   const record = await env.MAIN.saveOf(job.map_id);
   if (!record) return { state: 'failed', why: 'not an admin save, or no longer there' };
@@ -72,20 +94,33 @@ async function scoreOne(env, job, base) {
   if (walk?.status?.ok === false) return { state: 'failed', why: `the walk could not be converted: ${walk.status.error || 'no reason given'}` };
   if (!converted(walk)) return { state: 'wait', why: 'not converted yet' };
   const frozen = await frozenWeather(env, job.walk);
-  const res = await env.WATER_BUILDER.fetch('https://water-builder/score', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ record, id: job.map_id, walk, base, weather: frozen }) });
+  const lidarOnly = job.kind === 'lidar';
+  // the fused model, when the map has one, goes to the builder first; the second score ('lidar') is told to leave it
+  const fusedAt = await sendFused(env, job.map_id);
+  const res = await env.WATER_BUILDER.fetch('https://water-builder/score', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ record, id: job.map_id, walk, base, weather: frozen, lidarOnly }) });
   const o = await res.json().catch(() => null);
   if (!o?.ok) return { state: 'retry', why: o?.why || `the builder answered ${res.status}` };
   const p = o.placed || {}, r = o.result || {};
+  if (lidarOnly) {
+    /* THE SAME WALK ON THE LIDAR ALONE, kept beside its score on the fused model (the two side by side are the test of
+       whether the fused model is nearer reality: docs/MAPS.md) */
+    const row = await env.DB.prepare("SELECT detail FROM truth_results WHERE walk = ? AND model = ? AND kind = 'surface'").bind(job.walk, r.model).first();
+    if (!row) return { state: 'failed', why: 'no score on the fused model to keep it beside' };
+    let d = {}; try { d = JSON.parse(row.detail || '{}') || {}; } catch { /* none */ }
+    d.lidarAlone = { ...brief(r), fusedAt: d.fusedAt ?? null, at: Date.now() };
+    await env.DB.prepare("UPDATE truth_results SET detail = ? WHERE walk = ? AND model = ? AND kind = 'surface'").bind(JSON.stringify(d), job.walk, r.model).run();
+    return { state: 'done', why: `${r.n} squares on the lidar alone` };
+  }
   const kept = await putWalk(env, { walk: job.walk, map_id: job.map_id, parcel_pin: pinOf(record), source: 'thermal', started: p.started, ended: p.ended, kinds: p.kinds, notes: p.notes });
   if (kept.error) return { state: 'failed', why: kept.error };
   if (!frozen && o.weather?.series?.length && (completeWeather(o.weather) || Date.now() > (p.ended ?? p.started ?? 0) + SETTLE_MS)) await putWeather(env, job.walk, o.weather.sources, o.weather.series);
   const res2 = await putResult(env, { walk: job.walk, model: r.model, kind: 'surface', n: r.n, bias: r.bias, rmse: r.rmse, rho: r.rho,
-    detail: { bands: r.bands, sunShade: r.sunShade, edge: r.edge || null, used: r.used, open: r.open, v1: r.v1 || null, station: r.station || null, scoring: r.scoring || 1, align: alignOf(record), offLawn: p.offLawn, weather: (frozen || o.weather)?.sources || [], by: 'the water builder' } });
+    detail: { bands: r.bands, sunShade: r.sunShade, edge: r.edge || null, used: r.used, open: r.open, v1: r.v1 || null, station: r.station || null, scoring: r.scoring || 1, shape: r.shape || null, fusedAt, align: alignOf(record), offLawn: p.offLawn, weather: (frozen || o.weather)?.sources || [], by: 'the water builder' } });
   if (res2.error) return { state: 'failed', why: res2.error };
   // every square with its factors and sensitivities, for the residual analysis (tools/residuals.py)
   if (r.diag?.rows?.length) await env.DB.prepare('INSERT OR REPLACE INTO truth_squares (walk, model, scoring, checked, n, data) VALUES (?, ?, ?, ?, ?, ?)')
     .bind(job.walk, r.model, r.scoring || 1, Date.now(), r.diag.rows.length, JSON.stringify(r.diag)).run().catch(() => null);
-  return { state: 'done', why: `${r.n} squares` };
+  return { state: 'done', why: `${r.n} squares${r.shape?.model === 'fused' ? ' on the fused model' : ''}` };
 }
 
 /* A FIELD VISIT'S SOIL TEMPERATURES AGAINST THE MODEL (2026-11-17): the builder sets each reading against the model's
@@ -100,6 +135,7 @@ async function soilOne(env, job, base) {
   const soil = v.unit === 'soil_f';
   let wx = null; try { wx = JSON.parse(v.weather || 'null'); } catch { /* none */ }
   const visit = { at: v.at, depth_in: v.depth_in, unit: v.unit, air_f: v.air_f, watered: !!(wx?.sprinklers || wx?.lastTwoDays === 'watered'), readings };
+  await sendFused(env, job.map_id);
   const res = await env.WATER_BUILDER.fetch('https://water-builder/points', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ record, id: job.map_id, base, visit, view: soil ? 'soil' : 'visit' }) });
   const o = await res.json().catch(() => null);
   if (!o?.ok && o?.final) { // no fair comparison (a surface visit at dusk): kept as checked, with why, and not tried again
@@ -122,7 +158,8 @@ export async function sweep(env) {
   if (!env.MAIN || !env.DB) return out;
   const saves = (await env.MAIN.adminSaves().catch(() => null)) || [];
   // scored: by this model, and carrying all a result now carries (SCORING: a walk scored before the station's score is scored again)
-  const scored = new Set(((await env.DB.prepare("SELECT walk FROM truth_results WHERE model = ? AND kind = 'surface' AND COALESCE(json_extract(detail, '$.scoring'), 1) >= ?").bind(MODEL_VERSION, SCORING).all()).results || []).map((r) => r.walk));
+  const rows = (await env.DB.prepare("SELECT walk, json_extract(detail, '$.fusedAt') AS fusedAt, json_extract(detail, '$.shape.model') AS shape, json_extract(detail, '$.lidarAlone.fusedAt') AS aloneAt FROM truth_results WHERE model = ? AND kind = 'surface' AND COALESCE(json_extract(detail, '$.scoring'), 1) >= ?").bind(MODEL_VERSION, SCORING).all()).results || [];
+  const scoredRow = new Map(rows.map((r) => [r.walk, r])), scored = new Set(scoredRow.keys());
   out.saves = saves.length;
   for (const s of saves) {
     const list = (await env.MAIN.thermalOf(s.id, null).catch(() => null))?.walks || [];
@@ -131,7 +168,18 @@ export async function sweep(env) {
       if (w.ok === false) { out.failed++; continue; }
       if (w.ok !== true) { out.waiting++; continue; }
       out.converted++;
-      if (scored.has(String(w.walk))) { out.scored++; continue; }
+      const sr = scoredRow.get(String(w.walk));
+      /* THE FUSED MODEL (2026-11-24): a walk scored before the map's fused model was made, or on an older one, is
+         scored again; one scored on a fused model is scored once more on the lidar alone, to be set beside it */
+      const stale = sr && (s.fusedAt || null) !== (sr.fusedAt || null);
+      if (sr && !stale) {
+        out.scored++;
+        if (sr.shape === 'fused' && sr.aloneAt !== sr.fusedAt) {
+          const j = await env.DB.prepare('SELECT state FROM kit_jobs WHERE key = ?').bind(`lidar|${s.id}|${w.walk}`).first();
+          if (j?.state !== 'queued' && j?.state !== 'failed') { await enqueue(env, 'lidar', s.id, { walk: String(w.walk) }); out.alone = (out.alone || 0) + 1; }
+        }
+        continue;
+      }
       if (w.walk) { await enqueue(env, 'walk', s.id, { walk: String(w.walk) }); out.queued++; }
     }
   }

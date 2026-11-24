@@ -32,7 +32,16 @@ function setUp(base) {
   self.__listen = (f) => { listeners.add(f); return () => listeners.delete(f); };
   // the page's relative requests go to the live site
   const realFetch = globalThis.fetch;
-  globalThis.fetch = (input, init) => realFetch(typeof input === 'string' && input.startsWith('/') ? `${base}${input}` : input, init);
+  /* THE FUSED MODEL (2026-11-24): the page reads it from the account routes with the person's sign-in; here there is
+     none, so the water Worker hands the file over first (server.mjs /fused, from the main site's private fusedOf) and
+     this answers the same address from it: the bytes, or 404 when the map has none. */
+  globalThis.fetch = (input, init) => {
+    if (typeof input === 'string' && input.startsWith('/api/maps/model')) {
+      const u = new URL(input, 'http://x'), bytes = u.searchParams.get('file') === 'fused' ? globalThis.WATER_FUSED?.get(`${u.searchParams.get('id')}|${u.searchParams.get('part') || 0}`) : null;
+      return Promise.resolve(bytes ? new Response(bytes, { status: 200 }) : new Response('{"error":"no-model"}', { status: 404 }));
+    }
+    return realFetch(typeof input === 'string' && input.startsWith('/') ? `${base}${input}` : input, init);
+  };
   globalThis.location = { href: `${base}/`, origin: base };
   globalThis.WATER_SHADE_MS = 45 * 6e4; // the shade step's limit: a browser's 4 minutes is too short on a container's shared CPU
   // a module Web Worker over worker_threads

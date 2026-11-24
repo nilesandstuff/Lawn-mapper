@@ -800,6 +800,13 @@ function planReport(p) {
   if (p.roofs.unusedDownspouts.length) parts.push(`<p class="hint">${p.roofs.unusedDownspouts.length} downspout${p.roofs.unusedDownspouts.length > 1 ? 's are' : ' is'} not on a roof: tap closer to the roof's edge.</p>`);
   $('#plan').innerHTML = parts.join('');
   try { walkOffer(); } catch { /* the offer never stands in the plan's way */ }
+  // which 3D model the shade stood on: said once under the plan, so a lawn with a yard walk shows it is being used
+  try {
+    let el = $('#shape-note');
+    if (!el) { $('#plan')?.insertAdjacentHTML('afterend', '<p id="shape-note" class="dim"></p>'); el = $('#shape-note'); }
+    if (el) el.textContent = p.shape?.model === 'fused' ? 'Shade: worked out by the shade map on this lawn\'s fused 3D model (the lidar refined by a Yard AR walk).'
+      : p.shape?.why && !/asked for/.test(p.shape.why) ? `Shade: worked out by the shade map on the lidar; ${p.shape.why}.` : p.shape ? 'Shade: worked out by the shade map on the lidar (this lawn has no Yard AR walk fused in yet).' : '';
+  } catch { /* a note only */ }
   $('#save-pdf')?.addEventListener('click', savePdf);
 }
 /** The roots, in the plan's words: the species checked, their working depth, and the season's rise and fall. */

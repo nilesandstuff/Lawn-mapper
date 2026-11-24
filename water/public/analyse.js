@@ -42,6 +42,7 @@ import { momentOf, surfaceNowAt, openNow, forcingAt, MODEL_VERSION, SCORING } fr
 import { atMoment, spinWeatherUrl, spinHours, SPIN_DAYS } from '/lib/momentweather.js';
 import { fitAnnual, spinColumns, columnProps, stepColumn, skinParts, CENTRES } from '/lib/soiltemp.js';
 import { NUDGES, KNOBS, SOIL_NUDGE_C, BEAM_NUDGE, SQUARE_COLS, rowOf } from '/lib/residuals.js';
+import { loadModel } from '/lib/lib/lidar-model.js';
 import { surfaceExplain, soilExplain, windExplain, moistureExplain } from '/lib/explain.js';
 import { spearman } from '/lib/rank.js';
 import { offLawnM, ON_TRACE_M } from '/lib/walkrecords.js';
@@ -130,7 +131,7 @@ async function columnsTo(L, cells, tEnd, { sprinklers = false, wantDate = null }
     const q = new Float64Array(asked.length * cells.length * 3);
     let p = 0;
     for (const k of asked) for (const i of cells) { q[p++] = (i % W) + 0.5; q[p++] = Math.floor(i / W) + 0.5; q[p++] = spinW.hours[k].t + 18e5; }
-    const got = (await L.ask({ type: 'samples', pts: q, heightM: 0.1 })).T;
+    const got = await L.samples(q);
     const rowOf = new Map(asked.map((k, a) => [k, a]));
     // an hour not asked: the same hour of the nearest day that was
     spinBeam = (k, c) => {
@@ -222,7 +223,7 @@ async function walkCheck({ id, records, series, notes }) {
   const L = lightSession(kept.lightRes, kept.lightSite, kept.climate);
   try {
     await L.build(L.edits.erased);
-    beams = (await L.ask({ type: 'samples', pts, heightM: 0.1 })).T; // the grass's top, as the shade map's field readings ask at a phone's height
+    beams = await L.samples(pts); // the grass's top, as the shade map's field readings ask at a phone's height
     cols = await columnsTo(L, cells, tEnd, { sprinklers: !!notes?.sprinklers, wantDate: notes?.sprinklers ? null : date });
   } catch (e) { self.postMessage({ walkCheck: { id, error: `the shade at those minutes: ${e?.message || e}` } }); return; } finally { L.close(); }
   // how wet the ground was: watered when the walker said so, else that day's rain-alone run
@@ -325,7 +326,7 @@ async function walkCheck({ id, records, series, notes }) {
   const wSt = weatherAt(mid, true);
   const station = { air: 'the live map\'s: the station\'s air, humidity and wind, the cloud from the satellite\'s sunshine (else the station\'s sky cover)', cloudMid: wSt ? wSt.cloud : null, cloudWalker: wMid ? wMid.cloud : null, airMid: wSt ? wSt.ta : null, airWalker: wMid ? wMid.ta : null,
     ...stats(stOk, predSt), sun: stats(stOk.filter((k) => beams[k] >= 0.5), predSt), shade: stats(stOk.filter((k) => beams[k] < 0.2), predSt) };
-  const out = { id, model: MODEL_VERSION, scoring: SCORING, ...stats(main), bands, sunShade, edge, used, v1, station,
+  const out = { id, model: MODEL_VERSION, scoring: SCORING, shape: kept.shape || null, ...stats(main), bands, sunShade, edge, used, v1, station,
     open: wMid ? { ts: openNow(wMid, m.params).ts, ta: wMid.ta, ghi: wMid.ghi, cloud: wMid.cloud, el: wMid.el, from: wMid.from } : null, pred: Float32Array.from(pred), diag };
   self.postMessage({ walkCheck: out }, [out.pred.buffer]);
 }
@@ -372,7 +373,7 @@ async function momentCore({ t, sprinklers = false, depthCm = null }) {
     await L.build(L.edits.erased);
     const q = new Float64Array(cells.length * 3);
     cells.forEach((i, c) => { q[3 * c] = (i % W) + 0.5; q[3 * c + 1] = Math.floor(i / W) + 0.5; q[3 * c + 2] = t; });
-    beams = (await L.ask({ type: 'samples', pts: q, heightM: 0.1 })).T;
+    beams = await L.samples(q);
     cols = await columnsTo(L, cells, tEnd, { sprinklers, wantDate: new Date(t).toISOString().slice(0, 10) });
   } finally { L.close(); }
   if (!cols.spun) return { error: `the soil columns: ${cols.why}` };
@@ -620,7 +621,7 @@ async function plan(inputs = {}) {
        the explorer. Until 2026-11-17 the originals went, and a page's checks ran on a model with neither. */
     zones: p.zones, zoneOf: p.zoneOf, kinds: Uint8Array.from(p.kinds), needMm: p.needMm, soilAt: Int16Array.from(p.soilAt), multiplier: p.multiplier, rootIn: p.rootIn, needMonth: p.needMonth, wetFromWatering: p.wetFromWatering, wetAnyway: p.wetAnyway, dryShare: p.dryShare,
     roofs: p.roofs, soil: p.soil, weather: p.weather, thisWeek: p.thisWeek, years: p.years, topsoil: p.topsoil,
-    standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, lightByMonth: p.lightByMonth, ownRadiation: p.ownRadiation, fences: p.fences, treeCool: p.treeCool, yardWind: p.yardWind, windInfo: kept.windInfo || null, windJuly: kept.windMonths ? kept.windMonths[6].slice() : null, localWind: kept.wind || null, lightInfo: kept.lightInfo || null, sunShare: p.sunShare,
+    standIn: kept.standIn, seconds: (Date.now() - t0) / 1000, shaded: p.shaded, lightByMonth: p.lightByMonth, ownRadiation: p.ownRadiation, fences: p.fences, treeCool: p.treeCool, yardWind: p.yardWind, windInfo: kept.windInfo || null, windJuly: kept.windMonths ? kept.windMonths[6].slice() : null, localWind: kept.wind || null, lightInfo: kept.lightInfo || null, shape: kept.shape || null, sunShare: p.sunShare,
     seasonDays: kept.season ? kept.season.size : null, grass, roots: p.roots, mode: p.mode, kc: p.kc, stress: p.stress, rainFrom: kept.rainFrom, weatherFrom: kept.weatherFrom, weekFrom: kept.week?.weatherFrom || null, rainShaped: kept.rainShaped || 0, rainStation: kept.rainShaped ? kept.wind.station : null, texture: p.texture,
     trees: p.trees, treeMm: p.treeMm,
     trouble: Object.values(kept.sources || {}).filter(Boolean), groundwater: p.groundwater, perched: p.perched, snapshots: p.snapshots || null,
@@ -799,7 +800,15 @@ async function start(site, inputs) {
     kept.season = seasonFor(inputs.grass === 'warm' ? 'warm' : 'cool');
     site.cloudSeason = r.cloud?.season || null;
     site.green = r.green || null;
-    const lit = await again(() => lawnLight(res, site, kept.climate, kept.season), 2).catch((e) => { kept.shadeWhy = e?.message || String(e); return null; });
+    /* the fused model when this lawn has one (fusedFor), else the lidar; a fused file that will not stand (a grid that
+       is not this map's, a worker error) is set aside and the lidar used, with the reason kept for the report */
+    site.fused = site.noFused ? null : await fusedFor(site, res.grid).catch((e) => { kept.fusedWhy = `the fused model could not be read (${e?.message || e})`; return null; });
+    let lit = await again(() => lawnLight(res, site, kept.climate, kept.season), 2).catch((e) => { kept.shadeWhy = e?.message || String(e); return null; });
+    if (!lit && site.fused) {
+      kept.fusedWhy = `the fused model was set aside (${kept.shadeWhy || 'no light worked out'})`; kept.shadeWhy = null; site.fused = null;
+      lit = await again(() => lawnLight(res, site, kept.climate, kept.season), 2).catch((e) => { kept.shadeWhy = e?.message || String(e); return null; });
+    }
+    kept.shape = site.fused ? { model: 'fused', at: site.fused.at, from: site.fused.from } : { model: 'lidar', why: site.noFused ? 'asked for the lidar alone' : kept.fusedWhy || null };
     kept.lightRes = res; kept.lightSite = site; // a walk's moments ask the light worker again (walkCheck)
     kept.light = lit?.summer || null; kept.lightMonths = lit?.months || null; kept.radiation = lit?.radiation || null;
     // the fences' longwave on the lawn (H49): the shade map's fences, seen from each lawn cell
@@ -905,6 +914,24 @@ const MONTH_START = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365]
 
 /* THE LIGHT WORKER, SET UP ONCE (the plan's months; a walk's moments): its worker, one question at a time, and the
    canopy built as the plan builds it. -> { ask, build(erased), edits, passes, close } */
+/**
+ * THE FUSED MODEL OF A MAP, OR NULL (docs/MAPS.md "The fused model"; the core session's contract, 2026-11-23): the
+ * file beside the map's lidar model, through the account routes the page already uses (the water builder's stand-in
+ * answers the same address from what the water Worker hands it). Used only when its grid is this map's box cut a
+ * whole number of times finer; anything else is left alone and the lidar used.
+ * -> { file: { meta, arrays }, scale, at, from: { lidarAt, walk, walkAt, version } } or null
+ */
+async function fusedFor(site, g) {
+  if (!site.mapId) return null;
+  const file = await loadModel((u, init) => fetch(u, { credentials: 'same-origin', ...init }), `/api/maps/model?id=${encodeURIComponent(site.mapId)}&tool=shade&file=fused`);
+  if (!file) return null;
+  const fg = file.meta?.grid, scale = fg ? Math.round(fg.w / g.W) : 0, cell = (g.bbox[2] - g.bbox[0]) / g.W;
+  if (!fg || !file.arrays?.mu || !file.arrays?.ground) throw new Error('not a model file');
+  if (scale < 1 || scale > 4 || fg.w !== g.W * scale || fg.h !== g.H * scale || Math.abs(fg.x0 - g.bbox[0]) > cell / 4 || Math.abs(fg.y1 - g.bbox[3]) > cell / 4) throw new Error('its grid is not this map\'s');
+  const f = file.meta.fused || {};
+  return { file, scale, at: file.meta.at || null, from: { lidarAt: f.lidarAt ?? null, walk: f.walk ?? null, walkAt: f.walkAt ?? null, version: f.version ?? null } };
+}
+
 function lightSession(res, site, climate) {
   const g = res.grid;
   const w = new Worker('/lib/shade/light-worker.js', { type: 'module' });
@@ -923,12 +950,54 @@ function lightSession(res, site, climate) {
      asked for the crowns as flown, bare branches on a November flight) -- and without the trees and branches
      erased on the shade map. */
   const edits = erasedOn(site.shadeEdits, { W: g.W, H: g.H, bbox: g.bbox });
-  const build = (erased) => ask({ type: 'build', cols: passes.cols, box: g.bbox, lat: site.lat, lng: site.lng, shift: null, lot: polygonsOf(site.lawn), lawn: polygonsOf(site.lawn),
-    green: site.green || null, // the summer photo's green: the shade map's low-structure rule needs it (2026-11-04; set on site by start, as cloudSeason is)
-    canopy: 'seasonal', flight: site.cloudSeason || null, tMean: Array.isArray(climate?.tMean) ? climate.tMean : null, erased, erasedCubes: edits.cubes,
-    // the fences drawn on the shade map (its part, v 3): their shade too, as the shade map works it out
-    fences: site.shadeEdits?.fences?.length ? site.shadeEdits.fences : undefined });
-  return { ask, build, edits, passes, close: () => w.terminate() };
+  /* THE FUSED MODEL, WHERE THE LAWN HAS ONE (owner, 2026-11-24: "make it use the fused map when available. Not all
+     lawns will have fused maps, so we need to support both... you'll still get shade as it's calculated by the shade
+     map"). The shade is the shade map's light worker either way; only what it stands on differs: the lidar's points
+     ('build', as before), or the fused file (docs/MAPS.md: the lidar and a yard walk, on a half-metre grid), given
+     whole to the worker's 'model' path as the shade page gives it. The fused grid is `scale` cells to one of the
+     water map's: places asked are multiplied by it, answers are brought back down. The trees and branches erased on
+     the shade map are already out of a model file, so only a further erasure (the crowns, for the buildings-alone
+     run) is sent, on the fine grid. */
+  const fused = site.fused || null, scale = fused ? fused.scale : 1;
+  const fine = (mask) => {
+    if (!mask || scale === 1) return mask || undefined;
+    const FW = g.W * scale, out = new Uint8Array(FW * g.H * scale);
+    for (let r = 0; r < g.H; r++) for (let c = 0; c < g.W; c++) if (mask[r * g.W + c]) for (let dr = 0; dr < scale; dr++) out.fill(1, (r * scale + dr) * FW + c * scale, (r * scale + dr) * FW + (c + 1) * scale);
+    return out;
+  };
+  // a fine grid's kinds on the water grid: a building anywhere in the square, else the commonest thing standing in it
+  const coarseKinds = (k) => {
+    if (!k || scale === 1) return k;
+    const FW = g.W * scale, out = new Uint8Array(g.W * g.H), n = new Uint8Array(8);
+    for (let r = 0; r < g.H; r++) for (let c = 0; c < g.W; c++) {
+      n.fill(0);
+      for (let dr = 0; dr < scale; dr++) for (let dc = 0; dc < scale; dc++) n[k[(r * scale + dr) * FW + c * scale + dc] & 7]++;
+      let best = 0;
+      if (n[1]) best = 1;
+      else { let top = 3; for (const v of [2, 4]) if (n[v] > n[top]) top = v; if (n[top] * 2 >= scale * scale) best = top; }
+      out[r * g.W + c] = best;
+    }
+    return out;
+  };
+  const build = async (erased) => {
+    const common = { lat: site.lat, lng: site.lng, lot: polygonsOf(site.lawn), lawn: polygonsOf(site.lawn), canopy: 'seasonal', tMean: Array.isArray(climate?.tMean) ? climate.tMean : null,
+      // the fences drawn on the shade map (its part, v 3): their shade too, as the shade map works it out
+      fences: site.shadeEdits?.fences?.length ? site.shadeEdits.fences : undefined };
+    const m = fused
+      ? await ask({ type: 'model', file: fused.file, ...common, erased: erased === edits.erased ? undefined : fine(erased) })
+      : await ask({ type: 'build', cols: passes.cols, box: g.bbox, shift: null, ...common,
+        green: site.green || null, // the summer photo's green: the shade map's low-structure rule needs it (2026-11-04; set on site by start, as cloudSeason is)
+        flight: site.cloudSeason || null, erased, erasedCubes: edits.cubes });
+    if (m.w !== g.W * scale || m.h !== g.H * scale) throw new Error('the shade grid is not the water grid');
+    return scale === 1 ? m : { ...m, kinds: coarseKinds(m.kinds), fineW: m.w, w: g.W, h: g.H };
+  };
+  /** The sun's beam through the canopy at places and minutes: pts [gx, gy, t, ...] in the water grid's cells. */
+  const samples = async (pts, heightM = 0.1) => {
+    let q = pts;
+    if (scale !== 1) { q = Float64Array.from(pts); for (let i = 0; i < q.length; i += 3) { q[i] *= scale; q[i + 1] *= scale; } }
+    return (await ask({ type: 'samples', pts: q, heightM })).T;
+  };
+  return { ask, build, samples, scale, edits, passes, close: () => w.terminate() };
 }
 
 function lawnLight(res, site, climate, season) {
@@ -938,10 +1007,21 @@ function lawnLight(res, site, climate, season) {
   const perCell = (m, scale = 1) => {
     const a = new Float32Array(N).fill(1);
     if (!m.dli || !(m.openDli > 0)) return null;
-    for (let p = 0; p < m.dli.length; p++) {
-      const x = Math.floor(m.xy[2 * p]), y = Math.floor(m.xy[2 * p + 1]);
-      if (x >= 0 && y >= 0 && x < g.W && y < g.H) a[y * g.W + x] = Math.max(0, Math.min(1, (m.dli[p] / m.openDli) * scale));
+    const S = L.scale;
+    if (S === 1) {
+      for (let p = 0; p < m.dli.length; p++) {
+        const x = Math.floor(m.xy[2 * p]), y = Math.floor(m.xy[2 * p + 1]);
+        if (x >= 0 && y >= 0 && x < g.W && y < g.H) a[y * g.W + x] = Math.max(0, Math.min(1, (m.dli[p] / m.openDli) * scale));
+      }
+      return a;
     }
+    // the fused model's finer grid: a water cell is the mean of the points the worker has inside it
+    const sum = new Float32Array(N), n = new Uint16Array(N);
+    for (let p = 0; p < m.dli.length; p++) {
+      const x = Math.floor(m.xy[2 * p] / S), y = Math.floor(m.xy[2 * p + 1] / S);
+      if (x >= 0 && y >= 0 && x < g.W && y < g.H) { sum[y * g.W + x] += Math.max(0, Math.min(1, (m.dli[p] / m.openDli) * scale)); n[y * g.W + x]++; }
+    }
+    for (let i = 0; i < N; i++) if (n[i]) a[i] = sum[i] / n[i];
     return a;
   };
   const monthDays = (mo) => { const md = []; for (let k = MONTH_START[mo] + 1; k < MONTH_START[mo + 1]; k += 3) md.push(k); return md; };
@@ -950,7 +1030,6 @@ function lawnLight(res, site, climate, season) {
   const months = async (clim) => { const out = []; for (let mo = 0; mo < 12; mo++) { const a = perCell(await ask({ type: 'period', days: monthDays(mo), climate: clim })); if (!a) return null; out.push(a); } return out; };
   const work = (async () => {
     const m = await build(edits.erased);
-    if (m.w !== g.W || m.h !== g.H) throw new Error('the shade grid is not the water grid');
     kept.lightInfo = { canopy: m.canopy, why: m.seasonsWhy || null, fences: m.fences || 0, erased: edits.cells, blocks: edits.blocks, blocksLost: edits.blocksLost, season: site.cloudSeason || null, inLeafColumns: m.inLeafColumns || 0, passes: { season: passes.season, off: passes.off, on: passes.on, dropped: passes.dropped } };
     // the shade map's own reading of every cell (0 open, 1 roof, 2 evergreen, 3 deciduous): its trees, for the air and the wind
     const kinds = m.kinds && m.kinds.length === N ? Uint8Array.from(m.kinds) : null;

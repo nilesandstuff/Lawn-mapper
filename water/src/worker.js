@@ -12,6 +12,8 @@ import { runQueue, sweep } from './autoscore.js';
 export class Internal extends WorkerEntrypoint {
   /** An admin save's shade model landed or was rebuilt: its scoring kit is to be (re)built. */
   async modelChanged(id, modelAt) { return enqueue(this.env, 'model', id, { modelAt }); }
+  /** A map's fused model was written (the lidar and a yard walk; docs/MAPS.md): its walks are scored again on it. */
+  async fusedChanged(id, fusedAt) { return enqueue(this.env, 'model', id, { modelAt: fusedAt }); }
   /** A thermal walk's converted grid landed: it is to be scored. */
   async walkReady(id, walk) { return enqueue(this.env, 'walk', id, { walk }); }
 }
@@ -31,7 +33,7 @@ async function scheduled(controller, env, ctx) {
   };
   if (at.getUTCMinutes() < 5 || empty) { // hourly: a dozen small calls to the main site
     const n = await sweep(env).catch((e) => ({ error: e?.message || String(e) }));
-    await log(`sweep${env.MAIN ? '' : ' (no MAIN binding)'}: ${n.error ? `failed (${n.error})` : `${n.saves} admin saves, ${n.walks} walks (${n.converted} converted, ${n.waiting} waiting, ${n.failed} failed; ${n.scored} already scored), ${n.queued} queued${n.refetched ? `, ${n.refetched} for fresh weather` : ''}${n.soil ? `, ${n.soil} visits to check` : ''}${n.mended ? `, ${n.mended} map ids mended` : ''}${n.lined ? `, ${n.lined} readings lined up with their test map` : ''}${n.unpinned ? `, ${n.unpinned} taken off another lot's map` : ''}${n.made ? `, ${n.made} test maps made for field readings` : ''}${n.notMade ? `, ${n.notMade} lots refused one` : ''}${n.waitingVisits ? `, ${n.waitingVisits} waiting for a test map` : ''}`}`);
+    await log(`sweep${env.MAIN ? '' : ' (no MAIN binding)'}: ${n.error ? `failed (${n.error})` : `${n.saves} admin saves, ${n.walks} walks (${n.converted} converted, ${n.waiting} waiting, ${n.failed} failed; ${n.scored} already scored), ${n.queued} queued${n.refetched ? `, ${n.refetched} for fresh weather` : ''}${n.soil ? `, ${n.soil} visits to check` : ''}${n.mended ? `, ${n.mended} map ids mended` : ''}${n.alone ? `, ${n.alone} to score on the lidar alone` : ''}${n.lined ? `, ${n.lined} readings lined up with their test map` : ''}${n.unpinned ? `, ${n.unpinned} taken off another lot's map` : ''}${n.made ? `, ${n.made} test maps made for field readings` : ''}${n.notMade ? `, ${n.notMade} lots refused one` : ''}${n.waitingVisits ? `, ${n.waitingVisits} waiting for a test map` : ''}`}`);
   }
   const done = await runQueue(env).catch((e) => [{ state: 'error', why: String(e?.message || e) }]);
   if (done.length) await log(done.map((d) => `${d.state}${d.why ? ` (${d.why})` : ''}`).join('; '));

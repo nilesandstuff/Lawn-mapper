@@ -32,7 +32,7 @@ function main({ converted = true, failed = false } = {}) {
   };
 }
 function builder(calls) {
-  return { fetch: async (u, init) => { const b = JSON.parse(init.body); calls.push(b); return new Response(JSON.stringify({ ok: true, placed: { started: T0, ended: T0 + 6e5, kinds: ['surface'], notes: { sprinklers: false }, offLawn: 1 }, weather: { sources: [{ name: 'ASOS TST', km: 9 }], series: [{ src: 'asos', t: T0, ta: 12 }] }, result: { model: MODEL_VERSION, n: 1, bias: 0.4, rmse: 0.9, rho: null, bands: {}, sunShade: {}, used: {}, open: {} } })); } };
+  return { fetch: async (u, init) => { if (String(u).includes('/fused?')) { calls.fused = (calls.fused || []); calls.fused.push({ u: String(u), n: init.body?.length ?? 0 }); return new Response('{"ok":true}'); } const b = JSON.parse(init.body); calls.push(b); return new Response(JSON.stringify({ ok: true, placed: { started: T0, ended: T0 + 6e5, kinds: ['surface'], notes: { sprinklers: false }, offLawn: 1 }, weather: { sources: [{ name: 'ASOS TST', km: 9 }], series: [{ src: 'asos', t: T0, ta: 12 }] }, result: { model: MODEL_VERSION, n: 1, bias: 0.4, rmse: 0.9, rho: null, bands: {}, sunShade: {}, used: {}, open: {} } })); } };
 }
 
 await test('an admin save\'s id of any characters is queued (a narrower check once lost the pushes)', async () => {
@@ -185,6 +185,31 @@ await test('a map id longer than 80 characters is kept whole; one cut short befo
   assert.equal(sw.mended, 1);
   assert.equal((await env.DB.prepare("SELECT map_id FROM truth_walks WHERE walk = 'wcut'").first()).map_id, long);
   assert.equal((await env.DB.prepare("SELECT map_id FROM truth_walks WHERE walk = 'wshort'").first()).map_id, 'plain-map');
+});
+
+await test('a map with a fused model: the file goes to the builder first, the score says which model, and the lidar alone is kept beside it', async () => {
+  const calls = [];
+  const env = { DB: d1(), WATER_BUILDER: builder(calls), MAIN: { ...main(), adminSaves: async () => [{ id: 'admin|1', modelAt: 'x', fusedAt: 'F1' }],
+    fusedOf: async (id, part = 0) => (part === 0 ? { bytes: new Uint8Array([1, 2, 3]), modelAt: 'F1' } : part === 1 ? { bytes: new Uint8Array([4]), modelAt: 'F1' } : null) } };
+  await enqueue(env, 'walk', 'admin|1', { walk: 'w1' });
+  assert.deepEqual((await runQueue(env, { base: 'https://water.example' })).map((r) => r.state), ['done']);
+  assert.deepEqual(calls.fused.map((f) => [new URL(f.u).searchParams.get('part'), new URL(f.u).searchParams.get('at'), f.n]), [['0', 'F1', 3], ['1', 'F1', 1]]);
+  assert.equal(calls[0].lidarOnly, false);
+  const d = JSON.parse((await env.DB.prepare("SELECT detail FROM truth_results WHERE walk = 'w1'").first()).detail);
+  assert.equal(d.fusedAt, 'F1');
+  // as if the builder had used the fused model: the sweep asks for the lidar alone, once, and it is kept beside
+  d.shape = { model: 'fused' }; d.scoring = 99;
+  await env.DB.prepare("UPDATE truth_results SET detail = ? WHERE walk = 'w1'").bind(JSON.stringify(d)).run();
+  const sw = await sweep(env);
+  assert.equal(sw.alone, 1); assert.equal(sw.queued, 0);
+  await runQueue(env, { base: 'https://water.example' });
+  assert.equal(calls.at(-1).lidarOnly, true);
+  const d2 = JSON.parse((await env.DB.prepare("SELECT detail FROM truth_results WHERE walk = 'w1'").first()).detail);
+  assert.equal(d2.lidarAlone.fusedAt, 'F1'); assert.ok(Number.isFinite(d2.lidarAlone.n));
+  assert.equal((await sweep(env)).alone || 0, 0, 'not asked twice');
+  // a newer fused file: the walk is scored again
+  env.MAIN.adminSaves = async () => [{ id: 'admin|1', modelAt: 'x', fusedAt: 'F2' }];
+  assert.equal((await sweep(env)).queued, 1);
 });
 
 console.log(`\n${passed} passed`);
