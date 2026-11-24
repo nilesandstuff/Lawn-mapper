@@ -4607,6 +4607,15 @@ walk by its own model's line-up minus that, and writes what it moved in `meta.fu
 session's part (the field in /api/maps/one) is not built: the line-up is inside the lidar model file, which the
 Worker should not open on every read, so it is to be written beside the plants when they are kept.
 
+THE WATER MAP ON THE FUSED MODEL (the water session, 2026-11-24, water/FINDINGS.md H101; its numbers, not measured
+here): the water map takes a map's fused file when there is one (the owner: "make it use the fused map when
+available"), and scored its five thermal walks on the owner's lot both ways, measured minus modelled surface in F:
+fused and lidar alone agree within 0.3 F RMS on every walk of more than ten squares (e.g. 2,285 squares: -6.7 / RMS 7.1
+fused, -7.0 / RMS 7.4 lidar). NEITHER IS AHEAD, AND THESE WALKS CANNOT SAY: all five were at dusk or after, with no
+direct sun on any square, and what a fused model changes first is where plants throw shade in the sun. HARD: the
+whole path works on a real file (handed over, read on the half-metre grid, both scores kept). THE TEST still owed: a
+thermal walk on that lot in direct sun; the water map scores it both ways by itself.
+
 SPECULATION: 80 m is a guess at "the same lot" (two geocodes of one address are metres apart; a neighbour's lot
 mapped by the same account would be lent the walk too, which is harmless in itself, the plants being placed on the
 earth and the fusing keeping only what falls on that map's grid, but untested). The things placed on a walk and the

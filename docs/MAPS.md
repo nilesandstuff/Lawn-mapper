@@ -151,8 +151,9 @@ features session and seen by the water session, 2026-11-23.
 layers. What each source is trusted for: the walk for WHERE things are and how big, at every height (no limit by
 height or distance since 2026-11-23: docs/SCAN-PLAN.md 60); the lidar
 for HOW MUCH LIGHT a canopy passes, and for a deciduous crown's density whenever the walk was made in leaf-off months. Roofs and low structures are the lidar's alone for now.
-The rules themselves are in the fusing's one home, `public/shade/fuse.js` (it moves to `public/lib/` on the day the
-water map starts reading the file).
+The rules themselves are in the fusing's one home, `public/shade/fuse.js`. It stays there: the water map reads the
+finished file, not the fusing (the water session, 2026-11-24, when it began reading it), so nothing outside the shade
+map and the scan page imports fuse.js, and the scan page copies it in unchanged at build time.
 
 **`meta.fused`** says what it was made from, so a reader can tell a stale one three ways:
 `{ lidarAt, walk, walkAt, walkFit, version, sub, plantTrustM, refined, added, trimmed, moved, ... }`:
