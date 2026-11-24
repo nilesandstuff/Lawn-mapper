@@ -152,12 +152,12 @@ def main():
     bc, br = sq % w, sq // w
     be, bn = (i0 + bc + 0.5) * CELL, (j0 + br + 0.5) * CELL
     bh = FROM + (sl + 0.5) * SLAB                              # metres over the ground, the map's
-    # CONTROLS: blocks 45 m up, every 6 m over the walk's squares; seen only steeply (35 degrees up or more), nothing
-    # but sky can stand behind them, so they say how much of plain sky each test calls sky
+    # CONTROLS: blocks 30 m up (the tallest crown here is about 24 m), every 6 m over the walk's squares; seen only
+    # steeply (35 degrees up or more), so nothing but sky stands behind them: how much of plain sky each test calls sky
     cg_e, cg_n = np.meshgrid(np.arange((i0 + 0.5) * CELL, (i0 + w) * CELL, 6.0), np.arange((j0 + 0.5) * CELL, (j0 + h) * CELL, 6.0))
     nctl = cg_e.size
     be, bn = np.r_[be, cg_e.ravel()], np.r_[bn, cg_n.ravel()]
-    bh = np.r_[bh, np.full(nctl, 45.0)]
+    bh = np.r_[bh, np.full(nctl, 30.0)]
     ctl = np.r_[np.zeros(len(keys_all), bool), np.ones(nctl, bool)]
     keys_all = np.r_[keys_all, np.full(nctl, -1)]
     sl = np.r_[sl, np.full(nctl, nsl)]
@@ -193,7 +193,7 @@ def main():
         clip = cam @ Pm.T
         wq = np.where(np.abs(clip[:, 3]) < 1e-9, 1e-9, clip[:, 3])
         nx, ny = clip[:, 0] / wq, clip[:, 1] / wq
-        vis = (zc > 1.0) & (zc < RANGE_M) & (np.abs(nx) < 0.97) & (np.abs(ny) < 0.97)
+        vis = (zc > 1.0) & ((zc < RANGE_M) | (ctl & (zc < 2 * RANGE_M))) & (np.abs(nx) < 0.97) & (np.abs(ny) < 0.97)
         if ctl.any():   # a control counts only when seen steeply
             camp = V[:3, 3]
             el = np.degrees(np.arctan2(P4[:, 1] - camp[1], np.hypot(P4[:, 0] - camp[0], P4[:, 2] - camp[2])))
@@ -258,7 +258,7 @@ def main():
             print(f"  {lab_}: CONTROLS: none of the {int(ctl.sum())} was seen 5 times steeply enough.")
         if lab_.endswith("ALL VIEWS") and cc.any():
             qq = np.percentile(cleanB[cc] / np.maximum(1, views[cc]) if lab_.startswith("BRIGHT") else clean_n[cc] / np.maximum(1, views[cc]), [25, 50, 75])
-            print(f"  {lab_}: CONTROLS (plain sky, 45 m up, seen 35 degrees up or more; {int(cc.sum())} blocks): the share of views clean {qq[0]:.2f} / {qq[1]:.2f} / {qq[2]:.2f}. Near 1.00 if the test and the aim are right.")
+            print(f"  {lab_}: CONTROLS (plain sky, 30 m up, seen 35 degrees up or more; {int(cc.sum())} blocks): the share of views clean {qq[0]:.2f} / {qq[1]:.2f} / {qq[2]:.2f}. Near 1.00 if the test and the aim are right.")
         c_ = dep_crown & (vn >= need)
         a_ = dep_air & (vn >= need)
         if c_.sum() < 20 or a_.sum() < 20:
