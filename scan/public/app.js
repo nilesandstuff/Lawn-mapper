@@ -8,7 +8,7 @@
  * off the map position is. The walk's bookkeeping is scan/lib/walk.js; what is kept on the site is distances and
  * counts only. Pins' map positions stay on this phone until phase 3 writes them to the map record.
  */
-import { detect, start, engineChoice, load8thWall } from '/lib/track.js';
+import { detect, start, engineChoice, load8thWall, SEM_LABELS } from '/lib/track.js';
 import { newWalk, step, dropPin, checkPin, measure, tapeFor, undo, far, summary, pinNow } from '/lib/walk.js';
 import { makeDrawer, lidarMeshes, OCC_RANGE, OCC_RANGE_FULL } from '/lib/draw.js';
 import { lookMeshes } from '/lib/look.js';
@@ -1395,7 +1395,7 @@ function frameWork(f) {
         const dep = keyDepth(f, name);
         if (dep) sendTwin([dep]);
         const rdep = keyRaw(f, name);
-        if (rdep) sendTwin([rdep]);
+        if (rdep) sendTwin(rdep.sem ? [rdep, rdep.sem] : [rdep]);
         const sdep = keySmooth(f, name);
         if (sdep) sendTwin([sdep]);
         lap('twin: a picture\'s three depth grids');
@@ -2495,7 +2495,32 @@ function keyRaw(f, name) {
       const d = Math.hypot(p.x - c.x, p.y - c.y, p.z - c.z);
       if (d > 0 && d < 65) { a[2 + j * nx + i] = Math.round(d * 1000); a[2 + nx * ny + j * nx + i] = Math.round(255 * (D.conf(x, y) ?? 0)); n++; }
     }
-    return n ? { name: name.replace(/\.jpg$/, '.rdepth'), type: 'application/octet-stream', body: new Blob([a.buffer]) } : null;
+    const out = n ? { name: name.replace(/\.jpg$/, '.rdepth'), type: 'application/octet-stream', body: new Blob([a.buffer]) } : null;
+    const sem = keySem(D, name, nx, ny);
+    return out ? Object.assign(out, { sem }) : sem ? { name: sem.name, type: sem.type, body: sem.body } : null;
+  } catch { return null; }
+}
+
+/** THE PHONE'S OWN LABELS OVER THE WHOLE PICTURE: key-NNNN.sem (core session, 2026-11-24). The owner: "The arcore
+ *  scene semantics has a label for sky... it largely avoids marking trees as sky when it does it's own segmentation".
+ *  The walk kept the labels only on depth points, and the sky has no depth, so a picture's sky was never kept (3 of a
+ *  walk's points). The label of every cell of the grid kept with each picture, sky included, in the picture's own
+ *  frame: Uint8 [nx lo, nx hi, ny lo, ny hi, nx*ny labels (ARCore's numbers 0 unlabeled, 1 sky, 2 building, 3 tree,
+ *  ...; 255 none), nx*ny confidences x 255], rows from the top. Read by scan/tools/crown_sky_study.py: where the
+ *  pictures say sky against where the lidar says crown, the owner's idea for what the depth cannot reach. */
+function keySem(D, name, nx, ny) {
+  try {
+    if (!D?.label) return null;
+    const a = new Uint8Array(4 + 2 * nx * ny);
+    a[0] = nx & 255; a[1] = nx >> 8; a[2] = ny & 255; a[3] = ny >> 8;
+    let n = 0;
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) {
+      const x = (i + 0.5) / nx, y = (j + 0.5) / ny, l = D.label(x, y), k = SEM_LABELS.indexOf(l);
+      a[4 + j * nx + i] = k >= 0 ? k : 255;
+      a[4 + nx * ny + j * nx + i] = Math.round(255 * (D.labelConf ? D.labelConf(x, y) ?? 0 : 0));
+      if (k >= 0) n++;
+    }
+    return n ? { name: name.replace(/\.jpg$/, '.sem'), type: 'application/octet-stream', body: new Blob([a.buffer]) } : null;
   } catch { return null; }
 }
 

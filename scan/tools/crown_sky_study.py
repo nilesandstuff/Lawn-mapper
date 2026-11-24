@@ -75,6 +75,27 @@ def sky_own(img):
     return (dd <= 40) & (b - r >= 10)
 
 
+SEM_SKY, SEM_CONF = 1, 0.5     # ARCore's sky label, and the least confidence it is taken at
+
+
+def phone_sky(d, name):
+    """THE PHONE'S OWN SKY (key-NNNN.sem, kept with each picture since 2026-11-24; the owner: ARCore's scene semantics
+    "has a label for sky... it largely avoids marking trees as sky when it does it's own segmentation"): the picture's
+    grid of labels, rows from the top, in the picture's own frame. -> bool (ny, nx) sky mask, or None."""
+    f = os.path.join(d, name.replace(".jpg", ".sem"))
+    if not os.path.exists(f):
+        return None
+    b = np.fromfile(f, dtype=np.uint8)
+    if len(b) < 4:
+        return None
+    nx, ny = int(b[0]) | (int(b[1]) << 8), int(b[2]) | (int(b[3]) << 8)
+    if len(b) < 4 + 2 * nx * ny:
+        return None
+    lab = b[4:4 + nx * ny].reshape(ny, nx)
+    conf = b[4 + nx * ny:4 + 2 * nx * ny].reshape(ny, nx) / 255.0
+    return (lab == SEM_SKY) & (conf >= SEM_CONF)
+
+
 def sky_bright(img):
     """THE RELATIVE TEST (run 564: the plain-sky controls' pixels were blue in the middle at 108 / 141 / 162, a quarter
     of them darker, 79 / 104 / 114, which the strict test's "blue over 140" throws out; this camera's sky is darker than
@@ -211,6 +232,9 @@ def main():
     from scipy.ndimage import distance_transform_edt
     openS = np.zeros((len(OPEN_R_M), nb), np.int32)    # views with that much clear sky round the block: strict blue
     openB = np.zeros((len(OPEN_R_M), nb), np.int32)    # ...the looser test
+    viewsP, cleanP = np.zeros(nb, np.int32), np.zeros(nb, np.int32)     # the PHONE'S own sky (key-NNNN.sem), where kept
+    openP = np.zeros((len(OPEN_R_M), nb), np.int32)
+    pics_sem = 0
     keys = []
     for n in sorted(x for x in os.listdir(d) if re.fullmatch(r"keys-\d+\.json", x)):
         keys += json.load(open(os.path.join(d, n)))
@@ -292,6 +316,23 @@ def main():
         for ri, R in enumerate(OPEN_R_M):
             openS[ri, idx] += mS >= R
             openB[ri, idx] += mB >= R
+        ps = phone_sky(d, k["name"])
+        if ps is not None:
+            pics_sem += 1
+            gy_, gx_ = ps.shape
+            cxg = np.clip((nx[idx] + 1) / 2 * gx_, 0, gx_ - 1e-6).astype(np.int64)
+            cyg = np.clip((1 - ny[idx]) / 2 * gy_, 0, gy_ - 1e-6).astype(np.int64)
+            # the block's own cells (at least its one), and the clear sky round it, on the phone's grid
+            rg = np.maximum(0, (CELL * fpx / zc[idx] / 2) / (W_ / gx_)).astype(np.int64)
+            integP = np.pad(ps.astype(np.int32).cumsum(0).cumsum(1), ((1, 0), (1, 0)))
+            a0, a1 = np.clip(cxg - rg, 0, gx_), np.clip(cxg + rg + 1, 0, gx_)
+            b0, b1 = np.clip(cyg - rg, 0, gy_), np.clip(cyg + rg + 1, 0, gy_)
+            shP = (integP[b1, a1] - integP[b0, a1] - integP[b1, a0] + integP[b0, a0]) / np.maximum(1, (a1 - a0) * (b1 - b0))
+            viewsP[idx] += 1
+            cleanP[idx] += shP >= CLEAN_SHARE
+            dP = distance_transform_edt(ps)[cyg, cxg] * (W_ / gx_) * zc[idx] / fpx
+            for ri, R in enumerate(OPEN_R_M):
+                openP[ri, idx] += dP >= R
         cleanBN[idx[nr]] += shareB[nr] >= CLEAN_SHARE
         used += 1
     # THE PICTURES' OWN GEOMETRY, BY THE WALK'S OWN POINTS (run 565: plain sky with nothing of the lidar's in the way read
@@ -427,6 +468,20 @@ def main():
             lid = is_l & (views >= need)
             print(f"  OPEN SKY ROUND IT, {nm}, {R * FT:.1f} ft or more of clear sky round the block: share of views, middle: crown {med(c_):.2f}, air {med(a_):.2f}, controls {med(k_):.2f}. Cleared at a share of {rows}. "
                   f"The lidar's crown at 0.4: " + ", ".join(f"{lo}-{hi} ft {int((lid & (hft >= lo) & (hft < hi) & (sh >= 0.4)).sum())} of {int((lid & (hft >= lo) & (hft < hi)).sum())}" for lo, hi in ((8, 30), (30, 50), (50, 80))) + ".")
+    # THE PHONE'S OWN SKY (key-NNNN.sem): the same questions, on the pictures that kept it
+    if pics_sem:
+        c_, a_, k_ = dep_crown & (viewsP >= need), dep_air & (viewsP >= need), ctl & (viewsP >= 5)
+        shc = cleanP / np.maximum(1, viewsP)
+        med = lambda m, sh: float(np.median(sh[m])) if m.any() else float("nan")  # noqa: E731
+        print(f"  THE PHONE'S OWN SKY (ARCore's label, confidence {SEM_CONF:.1f} or more; {pics_sem} pictures kept it): the block's own patch sky, share of views, middle: crown {med(c_, shc):.2f}, air {med(a_, shc):.2f}, controls {med(k_, shc):.2f}.")
+        for ri, R in enumerate(OPEN_R_M):
+            sh = openP[ri] / np.maximum(1, viewsP)
+            rows = "; ".join(f"{t:.1f}: crown {100 * (sh[c_] >= t).mean():.1f}% / air {100 * (sh[a_] >= t).mean():.1f}%" for t in (0.2, 0.4, 0.6) if c_.any() and a_.any())
+            lid = is_l & (viewsP >= need)
+            print(f"  OPEN SKY ROUND IT, THE PHONE'S SKY, {R * FT:.1f} ft or more: share of views, middle: crown {med(c_, sh):.2f}, air {med(a_, sh):.2f}, controls {med(k_, sh):.2f}. Cleared at a share of {rows}. "
+                  "The lidar's crown at 0.4: " + ", ".join(f"{lo}-{hi} ft {int((lid & (hft >= lo) & (hft < hi) & (sh >= 0.4)).sum())} of {int((lid & (hft >= lo) & (hft < hi)).sum())}" for lo, hi in ((8, 30), (30, 50), (50, 80))) + ".")
+    else:
+        print("  THE PHONE'S OWN SKY: no picture of this walk kept it (key-NNNN.sem, kept since 2026-11-24): a walk made since will answer.")
     m = is_l & dep_crown
     print(f"  The lidar's crown blocks the walk's depth also saw crown in: {int(m.sum()):,}; of those seen in 3 pictures, CLEAN by colour {int((m & seen_ok & verdict_clean).sum()):,}.")
     return 0
