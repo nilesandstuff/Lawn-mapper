@@ -107,6 +107,9 @@ def straight_width(cells, pts=None):
 def main():
     global CELL
     a = sys.argv[1:]
+    keep = None
+    if "--keep" in a:      # where to write the phone's squares for the map (surfaces-keep.mjs puts them beside the map)
+        i = a.index("--keep"); keep = a[i + 1]; a = a[:i] + a[i + 2:]
     if "--feet" in a:      # the squares' size (run 570: at 1 ft the walk's paving broke into 30 pieces, three points a square being few)
         i = a.index("--feet"); CELL = float(a[i + 1]) / FT; a = a[:i] + a[i + 2:]
     if not a or not os.path.isdir(a[0]):
@@ -193,6 +196,19 @@ def main():
                 rows.append(f"{int(sizes[k] * SQ):,} sq ft, {ext.max() * FT:.0f} ft long" + (f", its longest straight run of one width {sw[1] * FT:.0f} ft long, {ftin(sw[0])} wide ({sw[2]} cross-sections)" if sw else ", no straight run of one width"))
             print(f"     The paving's pieces, largest first ({n} in all): " + "; ".join(rows) + ".")
         out[name] = {"paved": int(paved.sum()), "grass": int(grass.sum())}
+        if keep and name == "THE PHONE'S OWN LABELS":
+            # FOR THE START PAGE'S MAP (the owner's eyes on the lawn trace): one byte a square, rows south to north,
+            # 0 not called, 1 grass, 2 paved; the square at column c, row r has its south-west corner (i0 + c) * cellM
+            # east and (j0 + r) * cellM north of the map's point
+            import base64
+            import zlib
+            g8 = np.zeros((H, W), np.uint8)
+            g8[grass] = 1
+            g8[paved] = 2
+            json.dump({"v": 1, "cellM": CELL, "i0": i0, "j0": j0, "w": int(W), "h": int(H), "from": "the walk's ground points by the phone's own labels",
+                       "what": "one byte a square, rows south to north: 0 not called, 1 grass, 2 paved", "enc": "zlib+base64",
+                       "kinds": base64.b64encode(zlib.compress(g8.tobytes(), 9)).decode()}, open(keep, "w"))
+            print(f"     Kept for the start page's map: {os.path.basename(keep)} ({os.path.getsize(keep) / 1e3:.0f} KB).")
     return 0
 
 

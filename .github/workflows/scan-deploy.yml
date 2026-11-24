@@ -554,7 +554,8 @@ jobs:
           node scan/tools/twin-r2.mjs parts "$WALK" twin 'cloud-*' 'labels-*' view-kind.bin view.json start.json live.json meta.json 'track-*' | tee surfaces.txt
           node scan/tools/walk-fit.mjs twin | tee -a surfaces.txt || true
           node scan/tools/lawn-prep.mjs twin | tee -a surfaces.txt || true
-          python scan/tools/surfaces.py twin | tee -a surfaces.txt
+          python scan/tools/surfaces.py twin --keep twin/surfaces-map.json | tee -a surfaces.txt
+          node scan/tools/surfaces-keep.mjs "$WALK" twin | tee -a surfaces.txt || true
           python scan/tools/surfaces.py twin --feet 2 | tee -a surfaces.txt
 
       - name: A walk's skyline against the lidar

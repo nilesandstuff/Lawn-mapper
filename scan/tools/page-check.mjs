@@ -11,6 +11,7 @@ import http from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, extname, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { deflateSync } from 'node:zlib';
 
 const B = join(dirname(fileURLToPath(import.meta.url)), '..', 'build');
 const T = { '.js': 'text/javascript', '.html': 'text/html', '.wasm': 'application/wasm', '.svg': 'image/svg+xml' };
@@ -19,7 +20,7 @@ const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR
 
 let THINGS = { v: 1, things: [{ id: 't1', kind: 'gutter-out', at: [1, 1], h: 0.1, grade: 'corners3', seen: [{ at: [1, 1], h: 0.1, walk: 'w', grade: 'corners3', t: 1 }] }, { id: 't4', kind: 'gutter-out', at: [3, 1], h: 0.1, grade: 'unsure', seen: [{ at: [3, 1], h: 0.1, walk: 'w', grade: 'unsure', t: 1 }] }] }, PUTS = 0;
 const TOOL = [];
-let MARK_PUTS = 0;
+let MARK_PUTS = 0, SURF_ASKS = 0;
 const srv = http.createServer((q, s) => {
   const u = new URL(q.url, 'http://x');
   const json = (o, code = 200) => { s.statusCode = code; s.setHeader('Content-Type', 'application/json'); s.end(JSON.stringify(o)); };
@@ -35,6 +36,8 @@ const srv = http.createServer((q, s) => {
     if (q.method === 'PUT') { MARK_PUTS++; return json({ ok: true }); }
     return json({ v: 1, at: '2026-11-24T00:00:00.000Z', points: [{ id: 'm1', name: 'R1', kind: 'ref', map: [2, 3] }, { id: 'm2', name: 'R2', kind: 'ref', map: [5, 1] }] });
   }
+  // a walk's ground kept with the map (2026-11-24): drawn under the traced lawn (a page error here fails the check)
+  if (u.pathname === '/api/scan/surfaces') { SURF_ASKS++; return json({ v: 1, cellM: 0.3048, i0: 0, j0: 0, w: 4, h: 2, kinds: deflateSync(Buffer.from([1, 1, 2, 2, 0, 1, 2, 0])).toString('base64') }); }
   // a walk's plants kept with the map (2026-11-23): read when the map opens, put into the scan tool's part of the record
   if (u.pathname === '/api/scan/plants') return json({ v: 1, cellM: 0.3048, at: 'now', boxes: [[0, 0, 3, 12], [1, 0, 3, 40]] });
   if (u.pathname === '/api/maps/tool' && q.method === 'POST') { let b = ''; q.on('data', (c) => { b += c; }); q.on('end', () => { try { TOOL.push(JSON.parse(b)); } catch { /* not json */ } json({ ok: true }); }); return; }
@@ -68,6 +71,7 @@ async function main() {
         if (!TOOL.some((t) => t?.data?.plants?.boxes?.length === 2)) faults.push(`${path}: a walk's plants were not put into the map's record (${TOOL.length} writes of the scan tool's part)`);
         const marks = await pg.evaluate(() => document.querySelector('#points')?.textContent || '');
         if (!/R1/.test(marks) || !/R2/.test(marks)) faults.push(`${path}: the marks kept with the map were not shown ("${marks.replace(/\s+/g, ' ').slice(0, 80)}")`);
+        if (!SURF_ASKS) faults.push(`${path}: the walk's ground on the map was never asked for`);
         if (MARK_PUTS) faults.push(`${path}: the marks kept with the map were written back over (${MARK_PUTS}) with nothing changed`);
         // the placed things: listed, and one taken away with two taps (kept as gone, not deleted) and put back
         const rows = () => pg.evaluate(() => [...document.querySelectorAll('#things-list li')].map((li) => li.textContent.replace(/\s+/g, ' ').trim()));

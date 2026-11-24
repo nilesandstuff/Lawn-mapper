@@ -4582,7 +4582,14 @@ HARD (run 570, the walk of 2026-11-20, 1 ft squares, 105,227 ground points):
   the walk spans, so most of it had too few points to call. Grass OUTSIDE the trace 337 sq ft, paving INSIDE it 146;
   the vote alike (243 and 134). Where the walk saw the ground well, the trace mostly agrees with it.
 - the paving broke into 30 pieces, the largest 529 sq ft, 55 ft long, 8 ft 9 in wide over a straight 13 ft: NOT a
-  reading of the drive. The walk went round the lawn; the drive had few points. Run 571: 2 ft squares as well.
+  reading of the drive. The walk went round the lawn; the drive had few points.
+- 2 ft squares (run 571): grass 8,712 sq ft, paving 1,368; grass outside the trace 896, paving inside 240 (the vote 728
+  and 228). The paving in 14 pieces: the largest 908 sq ft, 64 ft long, 11 ft 3 in wide over a straight 12 ft; the
+  second 252 sq ft, 28 ft long, 7 ft 9 in wide over a straight 20 ft, and the pictures' vote read that one 7 ft 10 in.
+  Which (if either) is the drive, and its true width, only the owner can say.
+BUILT for the owner's eyes: the phone's squares kept with the map (surfaces.py --keep, surfaces-keep.mjs:
+surfaces/<map>.json in the twin bucket; GET /api/scan/surfaces?map=), drawn on the start page's map under the traced
+lawn: paving grey, grass pale green (app.js askSurfaces).
 
 ## 64. Can colour say where the lidar's crown is not, where depth cannot reach? (2026-11-24)
 

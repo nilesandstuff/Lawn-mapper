@@ -230,6 +230,23 @@ export async function plants(request, env, url, { isAdmin }) {
   return new Response(o.body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' } });
 }
 
+/**
+ * A WALK'S GROUND ON THE MAP (core session, 2026-11-24; scan/tools/surfaces.py, surfaces-keep.mjs): surfaces/<map>.json,
+ * the walk's paving and grass by the phone's own labels, drawn by the start page under the traced lawn. Read only; the
+ * admin only.   GET /api/scan/surfaces?map=   the file, or { none: true }
+ */
+export async function surfaces(request, env, url, { isAdmin }) {
+  if (url.pathname !== '/api/scan/surfaces') return null;
+  if (!(await isAdmin(request, env))) return json({ error: 'Not found' }, 404);
+  if (!env.TWIN) return json({ error: 'no-bucket' }, 503);
+  const map = url.searchParams.get('map') || '';
+  if (!MAP.test(map)) return json({ error: 'which map?' }, 400);
+  if (request.method !== 'GET') return json({ error: 'method' }, 405);
+  const o = await env.TWIN.get(`surfaces/${map}.json`);
+  if (!o) return json({ none: true });
+  return new Response(o.body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' } });
+}
+
 export async function reference(request, env, url, { isAdmin }) {
   if (url.pathname !== '/api/scan/reference') return null;
   if (!(await isAdmin(request, env))) return json({ error: 'Not found' }, 404);

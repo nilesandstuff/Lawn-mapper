@@ -567,6 +567,19 @@ function drawMap() {
   const ring = (r, color, dash, lw) => { if (r.length < 2) return; g.beginPath(); r.forEach((p, i) => { const [x, y] = px(p); if (i) g.lineTo(x, y); else g.moveTo(x, y); }); g.closePath(); g.setLineDash(dash || []); g.strokeStyle = color; g.lineWidth = lw; g.stroke(); g.setLineDash([]); };
   // the property line (dashed white) and the traced lawn, at a width of v canvas pixels a screen pixel
   const traces = (v) => { for (const r of st.parcel) ring(r, 'rgba(255,255,255,.8)', [6 * v, 4 * v], 2 * v); for (const r of st.lawn) ring(r, CSS.lawn, null, 2 * v); };
+  /* A WALK'S GROUND (askSurfaces; scan/tools/surfaces.py, 2026-11-24, the owner: "Lawn shape refinement and driveway
+     marking?"): each square foot the walk's ground points called paving (grey) or grass (pale green), by the phone's
+     own labels, UNDER the traced lawn's line, so where the two disagree shows. */
+  if (st.surfaces?.kinds && st.frame && st.origin) {
+    const S = st.surfaces, c = S.cellM || 0.3048, [oe, on] = Array.isArray(S.origin) ? toLocal(st.origin, S.origin) : [0, 0];
+    for (let r = 0; r < S.h; r++) for (let q = 0; q < S.w; q++) {
+      const k = S.kinds[r * S.w + q];
+      if (!k) continue;
+      const e0 = oe + (S.i0 + q) * c, n0 = on + (S.j0 + r) * c, a = px([e0, n0 + c]), b = px([e0 + c, n0]);
+      g.fillStyle = k === 2 ? 'rgba(150, 150, 165, 0.55)' : 'rgba(170, 235, 120, 0.35)';
+      g.fillRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(1, Math.abs(b[0] - a[0])), Math.max(1, Math.abs(b[1] - a[1])));
+    }
+  }
   traces(u);
   if (st.photoChoice === 'lidar') lidarLines(g, u);
   // a point: a ring with a fine cross at its exact spot (the photo shows through), and its name beside it
@@ -2135,6 +2148,24 @@ async function askThings() {
     if (st.map === map && st.placed.length && st.origin && sig(rec) !== sig(forRecord(st.placed, (at) => fromLocal(st.origin, at)))) { const said = await shareThings(st.placed); log(`placed things: the map's record brought up to date${said}`); }
   } catch { /* the next walk's end shares them */ }
   askPlants(map);
+  askSurfaces(map);
+}
+/* A WALK'S GROUND ON THE MAP (scan/tools/surfaces.py, surfaces-keep.mjs): paving and grass as the walk's ground points
+   were labelled by the phone, drawn under the traced lawn for the owner's eyes. Read only; nothing is written. */
+async function askSurfaces(map) {
+  st.surfaces = null;
+  try {
+    const r = await fetch(`/api/scan/surfaces?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' });
+    const j = r.ok ? await r.json() : null;
+    if (st.map !== map || !j || j.none || !j.kinds || !(j.w > 0) || !(j.h > 0)) return;
+    const raw = Uint8Array.from(atob(j.kinds), (ch) => ch.charCodeAt(0));
+    const kinds = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());
+    if (kinds.length < j.w * j.h || st.map !== map) return;
+    st.surfaces = { ...j, kinds };
+    let paved = 0, grass = 0; for (const k of kinds) { if (k === 2) paved++; else if (k === 1) grass++; }
+    log(`a walk's ground on the map: ${Math.round(grass * (j.cellM / 0.3048) ** 2).toLocaleString()} sq ft of grass, ${Math.round(paved * (j.cellM / 0.3048) ** 2).toLocaleString()} sq ft of paving (pale green and grey)`);
+    drawMap();
+  } catch { /* nothing drawn */ }
 }
 /* A WALK'S PLANTS ON THE MAP (scan/tools/plants.py; the owner, 2026-11-23: "just mark trees in general and take their
    shapes at face value"; the roadmap, 2026-11-22: the AR "offering a new 3d environment with finer details, where

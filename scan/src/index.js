@@ -15,7 +15,7 @@
  */
 
 import { walks } from './walks.js';
-import { twin, reference, warp, things, plants, marks } from './twin.js';
+import { twin, reference, warp, things, plants, marks, surfaces } from './twin.js';
 import { recording } from './recording.js';
 import { thermal, noteWalk } from './thermal.js';
 import { noteSnap } from './thermal-snap.js';
@@ -101,6 +101,9 @@ export default {
     // the marks placed on the map, kept with it (src/twin.js marks): the admin only
     const marked = await marks(request, env, url, { isAdmin });
     if (marked) return marked;
+    // a walk's ground on the map (src/twin.js surfaces; scan/tools/surfaces.py): the admin only, read only
+    const ground = await surfaces(request, env, url, { isAdmin });
+    if (ground) return ground;
     // a walk's plants on the map (src/twin.js plants; scan/tools/plants.py): the admin only, read only
     const grown = await plants(request, env, url, { isAdmin });
     if (grown) return grown;
