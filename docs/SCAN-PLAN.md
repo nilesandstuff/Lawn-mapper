@@ -4597,6 +4597,13 @@ turf runs up against edges of bare dirt, so we atleast need to not count bare ar
 BUILT: the phone's "terrain" is grass and bare ground alike, so a square is BARE when half or more of its ground points
 the pictures' vote called bare ground, and bare pieces of 4 sq ft or more are taken out of the grass (brown on the map);
 smaller ones stay grass.
+HARD (run 575, the bare rule on the walk of 2026-11-20, 1 ft squares): 371 sq ft called bare by the vote, 331 of it in
+patches of 4 sq ft or more; 140 sq ft of the phone's grass taken out as bare (5,063 left). At 2 ft: 496 bare, 284 taken
+out of the grass. Brown on the start page's map (scan site run 574).
+TRIED AND DROPPED: sliding the traced lawn to where it best fits the walk (the owner: the trace is "2-3 meters off" the
+lidar's brightness), scored within 10 ft of paving with paving inside counted three times: on a simulated lot it found
+the true slide across a drive (9.4 ft against 9.3) but invented an 8.6 ft slide ALONG it, pulled by the grass round the
+drive's ends. Not trustworthy as a number; not run on the owner's walk.
 BUILT for the owner's eyes: the phone's squares kept with the map (surfaces.py --keep, surfaces-keep.mjs:
 surfaces/<map>.json in the twin bucket; GET /api/scan/surfaces?map=), drawn on the start page's map under the traced
 lawn: paving grey, grass pale green (app.js askSurfaces).
