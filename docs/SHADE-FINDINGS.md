@@ -1836,6 +1836,11 @@ whole crown seen clear is removed; one plant box under it, or a second tree touc
 keeps it. At the owner's lot the core session's count (fuse-check, run 554) says it takes no whole tree (none of
 153 clumps has more than half its 8-30 ft crown in that air) and puts 170 half-metre cells of crown in cleared
 air (25 of them deciduous). NOT MEASURED: whether the light improves against the shade readings.
+LIVE THE SAME DAY (main site and scan site deployed by the core session, 221dbd2). The core session's fuse-check on
+the owner's lot with version 4 and the walk's newest plants (the phone's labels; scan-deploy run 556): made in 2.0 s
+on a 502 x 344 half-metre grid; 916 cubes refined, 2,957 added, 475 trimmed, of which 132 by air seen empty in any
+season; 6 trees moved; no tree taken away, agreeing with clear-measure.js (no clump over half its 8-30 ft crown in
+that air).
 
 ## Speculation
 
