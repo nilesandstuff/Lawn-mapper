@@ -105,7 +105,10 @@ def straight_width(cells, pts=None):
 
 
 def main():
+    global CELL
     a = sys.argv[1:]
+    if "--feet" in a:      # the squares' size (run 570: at 1 ft the walk's paving broke into 30 pieces, three points a square being few)
+        i = a.index("--feet"); CELL = float(a[i + 1]) / FT; a = a[:i] + a[i + 2:]
     if not a or not os.path.isdir(a[0]):
         print("usage: surfaces.py <twin dir>")
         return 1
@@ -157,22 +160,23 @@ def main():
         lawn = json.load(open(os.path.join(d, "lawn.json"))).get("rings") or []
     except Exception:
         lawn = []
-    print(f"\nTHE GROUND AS THE WALK SAW IT, ON THE MAP (surfaces.py; {int(ok.sum()):,} ground points after the start cut, put on the map by its {fit.get('n')} corners; squares of 1 ft; a square called when {MIN_PTS} points or more say so and twice as many as say the other):")
+    print(f"\nTHE GROUND AS THE WALK SAW IT, ON THE MAP (surfaces.py; {int(ok.sum()):,} ground points after the start cut, put on the map by its {fit.get('n')} corners; squares of {CELL * FT:.0f} ft; a square called when {MIN_PTS} points or more say so and twice as many as say the other):")
     cxy = np.stack(np.meshgrid((np.arange(W) + i0 + 0.5) * CELL, (np.arange(H) + j0 + 0.5) * CELL), -1)
     lawn_in = inside(lawn, cxy[..., 0].ravel(), cxy[..., 1].ravel()).reshape(H, W) if lawn else None
     if lawn_in is not None:
-        print(f"  The traced lawn: {len(lawn)} ring(s), {int(lawn_in.sum()):,} sq ft of it on the squares the walk covers.")
+        print(f"  The traced lawn: {len(lawn)} ring(s), {int(lawn_in.sum() * (CELL * FT) ** 2):,} sq ft of it on the squares the walk covers.")
     else:
         print("  The traced lawn: not read (no lawn.json): nothing compared with it.")
     out = {}
+    SQ = (CELL * FT) ** 2           # square feet in a square
     for name, (pav, gra) in ways.items():
         P, G = grid(pav), grid(gra)
         paved = (P >= MIN_PTS) & (P >= 2 * G)
         grass = (G >= MIN_PTS) & (G >= 2 * P)
-        print(f"  {name}: {int(pav.sum()):,} points paved, {int(gra.sum()):,} grass; squares PAVED {int(paved.sum()):,} sq ft, GRASS {int(grass.sum()):,} sq ft.")
+        print(f"  {name}: {int(pav.sum()):,} points paved, {int(gra.sum()):,} grass; squares PAVED {int(paved.sum() * SQ):,} sq ft, GRASS {int(grass.sum() * SQ):,} sq ft.")
         if lawn_in is not None:
-            print(f"     Against the traced lawn: grass inside it {int((grass & lawn_in).sum()):,} sq ft, grass OUTSIDE it {int((grass & ~lawn_in).sum()):,} (lawn the trace may be missing); "
-                  f"paving INSIDE it {int((paved & lawn_in).sum()):,} sq ft (the trace over paving), paving outside {int((paved & ~lawn_in).sum()):,}.")
+            print(f"     Against the traced lawn: grass inside it {int((grass & lawn_in).sum() * SQ):,} sq ft, grass OUTSIDE it {int((grass & ~lawn_in).sum() * SQ):,} (lawn the trace may be missing); "
+                  f"paving INSIDE it {int((paved & lawn_in).sum() * SQ):,} sq ft (the trace over paving), paving outside {int((paved & ~lawn_in).sum() * SQ):,}.")
         lab_, n = pieces(paved)
         if n:
             sizes = np.bincount(lab_.ravel())[1:]
@@ -186,7 +190,7 @@ def main():
                 pts = np.stack([(E[inpiece] / CELL - i0), (N[inpiece] / CELL - j0)], 1) * CELL
                 sw = straight_width(cells + CELL / 2, pts)
                 ext = cells.max(0) - cells.min(0) + CELL
-                rows.append(f"{int(sizes[k]):,} sq ft, {ext.max() * FT:.0f} ft long" + (f", its longest straight run of one width {sw[1] * FT:.0f} ft long, {ftin(sw[0])} wide ({sw[2]} cross-sections)" if sw else ", no straight run of one width"))
+                rows.append(f"{int(sizes[k] * SQ):,} sq ft, {ext.max() * FT:.0f} ft long" + (f", its longest straight run of one width {sw[1] * FT:.0f} ft long, {ftin(sw[0])} wide ({sw[2]} cross-sections)" if sw else ", no straight run of one width"))
             print(f"     The paving's pieces, largest first ({n} in all): " + "; ".join(rows) + ".")
         out[name] = {"paved": int(paved.sum()), "grass": int(grass.sum())}
     return 0

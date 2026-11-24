@@ -555,6 +555,7 @@ jobs:
           node scan/tools/walk-fit.mjs twin | tee -a surfaces.txt || true
           node scan/tools/lawn-prep.mjs twin | tee -a surfaces.txt || true
           python scan/tools/surfaces.py twin | tee -a surfaces.txt
+          python scan/tools/surfaces.py twin --feet 2 | tee -a surfaces.txt
 
       - name: A walk's skyline against the lidar
         if: ${{ inputs.task == 'skyline' }}
@@ -845,7 +846,7 @@ jobs:
             jumps) cat jumps.txt 2>/dev/null || echo "no poses read: see the step above" ;;
             placed) cat placed.txt 2>/dev/null || echo "no pins read: see the step above" ;;
             trunks) cat trunks.txt 2>/dev/null || echo "no trunks looked for: see the step above" ;;
-            surfaces) grep -v ': kept (' surfaces.txt 2>/dev/null | tail -16 || echo "no ground read: see the step above" ;;
+            surfaces) grep -v ': kept (' surfaces.txt 2>/dev/null | tail -24 || echo "no ground read: see the step above" ;;
             crownsky) grep -v '^Twin read\|: kept (' crownsky.txt 2>/dev/null | tail -20 || echo "no colour study: see the step above" ;;
             corners) cat corners.txt 2>/dev/null || echo "no corners read: see the step above" ;;
             mend) cat mend.txt 2>/dev/null || echo "nothing mended: see the step above" ;;
