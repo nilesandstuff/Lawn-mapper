@@ -273,6 +273,7 @@ async function loadMap(id) {
   const pts = [...st.lawn.flat(), ...st.parcel.flat()];
   st.frame = frameFor(bboxOf(st.origin, pts, 12), m.lat);
   loadPoints(); loadPins(); listPoints();
+  askMarks(id);
   $('#setup').hidden = false;
   // which map: the owner has more than one of the same house (2026-11-09), so its date and size say which
   const saved = m.at ? new Date(m.at) : null;
@@ -502,7 +503,39 @@ const px = (map) => { const q = toPx(st.frame, st.origin, map, photoW(), photoH(
 const unpx = (p) => fromPx(st.frame, st.origin, [p[0], p[1] - padY()], photoW(), photoH());
 const KEYP = () => `scan-points:${st.map}`, KEYPIN = () => `scan-pins:${st.map}`;
 const loadPoints = () => { try { st.points = JSON.parse(localStorage.getItem(KEYP()) || '[]'); } catch { st.points = []; } };
-const savePoints = () => { try { localStorage.setItem(KEYP(), JSON.stringify(st.points)); } catch { /* this phone only */ } };
+/* THE MARKS ARE KEPT WITH THE MAP (core session, 2026-11-24; src/twin.js marks): the owner opened their home map and
+   the marks were gone, because they lived only in this phone's storage. Now the phone's copy is the quick one and
+   the server's the kept one: written a moment after each change, read when a map opens (askMarks), the newer of the
+   two winning by its time. */
+const KEYPAT = () => `scan-points-at:${st.map}`;
+let marksTimer = null;
+const savePoints = () => {
+  const at = new Date().toISOString();
+  try { localStorage.setItem(KEYP(), JSON.stringify(st.points)); localStorage.setItem(KEYPAT(), at); } catch { /* the server's copy below */ }
+  const map = st.map, points = pointsKept();
+  clearTimeout(marksTimer);
+  if (map) marksTimer = setTimeout(() => putMarks(map, points, at), 1500);
+};
+async function putMarks(map, points, at) {
+  try {
+    const r = await fetch(`/api/scan/marks?map=${encodeURIComponent(map)}`, { method: 'PUT', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ v: 1, at, points }), signal: AbortSignal.timeout(SEND_TIMEOUT_MS) });
+    if (!r.ok) log(`the marks were NOT kept with the map (the site answered ${r.status}); they are on this phone`);
+  } catch { /* no signal: the next change, or the next opening, sends them */ }
+}
+async function askMarks(map) {
+  let j = null;
+  try { const r = await fetch(`/api/scan/marks?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' }); j = r.ok ? await r.json() : null; } catch { j = null; }
+  if (st.map !== map || !j) return;
+  let localAt = '';
+  try { localAt = localStorage.getItem(KEYPAT()) || ''; } catch { localAt = ''; }
+  const server = !j.none && Array.isArray(j.points) ? j.points : null;
+  if (server && server.length && (!st.points.length || String(j.at || '') > localAt)) {
+    st.points = server;
+    try { localStorage.setItem(KEYP(), JSON.stringify(st.points)); localStorage.setItem(KEYPAT(), String(j.at || '')); } catch { /* shown all the same */ }
+    listPoints(); drawMap();
+    log(`the marks kept with this map (${server.length}) are shown`);
+  } else if (st.points.length && (!server || localAt > String(j.at || ''))) putMarks(map, pointsKept(), localAt || new Date().toISOString());
+}
 const loadPins = () => { try { st.pins = JSON.parse(localStorage.getItem(KEYPIN()) || '[]'); } catch { st.pins = []; } };
 const savePins = () => { try { localStorage.setItem(KEYPIN(), JSON.stringify(st.pins.slice(-200))); } catch { /* this phone only */ } };
 /* PLACED AGAIN ON THE OTHER PHOTO (the owner, 2026-11-10): the same set of points placed a second time on the other

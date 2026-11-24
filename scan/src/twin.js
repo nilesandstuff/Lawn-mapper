@@ -178,6 +178,41 @@ export async function things(request, env, url, { isAdmin }) {
 }
 
 /**
+ * THE MARKS PLACED ON A MAP (the roof corners and check points of the start page), kept WITH THE MAP (core session,
+ * 2026-11-24). They were kept only in the phone's own storage, one set per map; the owner opened their home map and
+ * they were gone ("the reference marks are gone. Is that a problem?"). CLAUDE.md: no tool keeps maps in the browser
+ * any more. So: marks/<map>.json, { v: 1, at, points }, read when a map opens and written when they change; the one it
+ * replaces is kept under marks/backup/. The admin only.
+ *   GET /api/scan/marks?map=   the file, or { none: true }
+ *   PUT /api/scan/marks?map=   { v: 1, at, points: [...] } (at most MAX_MARKS_BYTES)
+ */
+export const marksKey = (map) => `marks/${map}.json`;
+const MAX_MARKS_BYTES = 128 * 1024;
+export async function marks(request, env, url, { isAdmin }) {
+  if (url.pathname !== '/api/scan/marks') return null;
+  if (!(await isAdmin(request, env))) return json({ error: 'Not found' }, 404);
+  if (!env.TWIN) return json({ error: 'no-bucket' }, 503);
+  const map = url.searchParams.get('map') || '';
+  if (!MAP.test(map)) return json({ error: 'which map?' }, 400);
+  if (request.method === 'GET') {
+    const o = await env.TWIN.get(marksKey(map));
+    if (!o) return json({ none: true });
+    return new Response(o.body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' } });
+  }
+  if (request.method === 'PUT') {
+    const text = await request.text();
+    if (text.length > MAX_MARKS_BYTES) return json({ error: `at most ${MAX_MARKS_BYTES} bytes` }, 413);
+    let j = null;
+    try { j = JSON.parse(text); } catch { j = null; }
+    if (!j || j.v !== 1 || !Array.isArray(j.points) || typeof j.at !== 'string') return json({ error: 'not a set of marks' }, 400);
+    try { const old = await env.TWIN.get(marksKey(map)); if (old) await env.TWIN.put(`marks/backup/${map}-${Date.now()}.json`, old.body); } catch { /* the new set is kept either way */ }
+    await env.TWIN.put(marksKey(map), JSON.stringify({ v: 1, at: j.at, points: j.points }), { httpMetadata: { contentType: 'application/json' } });
+    return json({ ok: true, map, points: j.points.length, at: j.at });
+  }
+  return json({ error: 'method' }, 405);
+}
+
+/**
  * A WALK'S PLANTS ON THE MAP (core session, 2026-11-23; scan/tools/plants.py, plants-keep.mjs): plants/<map>.json,
  * written by the workflow, read here by the scan page when a map opens so it can put them into the scan tool's part
  * of the map's record. Read only; the admin only.

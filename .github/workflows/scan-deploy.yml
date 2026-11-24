@@ -377,6 +377,9 @@ jobs:
             # "<walk>:fused": why is there no fused map? the owner's maps of the walk's place, which holds the walk's plants,
             # which has a fused model, and the fusing run here on the real files (scan/tools/fuse-check.mjs). No ids, no places.
             *:fused) node scan/tools/fuse-check.mjs "${WALK%%:*}" | tee placed.txt ;;
+            # "<walk>:marks" (or ":marks:force"): the marks that walk was made with, kept with its map (marks-restore.mjs)
+            *:marks:force) node scan/tools/marks-restore.mjs "${WALK%%:*}" force | tee placed.txt ;;
+            *:marks) node scan/tools/marks-restore.mjs "${WALK%%:*}" | tee placed.txt ;;
             *) node scan/tools/placed.mjs "$WALK" | tee placed.txt ;;
           esac
 
