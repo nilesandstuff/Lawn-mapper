@@ -53,6 +53,11 @@ async function main() {
   const maps = (await sql(`SELECT key, lng, lat, updated_at, (payload LIKE '%"adminSave":true%') AS admin_save FROM maps WHERE user_id = ?`, [uid])).filter((m) => Number.isFinite(m.lng) && Number.isFinite(m.lat) && metres(at0, [m.lng, m.lat]) <= 80);
   const tools = await sql(`SELECT map_key, tool, length(data) AS bytes, updated_at, json_array_length(json_extract(data, '$.plants.boxes')) AS boxes, json_extract(data, '$.plants.walk') AS pwalk, json_extract(data, '$.plants.at') AS pat, json_extract(data, '$.plants.seen.w') AS sw, json_extract(data, '$.plants.seenHigh.w') AS shw FROM map_tools WHERE owner_kind = 'user' AND owner_id = ? AND tool IN ('scan', 'shade')`, [uid]);
   const token = process.env.CLOUDFLARE_API_TOKEN, base = `${API}/accounts/${await account(token)}/r2/buckets/${CORPUS_BUCKET}`;
+  // which map each walk was made on (twins/<walk>/meta.json), to say how many walks each of these maps has
+  const sb = `${API}/accounts/${await account(token)}/r2/buckets/${BUCKET}`;
+  const metas = (await list(sb, token, 'twins/').catch(() => [])).filter((o) => /^twins\/[^/]+\/meta\.json$/.test(o.key));
+  const walkMaps = [];
+  for (const o of metas) { try { const b = await readObject(BUCKET, o.key); const j = b ? JSON.parse(b.toString()) : null; if (j?.map) walkMaps.push(j.map); } catch { /* skipped */ } }
   maps.sort((a, b) => (a.key === key ? -1 : b.key === key ? 1 : String(b.updated_at).localeCompare(String(a.updated_at))));
   console.log(`\nWHY NO FUSED MAP? (walk ${walk}) THE OWNER'S MAPS OF THAT PLACE (within 260 ft of the walk's map): ${maps.length}.`);
   let i = 0, lidarKeyOfWalk = null, partsOfWalk = [], shiftOfWalk = null;
@@ -64,6 +69,9 @@ async function main() {
     const lidar = obj('shade.bin'), fused = obj('shade-fused.bin');
     if (m.key === key) { lidarKeyOfWalk = lidar ? prefix + 'shade.bin' : null; partsOfWalk = objs.filter((o) => /\/shade\.\d+\.bin$/.test(o.key)).map((o) => o.key); }
     const sc = tools.find((t) => t.map_key === m.key && t.tool === 'scan'), sh = tools.find((t) => t.map_key === m.key && t.tool === 'shade');
+    const refO = (await list(`${API}/accounts/${await account(token)}/r2/buckets/${BUCKET}`, token, `refs/${m.key}.bin`).catch(() => [])).find((o) => o.key === `refs/${m.key}.bin`);
+    const walksOn = walkMaps.filter((x) => x === m.key).length;
+    console.log(`  ${name}: the yard AR tool's reference walk: ${refO ? `kept (${when(refO.last_modified)})` : 'NONE'}; walks made on it: ${walksOn}.`);
     console.log(`  ${name}: saved ${when(m.updated_at)}${m.admin_save ? ', an admin save' : ''}. Shade map's part: ${sh ? `yes (${when(sh.updated_at)})` : 'NONE'}; lidar model: ${lidar ? when(lidar.last_modified) : 'NONE'}; FUSED MODEL: ${fused ? `${when(fused.last_modified)}, ${(fused.size / 1e6).toFixed(2)} MB` : 'NONE'}.`);
     // THE LINE-UP (the features session's caveat, 2026-11-24): a walk is fitted to ITS map's lidar as that map lined it up
     // (meta.lidar.shift, EPSG:3857 metres; real metres are that times cos(latitude)); lent to another map of the lot it sits
