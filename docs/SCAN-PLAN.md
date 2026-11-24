@@ -4617,9 +4617,14 @@ roof is never empty air, so they measure the lidar's coarseness at an edge, or a
 same at crowns' lower edges: the owner's third reason (shapes drifted or smeared off the canopy). The fusing leaves
 roofs to the lidar, so the 39 change nothing.
 
-ASKED OF THE FEATURES SESSION (2026-11-24; fuse.js is theirs): trim by `clearHigh` in any season (FUSE_VERSION 4),
-and the owner's whole-tree rule for a lidar clump whose crown 8-30 ft is nearly all in that air with no plant of the
-walk's under it. The scan page and fuse-check already pass `openBare` (ignored until then).
+LIVE 2026-11-24 ~14:35 UTC: the features session's fusing 4 (PR 50: `clearHigh` trims in any season, union with
+`seenHigh` never counted twice; a lidar tree clump with 90% or more of its 8-30 ft crown in that air, at least 8
+cells, and no plant of the walk's in its footprint is taken away whole), merged with the core session's go; main site
+deployed (workflow 2 run on 221dbd2; log's end: deployed, no database warning); the scan site redeployed itself on
+the push (its log's end read: live, twins kept).
+HARD (run 556, fusing 4 on the owner's lot, the phone's plants and all three air grids): 916 half-metre cells
+refined, 2,957 added, 475 trimmed, 132 of them by the air seen empty in any season; 6 trees moved (8 before, with the
+vote's plants); 0 lidar trees taken away, as the clump count above said. NOT LOOKED AT by anyone yet.
 
 ## 61. "I'm not seeing the fused map at all": a walk was tied to one record of three (2026-11-24)
 
