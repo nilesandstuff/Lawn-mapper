@@ -4578,9 +4578,14 @@ HARD (run 560, the walk of 2026-11-20, 767 pictures, 685 with blue sky in them):
 - BY "CLEAN IN 3 PICTURES OR MORE" THE COLOUR TELLS NOTHING: 68.5% of the depth's crown blocks and 79.6% of its air
   passed; 99.1% and 100% were also hazy in 3 pictures or more. With hundreds of pictures a block is seen in dozens,
   and three clean views come by chance. (On a simulated yard of 16 pictures the same rule worked: 0.2% / 86%.)
-SPECULATION: a picture's aim is off by 2-5 degrees (SCAN-H14 to H16), more than a 2 ft block is wide at 20 m, so a
-block's patch lands on different things in different pictures. NEXT (run 561): judged by the SHARE of its views that
-are clean, all views and views within 12 m (where the block is 3 degrees wide or more), against the depth.
+- BY THE SHARE OF ITS VIEWS THAT ARE CLEAN (run 561): crown 0.05 / 0.09 / 0.12, air 0.05 / 0.08 / 0.12 (quartiles,
+  blocks seen 10 times or more); within 12 m crown 0.00 / 0.00 / 0.05, air 0.00 / 0.08 / 0.13. No share separates them.
+- CONTROLS (run 563: plain sky 30 m up, seen 35 degrees up or more, 209 blocks): clean in 0.08 / 0.17 / 0.29 of their
+  views by the strict blue test, 0.00 / 0.05 / 0.13 by a looser "bright and no less blue" test. Plain sky should read
+  near 1.00. So on this walk the TEST (or the pictures' aim) fails on the sky itself, before any crown is asked about:
+  nothing above says whether the owner's idea works. (On a simulated yard the controls read 1.00.)
+NEXT (run 564): the colour of the controls' pixels: blue (a threshold to fix), white or grey (an overcast or hazy sky:
+this walk cannot answer), or dark (the aim is off).
 
 ## 63. The marks kept with the map, not only on the phone (2026-11-24)
 
