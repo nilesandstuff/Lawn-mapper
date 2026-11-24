@@ -42,6 +42,20 @@
  *   a cube is trimmed only after a walk in leaf, or where the lidar's cell is not a deciduous crown: in leaf-off
  *   months the phone sees straight through a bare crown, and that is not "no tree" (the owner, 2026-11-23).
  *
+ *   AIR SEEN EMPTY IN ANY SEASON (plants.clearHigh, the core session's, 2026-11-24, docs/SCAN-PLAN.md 62; read by
+ *   openHighFromSeen into `openBare`): above 8 ft, a half-metre block the walk's sight lines crossed for 8 m or more
+ *   with NOTHING seen in it. A bare crown still stops some lines through it (0.58 a metre in the sparsest quarter of
+ *   the crowns measured), so that is air in leaf-off months too, and it trims a lidar cube as `openHigh` does but
+ *   with no season or deciduous test: the owner's three reasons to take lidar crown away (2026-11-24) are branches
+ *   cut since the flight, whole trees gone, and lidar shapes drifted off the real canopy.
+ *
+ *   A TREE GONE (the owner, 2026-11-24: "Zero branches (or a trunk) seen within a certain distance of the ground
+ *   where lidar says there should be tree, means that tree is gone"): a lidar tree clump (8-neighbour, so touching
+ *   canopies are one clump and a woodline is never taken by this) with GONE_SHARE or more of its crown from 8 to 30 ft
+ *   (GONE_MIN_CELLS half-metre cells of it at the least) in `openBare` air, and no plant the walk saw anywhere in its
+ *   footprint, is taken away whole, every layer, its top above 30 ft too. Counted the way scan/lib/clear-measure.js
+ *   counts it (half-metre cells of the lidar's cubes, a cell inside when half its layer is in the band).
+ *
  *   THE LEAVES (owner, 2026-11-23: "seeing sky points through a tree canopy when the leaves are off should not be a
  *   signal that there's no tree there"): a walk made in leaf-off months (las.js leafOfMs: 1 November to 10 May) sees
  *   a deciduous crown's BRANCHES, not where its leaves will be, so inside a lidar cube of a deciduous crown (its summer
@@ -55,7 +69,7 @@ import { leafOfMs, LEAF_ON } from './las.js';
 import { SOLID_MU } from './canopy.js';
 
 /** The fusing's own build, written into meta.fused.version: bump it whenever what fuseModel makes changes. */
-export const FUSE_VERSION = 3; // 2: no height cap; a deciduous crown's density kept even after a leaf-off walk. 3: open air above 8 ft (seenHigh)
+export const FUSE_VERSION = 4; // 2: no height cap; a deciduous crown's density kept even after a leaf-off walk. 3: open air above 8 ft (seenHigh). 4: air seen empty in any season (clearHigh), and a tree gone
 export const FUSE_SUB = 2;            // half-metre cells per lidar metre
 export const PLANT_TRUST_M = Infinity; // no cap on the walk's heights (the owner, 2026-11-23)
 export const PLANT_MU = 2.3;          // a cube of plant the lidar did not see: stops 90% of the light a metre
@@ -64,6 +78,9 @@ export const SHIFT_BAND_M = [1.5, Infinity]; // the heights both see, for moving
 export const SHIFT_MAX_M = 2;
 export const SHIFT_GAIN = 1.3;        // the best overlap must beat the unmoved one by this much
 export const CLUMP_MIN_CELLS = 12;    // half-metre cells of the walk's plant in the band, at the least, to move a tree
+export const GONE_BAND_FT = [8, 30];  // a tree gone: judged on its crown in these heights (the walk's clearHigh reach)
+export const GONE_SHARE = 0.9;        // ...this much of it in air the walk saw empty in any season
+export const GONE_MIN_CELLS = 8;      // ...out of this many half-metre cells of crown in the band, at the least
 const R_EARTH = 6378137;              // scan/lib/frames.js: the walk's local frame is a sphere of this radius
 
 /** A walk's local metres east/north of `origin` [lng, lat] -> [lng, lat] (scan/lib/frames.js fromLocal). */
@@ -190,7 +207,7 @@ function clumpsOf(kind, w, h) {
  * read ({ meta, arrays }, joined with any overflow), `plants` the scan tool's record, `origin` the map's [lng, lat]
  * (the point the walk's metres are measured from).
  */
-export function fuseModel(lidar, plants, origin, { now = new Date(), open = null, openHigh = null } = {}) {
+export function fuseModel(lidar, plants, origin, { now = new Date(), open = null, openHigh = null, openBare = null } = {}) {
   const { meta, arrays } = lidar;
   const G = meta.grid, { z0, dz, nz } = meta.layers;
   const W = G.w, H = G.h, S = FUSE_SUB, w = W * S, h = H * S;
@@ -202,13 +219,43 @@ export function fuseModel(lidar, plants, origin, { now = new Date(), open = null
   const layerOf = (m) => Math.floor((m - z0) / dz);
   const kind = arrays.kind || new Uint8Array(W * H);
 
-  /* 1. POSITION: each lidar tree the walk saw well, moved (whole) to best overlap the walk's plant in the band both see. */
   const { id: clump, n: nClumps } = clumpsOf(kind, W, H);
+
+  /* 0. A TREE GONE: nearly all of its crown from 8 to 30 ft in air the walk saw empty in any season, and no plant the
+     walk saw in its footprint (counted as scan/lib/clear-measure.js counts it, on the lidar's own place). */
+  const gone = new Uint8Array(nClumps), removed = [];
+  if (openBare) {
+    const lower = new Float64Array(nClumps), lowerClear = new Float64Array(nClumps), plantIn = new Uint8Array(nClumps), cols = new Int32Array(nClumps);
+    for (let k = 0; k < W * H; k++) if (clump[k] >= 0) cols[clump[k]]++;
+    const [fa, fb] = GONE_BAND_FT.map((ft) => ft / 3.28084);
+    for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) {
+      const f = r * w + c, p = parent(c, r), id = clump[p];
+      if (id < 0) continue;
+      for (let l = 0; l < nz; l++) if (share[f * nz + l] > 0) { plantIn[id] = 1; break; }
+      const lo = openBare.lo[f], hi = openBare.hi[f], has = hi > lo, g = arrays.ground[p];
+      for (let l = 0; l < nz; l++) {
+        if (!(arrays.mu[p * nz + l] > 0)) continue;
+        const zb = z0 + l * dz - g, zt = zb + dz, mid = (zb + zt) / 2;
+        if (mid < fa || mid >= fb) continue;
+        lower[id]++;
+        if (has && Math.max(0, Math.min(zt, hi) - Math.max(zb, lo)) >= dz / 2) lowerClear[id]++;
+      }
+    }
+    for (let id = 0; id < nClumps; id++) {
+      if (plantIn[id] || lower[id] < GONE_MIN_CELLS || lowerClear[id] / lower[id] < GONE_SHARE) continue;
+      gone[id] = 1;
+      removed.push({ clump: id, columns: cols[id], crownCells: lower[id], clearShare: Math.round((lowerClear[id] / lower[id]) * 1000) / 1000 });
+    }
+  }
+  const isGone = (k) => clump[k] >= 0 && gone[clump[k]] === 1;
+
+  /* 1. POSITION: each lidar tree the walk saw well, moved (whole) to best overlap the walk's plant in the band both see. */
   const moveOf = new Array(nClumps).fill(null).map(() => [0, 0]);
   const steps = Math.round(SHIFT_MAX_M / (G.cell * mercScale(G.lat) / S));
   const band = (k, l) => { const zm = z0 + (l + 0.5) * dz - arrays.ground[k]; return zm >= SHIFT_BAND_M[0] && zm <= SHIFT_BAND_M[1]; };
   const moved = [];
   for (let id = 0; id < nClumps; id++) {
+    if (gone[id]) continue;
     /* the clump's cubes in the band, on the fine grid */
     const cells = [];
     for (let k = 0; k < W * H; k++) {
@@ -242,11 +289,13 @@ export function fuseModel(lidar, plants, origin, { now = new Date(), open = null
     moved.push({ clump: id, east: best.dx * G.cell * mercScale(G.lat) / S, north: -best.dy * G.cell * mercScale(G.lat) / S });
   }
 
-  /* 2. The lidar on the fine grid, each tree where step 1 put it (a moved tree leaves its old place empty). */
+  /* 2. The lidar on the fine grid, each tree where step 1 put it (a moved tree leaves its old place empty; a tree gone
+     is not there at all). */
   const fuseOne = (src) => {
     if (!src) return null;
     const out = new Float32Array(w * h * nz);
     for (let k = 0; k < W * H; k++) {
+      if (isGone(k)) continue;
       const X = k % W, Y = (k / W) | 0;
       const [mx, my] = clump[k] >= 0 ? moveOf[clump[k]] : [0, 0];
       for (let sy = 0; sy < S; sy++) for (let sx = 0; sx < S; sx++) {
@@ -263,7 +312,7 @@ export function fuseModel(lidar, plants, origin, { now = new Date(), open = null
      into a roof, and a roof's density is never moved). */
   const placed = new Uint8Array(w * h);
   for (let k = 0; k < W * H; k++) {
-    if (!kind[k]) continue;
+    if (!kind[k] || isGone(k)) continue;
     const X = k % W, Y = (k / W) | 0, [mx, my] = clump[k] >= 0 ? moveOf[clump[k]] : [0, 0];
     for (let sy = 0; sy < S; sy++) for (let sx = 0; sx < S; sx++) {
       const c = X * S + sx + mx, r = Y * S + sy + my;
@@ -289,18 +338,22 @@ export function fuseModel(lidar, plants, origin, { now = new Date(), open = null
     }
     return best || PLANT_MU;
   };
-  let added = 0, refined = 0, trimmed = 0;
-  /* The share of layer l of fine cell f the walk saw open (0..1), from `open` (metres open from the ground, NaN: no claim). */
+  let added = 0, refined = 0, trimmed = 0, trimmedBare = 0;
+  /* metres of layer l of fine cell f inside the band a..b over the ground (0 where there is no band: NaN, or b <= a) */
+  const inBand = (f, l, a, b) => (b > a ? Math.max(0, Math.min(z0 + (l + 1) * dz, ground[f] + b) - Math.max(z0 + l * dz, ground[f] + a)) : 0);
+  const bareShare = (f, l) => (openBare ? inBand(f, l, openBare.lo[f], openBare.hi[f]) / dz : 0);
+  /* The share of layer l of fine cell f the walk saw open (0..1), from `open` (metres open from the ground, NaN: no
+     claim), `openHigh` and `openBare` (bands over the ground; where both speak, their union, never counted twice). */
   const openShare = (f, l) => {
     const zl = z0 + l * dz;
     let sh = 0;
     const o = open ? open[f] : NaN;
     if (o > 0) sh += Math.max(0, Math.min(1, (ground[f] + o - zl) / dz));
-    /* above 8 ft: only after a walk in leaf, or where the lidar's cell is not a deciduous crown (THE LEAVES) */
-    if (openHigh && !decid[f]) {
-      const a = openHigh.lo[f], b = openHigh.hi[f];
-      if (b > a) sh += Math.max(0, Math.min(zl + dz, ground[f] + b) - Math.max(zl, ground[f] + a)) / dz;
-    }
+    /* above 8 ft, seenHigh: only after a walk in leaf, or where the lidar's cell is not a deciduous crown (THE LEAVES);
+       clearHigh: in any season (AIR SEEN EMPTY IN ANY SEASON) */
+    const a1 = openHigh && !decid[f] ? openHigh.lo[f] : NaN, b1 = openHigh && !decid[f] ? openHigh.hi[f] : NaN;
+    const a2 = openBare ? openBare.lo[f] : NaN, b2 = openBare ? openBare.hi[f] : NaN;
+    sh += (inBand(f, l, a1, b1) + inBand(f, l, a2, b2) - inBand(f, l, Math.max(a1, a2), Math.min(b1, b2))) / dz;
     return Math.min(1, sh);
   };
   const refine = (mu) => {
@@ -324,7 +377,7 @@ export function fuseModel(lidar, plants, origin, { now = new Date(), open = null
         const q = sy * S + sx, c = C * S + sx, r = R * S + sy, i = (r * w + c) * nz + l;
         if (meanMu > 0) {
           out[i] = sumW > 0 ? Math.min(SOLID_MU, meanMu * wts[q] * (S * S) / sumW) : 0;
-          if (mu === muL) { if (sumShare > 0) refined++; else if (out[i] === 0) trimmed++; }
+          if (mu === muL) { if (sumShare > 0) refined++; else if (out[i] === 0) { trimmed++; if (bareShare(r * w + c, l) > 0) trimmedBare++; } }
         } else if (sh[q] > 0) { out[i] = Math.min(SOLID_MU, sh[q] * borrow(mu, c, r, l)); if (mu === muL) added++; }
       }
     }
@@ -340,14 +393,17 @@ export function fuseModel(lidar, plants, origin, { now = new Date(), open = null
     if (hi >= 0) { top[f] = z0 + (hi + 1) * dz - ground[f]; if (!kindF[f]) kindF[f] = 2; }
     else if (kindF[f] === 2 || kindF[f] === 3) kindF[f] = 0;
   }
-  /* Per half-metre cell, what the walk did there: 1 it saw plant, 2 it saw open air and the lidar was trimmed. */
+  /* Per half-metre cell, what the walk did there: 1 it saw plant, 2 it saw open air and the lidar was trimmed, 3 a
+     lidar tree stood here and is gone. */
   const walk = new Uint8Array(w * h);
   for (let f = 0; f < w * h; f++) for (let l = 0; l < nz; l++) if (share[f * nz + l] > 0) { walk[f] = 1; break; }
-  if (open) for (let f = 0; f < w * h; f++) if (!walk[f] && open[f] > 0 && muL) { for (let l = 0; l < nz; l++) if (muL[f * nz + l] > 0 && mu[f * nz + l] === 0) { walk[f] = 2; break; } }
+  const claims = (f) => (open && open[f] > 0) || (openHigh && openHigh.hi[f] > openHigh.lo[f]) || (openBare && openBare.hi[f] > openBare.lo[f]);
+  if (muL) for (let f = 0; f < w * h; f++) if (!walk[f] && claims(f)) { for (let l = 0; l < nz; l++) if (muL[f * nz + l] > 0 && mu[f * nz + l] === 0) { walk[f] = 2; break; } }
+  if (removed.length) for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) { const f = r * w + c; if (!walk[f] && isGone(parent(c, r)) && Number.isNaN(top[f])) walk[f] = 3; }
   const out = {
     meta: {
       v: meta.v, tool: 'shade', build: meta.build, at: now.toISOString(), basedOn: meta.basedOn || null,
-      fused: { version: FUSE_VERSION, from: 'the shade map\'s lidar model and one yard walk\'s plants (fuse.js)', lidarAt: meta.at, walk: plants.walk ?? null, walkAt: plants.at ?? null, walkFit: plants.fit || null, sub: S, walkInLeaf, refined, added, trimmed, seenOpen: !!open, seenOpenHigh: !!openHigh, moved },
+      fused: { version: FUSE_VERSION, from: 'the shade map\'s lidar model and one yard walk\'s plants (fuse.js)', lidarAt: meta.at, walk: plants.walk ?? null, walkAt: plants.at ?? null, walkFit: plants.fit || null, sub: S, walkInLeaf, refined, added, trimmed, trimmedBare, seenOpen: !!open, seenOpenHigh: !!openHigh, seenOpenBare: !!openBare, moved, removed },
       fences: meta.fences || [], grid, layers: { z0, dz, nz }, lidar: meta.lidar || null, photo: meta.photo || null, rule: meta.rule, leaves: meta.leaves,
     },
     arrays: { ground, kind: kindF, top, mu, walk },

@@ -211,10 +211,11 @@ export async function rebuildModel(mapId, { onProgress = () => {}, signal = null
       try {
         const open = plants.seen ? await openFromSeen(plants.seen, origin, fusedGrid(fin.meta)).catch(() => null) : null;
         const openHigh = plants.seenHigh ? await openHighFromSeen(plants.seenHigh, origin, fusedGrid(fin.meta)).catch(() => null) : null;
-    const fused = fuseModel(fin, plants, origin, { open, openHigh });
+        const openBare = plants.clearHigh ? await openHighFromSeen(plants.clearHigh, origin, fusedGrid(fin.meta)).catch(() => null) : null; // the air seen empty in any season
+        const fused = fuseModel(fin, plants, origin, { open, openHigh, openBare });
         const madeFrom = put.at ? `${put.at}|${plants.at}|${FUSE_VERSION}` : null;
         const fp = await putModelFiles(fetchFn, base, mapId, await modelFiles(fused), 'fused', { madeFrom });
-        fusedInfo = { ok: fp.ok, walkAt: plants.at ?? null, version: FUSE_VERSION, refined: fused.meta.fused.refined, added: fused.meta.fused.added, trimmed: fused.meta.fused.trimmed, moved: fused.meta.fused.moved.length };
+        fusedInfo = { ok: fp.ok, walkAt: plants.at ?? null, version: FUSE_VERSION, refined: fused.meta.fused.refined, added: fused.meta.fused.added, trimmed: fused.meta.fused.trimmed, trimmedBare: fused.meta.fused.trimmedBare, moved: fused.meta.fused.moved.length, removed: fused.meta.fused.removed.length };
       } catch (e) { fusedInfo = { ok: false, why: String(e?.message || e).slice(0, 120) }; }
     }
     /* A first build keeps its lidar and line-up in the map's shade part, as the page does (shade.js shadePart), so

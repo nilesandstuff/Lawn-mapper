@@ -223,12 +223,13 @@ async function saveFusedFile(site, fin, lidarAt = null) {
   try {
     const open = plants.seen ? await openFromSeen(plants.seen, origin, fusedGrid(fin.meta)).catch(() => null) : null;
     const openHigh = plants.seenHigh ? await openHighFromSeen(plants.seenHigh, origin, fusedGrid(fin.meta)).catch(() => null) : null;
-    const fused = fuseModel(fin, plants, origin, { open, openHigh });
+    const openBare = plants.clearHigh ? await openHighFromSeen(plants.clearHigh, origin, fusedGrid(fin.meta)).catch(() => null) : null; // the air seen empty in any season
+    const fused = fuseModel(fin, plants, origin, { open, openHigh, openBare });
     view.fused = fused;
     const f = fused.meta.fused;
-    track('fused', `${f.refined} refined, ${f.added} added, ${f.trimmed} trimmed, ${f.moved.length} trees moved`);
+    track('fused', `${f.refined} refined, ${f.added} added, ${f.trimmed} trimmed (${f.trimmedBare} by air seen empty in any season), ${f.moved.length} trees moved, ${f.removed.length} gone`);
     const day = Number.isFinite(Number(plants.walk)) ? new Date(Number(plants.walk)).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : null;
-    walkNote(`Refined by your yard walk${day ? ` of ${day}` : ''}${plants.borrowed ? ', made on another of your maps of this lot' : ''}${f.walkInLeaf ? '' : ' (made with the leaves off, so bare crowns keep the lidar\'s density)'}: ${f.refined.toLocaleString()} half-meter blocks reshaped, ${f.added.toLocaleString()} added, ${f.trimmed.toLocaleString()} trimmed where the walk saw open air, ${f.moved.length} tree${f.moved.length === 1 ? '' : 's'} moved.`);
+    walkNote(`Refined by your yard walk${day ? ` of ${day}` : ''}${plants.borrowed ? ', made on another of your maps of this lot' : ''}${f.walkInLeaf ? '' : ' (made with the leaves off, so bare crowns keep the lidar\'s density except where the walk saw clean through them)'}: ${f.refined.toLocaleString()} half-meter blocks reshaped, ${f.added.toLocaleString()} added, ${f.trimmed.toLocaleString()} trimmed where the walk saw open air, ${f.moved.length} tree${f.moved.length === 1 ? '' : 's'} moved${f.removed?.length ? `, ${f.removed.length} lidar tree${f.removed.length === 1 ? '' : 's'} taken away (the walk saw clean through where ${f.removed.length === 1 ? 'it' : 'they'} stood, and no plant there)` : ''}.`);
     view.sun?.setFused(fused);
     view.trees?.setFused?.(fused);
     /* WHAT IT WAS MADE FROM (docs/MAPS.md, the fused model; the same rule as the scan page's fuse-walk.js madeFromOf):
