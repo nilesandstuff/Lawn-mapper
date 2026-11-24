@@ -62,6 +62,12 @@ assert.equal((await fuseWalk({ ...args, plants: { ...plants, at: '2026-11-24T09:
 const p1 = puts;
 assert.match((await fuseWalk({ ...args, plants: { ...plants, at: 'later' }, still: () => false })).why, /given up/); assert.equal(puts, p1);
 assert.match((await fuseWalk({ ...args, plants: { ...plants, boxes: [] } })).why, /no plants/);
+// a walk made on another map of the lot: measured from plants.origin, not from the point of the map being fused
+const far = [origin[0] + 0.001, origin[1] + 0.001];
+const rFar = await fuseWalk({ ...args, origin: far, plants: { ...plants, at: 'far-1' } });
+assert.equal(rFar.made, true); assert.equal(rFar.stats.added, 0, 'measured from a point 100 m off, the hedge is off the grid');
+const rLent = await fuseWalk({ ...args, origin: far, plants: { ...plants, at: 'lent-1', origin, borrowed: true } });
+assert.equal(rLent.made, true); assert.equal(rLent.stats.added, r1.stats.added, 'with its own point, it is where the walk saw it');
 store.delete('lidar');
 assert.match((await fuseWalk({ ...args, plants: { ...plants, at: 'x' } })).why, /no lidar model/);
 console.log('fuse-walk: ok');

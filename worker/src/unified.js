@@ -244,6 +244,50 @@ export async function getMap(env, owner, key) {
   return { ...asSave(row), tools };
 }
 
+/**
+ * A WALK FOLLOWS THE PLACE, NOT THE RECORD (core session, 2026-11-24; docs/MAPS.md "The fused model"). An account can
+ * hold several maps of one lot (an admin save beside its own save), and a yard walk is made on ONE of them: its
+ * plants went into that record alone, so the same lot opened from another record had nothing to fuse (the owner,
+ * 2026-11-23: "I opened my property in the shade map but I'm not seeing the fused map at all"; the walk was on the
+ * admin save, the shade map's list holds only the ordinary saves).
+ *
+ * So a map read with no walk of its own is handed the walk's plants from the account's nearest other map of that
+ * place, UNCHANGED, with two things added: `origin`, the [lng, lat] the boxes and the open air are measured from
+ * (the other map's point; a reader uses plants.origin when it is there, the map's own point when it is not), and
+ * `borrowed: true`. Nothing is copied: the next walk shows through at once, and a borrowed part posted back by a
+ * tool is dropped (dropBorrowed), so a record never keeps another map's walk as its own. Signed-in accounts only (a
+ * guest has one map). Null when the map has plants of its own or there is no such neighbour.
+ */
+export const SAME_PLACE_M = 80;
+export async function plantsOfPlace(env, owner, map) {
+  if (owner?.kind !== 'user' || !map || !Number.isFinite(map.lng) || !Number.isFinite(map.lat)) return null;
+  if (map.tools?.scan?.data?.plants?.boxes?.length) return null;
+  const dLat = SAME_PLACE_M / 111320, dLng = dLat / Math.max(0.05, Math.cos((map.lat * Math.PI) / 180));
+  const { results } = await env.DB.prepare(
+    `SELECT m.lng AS lng, m.lat AS lat, json_extract(t.data, '$.plants') AS plants
+       FROM maps m JOIN map_tools t ON t.owner_kind = 'user' AND t.owner_id = m.user_id AND t.map_key = m.key AND t.tool = 'scan'
+      WHERE m.user_id = ? AND m.key != ? AND m.lng BETWEEN ? AND ? AND m.lat BETWEEN ? AND ?
+        AND json_extract(t.data, '$.plants.at') IS NOT NULL`
+  ).bind(owner.id, map.id, map.lng - dLng, map.lng + dLng, map.lat - dLat, map.lat + dLat).all();
+  let best = null;
+  for (const r of results || []) {
+    let plants = null;
+    try { plants = typeof r.plants === 'string' ? JSON.parse(r.plants) : r.plants; } catch { plants = null; }
+    if (!plants?.boxes?.length || plants.borrowed) continue;
+    const m = Math.hypot((r.lng - map.lng) * 111320 * Math.cos((map.lat * Math.PI) / 180), (r.lat - map.lat) * 111320);
+    if (m > SAME_PLACE_M) continue;
+    // the nearest map of the place; of two as near (two saves of one address), the newer walk
+    if (!best || m < best.m - 0.5 || (Math.abs(m - best.m) <= 0.5 && String(plants.at) > String(best.plants.at))) best = { m, plants, origin: [r.lng, r.lat] };
+  }
+  return best ? { ...best.plants, origin: best.origin, borrowed: true } : null;
+}
+/** A tool's part without a walk borrowed from another map of the place: what is written is the map's own. */
+export function dropBorrowed(tool, data) {
+  if (tool !== 'scan' || !data || typeof data !== 'object' || !data.plants?.borrowed) return data;
+  const { plants, ...rest } = data;
+  return rest;
+}
+
 async function countOthers(env, owner, key) {
   const { table, col } = T(owner);
   const r = await env.DB.prepare(`SELECT COUNT(*) AS n FROM ${table} WHERE ${col} = ? AND key != ?`).bind(owner.id, key).first();

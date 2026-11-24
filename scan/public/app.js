@@ -548,9 +548,11 @@ function drawMap() {
   // a walk's plants (askPlants): each square foot where plant was seen 3 ft up or more, darker the higher it reached
   if (st.plants?.boxes?.length && st.frame && st.origin) {
     const c = st.plants.cellM || 0.3048, top = new Map();
+    // a walk made on another map of this lot (plants.origin, the main site's plantsOfPlace) is measured from that map's point
+    const [oe, on] = Array.isArray(st.plants.origin) ? toLocal(st.origin, st.plants.origin) : [0, 0];
     for (const [i, j, , hi] of st.plants.boxes) { const k = `${i},${j}`; if (!(top.get(k) >= hi)) top.set(k, hi); }
     for (const [k, hi] of top) {
-      const [i, j] = k.split(',').map(Number), a = px([i * c, (j + 1) * c]), b = px([(i + 1) * c, j * c]);
+      const [i, j] = k.split(',').map(Number), a = px([oe + i * c, on + (j + 1) * c]), b = px([oe + (i + 1) * c, on + j * c]);
       g.fillStyle = `rgba(30, ${hi >= 24 ? 110 : 170}, 60, ${hi >= 24 ? 0.6 : 0.42})`;
       g.fillRect(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(1, Math.abs(b[0] - a[0])), Math.max(1, Math.abs(b[1] - a[1])));
     }
@@ -2112,9 +2114,15 @@ async function askPlants(map) {
   try {
     const r = await fetch(`/api/scan/plants?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' });
     const j = r.ok ? await r.json() : null;
-    if (st.map !== map || !j || j.none || !Array.isArray(j.boxes)) return;
-    st.plants = j; drawMap();
     const had = st.site?.tools?.scan?.data && typeof st.site.tools.scan.data === 'object' ? st.site.tools.scan.data : {};
+    if (st.map !== map) return;
+    // no walk on THIS map: one made on another of the account's maps of the same lot is read from the record (the main
+    // site lends it, marked borrowed, measured from that map's point); shown and fused, never written back as this map's
+    if (!j || j.none || !Array.isArray(j.boxes)) {
+      if (had.plants?.borrowed && Array.isArray(had.plants.boxes)) { st.plants = had.plants; drawMap(); log(`a walk's plants (${had.plants.boxes.length} boxes): from a walk on another map of this lot`); }
+      return;
+    }
+    st.plants = j; drawMap();
     if (had.plants?.at === j.at) return;
     const data = { ...had, plants: j };
     const rr = await fetch(`/api/maps/tool?id=${encodeURIComponent(map)}&tool=scan`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, basedOn: st.site?.at || null }), signal: AbortSignal.timeout(SEND_TIMEOUT_MS) });

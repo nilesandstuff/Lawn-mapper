@@ -18,6 +18,9 @@ export const madeFromOf = (lidarAt, walkAt, version) => `${lidarAt}|${walkAt}|${
 
 export async function fuseWalk({ fetchFn, base = '', map, plants, origin, F, loadModel, modelFiles, still = () => true }) {
   if (!plants?.boxes?.length || !plants.at) return { made: false, why: 'the walk has no plants on the map' };
+  // a walk made on another map of the same lot says where it is measured from (plants.origin, the main site's
+  // plantsOfPlace); its own map's walk says nothing and is measured from the map's point
+  if (Array.isArray(plants.origin) && plants.origin.every(Number.isFinite)) origin = plants.origin;
   if (!Array.isArray(origin)) return { made: false, why: 'the map has no point' };
   if (typeof F?.fuseModel !== 'function') return { made: false, why: 'no fusing module' };
   const url = `${base}/api/maps/model?id=${encodeURIComponent(map)}&tool=shade`, init = { credentials: 'same-origin' };

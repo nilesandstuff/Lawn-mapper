@@ -178,6 +178,18 @@ A writer first asks `HEAD`: when the stored `X-Model-Made-From` already names th
 does NOT write. So two writers never undo each other, and a file is rewritten only when something it is made from
 has changed.
 
+**A walk follows the place, not the record (2026-11-24).** An account can hold several maps of one lot (an admin
+save beside its own save; the owner has three of theirs), and a walk is made on one of them. So `GET /api/maps/one`,
+for a signed-in account's map with no plants of its own, hands it the plants of the account's nearest other map
+within 80 m (worker/src/unified.js `plantsOfPlace`), UNCHANGED but for two added fields: `plants.origin`, the
+`[lng, lat]` the boxes, `seen` and `seenHigh` are measured from (that other map's point), and `plants.borrowed: true`
+(with `tools.scan.borrowed: true` when the map had no scan part at all). A READER MEASURES THE WALK FROM
+`plants.origin` WHEN IT IS THERE, and from the map's own point when it is not. Nothing is copied: the next walk
+shows through at once, and a borrowed part posted back to `/api/maps/tool` is dropped by the server
+(`dropBorrowed`), so no record keeps another map's walk as its own. Each map still has its OWN fused file, beside
+its own lidar model, made by whichever page opens it. Only the plants are lent: the things placed and the
+reference walk stay with the map they were made on (not yet asked for anywhere else).
+
 **How a reader chooses.** Take the fused file when there is one and it is not stale; else the lidar model. A reader
 that keeps results (a score, a reading, a saved picture) RECORDS WHICH MODEL each came from: `'lidar'` or `'fused'`,
 with the fused file's `X-Model-At`. The water map keeps both scores side by side; that difference, on the thermal
@@ -196,7 +208,8 @@ session's, telling the features session each time so it can rerun the light test
 (`PLANT_TRUST_M`, `SHIFT_BAND_M`, `SHIFT_MAX_M`, `SHIFT_GAIN`, `CLUMP_MIN_CELLS`), how the walk's side is read
 (`plantShare`, `openFromSeen`), what a walk contributes next, and the frame.
 
-**What is not known.** None of it has been run on a real walk and looked at (2026-11-23). The walk's side is one
+**What is not known.** It has been RUN on a real walk (2026-11-24, the owner's lot, in a workflow on the kept
+files: 700 half-metre cells refined, 2,379 added, 395 trimmed, 8 trees moved) but nobody has looked at the result. The walk's side is one
 walk of one yard; its heights past about 13 ft are the phone's depth at its weakest, and its open air is unchecked.
 
 ## Status, worked out on the dashboard

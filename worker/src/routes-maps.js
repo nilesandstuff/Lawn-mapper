@@ -32,7 +32,7 @@ import { currentUser } from './auth.js';
 import { accountsEnabled } from './db.js';
 import {
   USER_MAX_MAPS, GUEST_MAX_MAPS, findGuest, newGuest, userOwner, guestOwner,
-  listMaps, getMap, upsertMap, deleteMap, putTool, toolsFor, putModel, getModel, modelPart, modelFile,
+  listMaps, getMap, upsertMap, deleteMap, putTool, toolsFor, putModel, getModel, modelPart, modelFile, plantsOfPlace, dropBorrowed,
 } from './unified.js';
 import { keepPhoto, mapPhoto } from './map-photo.js';
 
@@ -140,6 +140,9 @@ export async function handleMaps(request, env, url, origin, ctx, json) {
     if (!key) return reply({ error: 'id required' }, 400);
     const map = owner ? await getMap(env, owner, key) : null;
     if (!map) return reply({ error: 'no-map', ...who }, 404);
+    // a walk follows the place: a map with no walk of its own reads the one made on another map of the same lot
+    const lent = await plantsOfPlace(env, owner, map).catch(() => null);
+    if (lent) map.tools.scan = { ...(map.tools.scan || { basedOn: null, updatedAt: null, borrowed: true }), data: { ...(map.tools.scan?.data || {}), plants: lent } };
     return reply({ map, ...who });
   }
 
@@ -178,7 +181,7 @@ export async function handleMaps(request, env, url, origin, ctx, json) {
     if (!key || !tool) return reply({ error: 'id and tool required' }, 400);
     let body;
     try { body = await request.json(); } catch { return reply({ error: 'Invalid JSON' }, 400); }
-    const r = await putTool(env, owner, key, tool, body?.data, body?.basedOn);
+    const r = await putTool(env, owner, key, tool, dropBorrowed(tool, body?.data), body?.basedOn);
     if (r.error === 'no-map') return reply({ error: 'no-map', ...who }, 404);
     if (r.error) return reply(r, 400);
     return reply({ ...r, ...who });

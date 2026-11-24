@@ -4549,3 +4549,39 @@ first version from the walk's side as it then was; it is made again when the own
 SKY THROUGH A BARE CROWN (the owner's second point; as first put to the features session, since built as above): the walk's open air is
 capped at 8 ft for exactly this. The owner's way is better than a cap: say WHEN the walk was made (plants.walk is
 its start, in milliseconds) and let the shade map's leaf calendar decide what sky seen through a canopy means.
+
+## 61. "I'm not seeing the fused map at all": a walk was tied to one record of three (2026-11-24)
+
+The owner (through the features session, 2026-11-23): "I opened my property in the shade map but I'm not seeing the
+fused map at all". Neither page tells the core session what it did, so the question was asked of the server
+(scan/tools/fuse-check.mjs; scan-deploy task `placed`, walk `<id>:fused`; run 548; counts, sizes and times only).
+
+HARD (measured, run 548):
+- The owner's account holds THREE maps of that lot. The walk was made on an ADMIN SAVE (the AR page defaults to
+  those, the owner's choice of 2026-11-11). That record holds the walk's plants (2,200 boxes, open air from the
+  ground and above 8 ft, 48 KB) and has a fused model beside its lidar model (2.28 MB, written 2026-11-24 00:06 UTC).
+- The other two are ordinary saves. One had its shade part and its lidar model written at 00:25-00:26 UTC that
+  night: the one the shade map opened. Neither has a scan part, so neither had plants, so there was nothing to fuse.
+- The shade page's list of saved maps is GET /api/maps, which leaves admin saves out: from the shade map the owner
+  could not have picked the map the walk was made on.
+- THE FUSING RUNS ON THE REAL FILES: the walk's map's lidar model (251 x 172 columns) and the plants in its record,
+  through public/shade/fuse.js version 3, in 1.2 s: grid 502 x 344, 700 cells refined, 2,379 added, 395 trimmed,
+  8 trees moved, the walk not in leaf, with both kinds of open air. The first time it has run on a real walk and
+  been counted. Nobody has LOOKED at it yet.
+
+So nothing failed; the design did. A walk belongs to a place and was kept with a record.
+
+THE FIX (the core session's, 2026-11-24): a walk follows the place. The main site hands a map that has no walk of
+its own the plants of the account's nearest other map within 80 m, with the point they are measured from
+(`plants.origin`) and `borrowed: true`; nothing is copied, and a borrowed part posted back is dropped (docs/MAPS.md
+"A walk follows the place"; worker/src/unified.js plantsOfPlace, dropBorrowed; tools/unified-maps.test.js). The scan
+page draws and fuses a borrowed walk from its own point (app.js askPlants, scan/lib/fuse-walk.js). The shade side
+must read `plants.origin` too (two lines in the features session's files, asked 2026-11-24 00:42 UTC); THE MAIN
+SITE IS NOT DEPLOYED WITH THE LENDING UNTIL IT DOES, since a borrowed walk fused from the wrong map's point would be
+off by however far apart the two maps' points are (not measured).
+
+SPECULATION: 80 m is a guess at "the same lot" (two geocodes of one address are metres apart; a neighbour's lot
+mapped by the same account would be lent the walk too, which is harmless in itself, the plants being placed on the
+earth and the fusing keeping only what falls on that map's grid, but untested). The things placed on a walk and the
+reference walk are still tied to the one record; nothing has asked for them elsewhere yet.
+

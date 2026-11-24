@@ -269,6 +269,44 @@ let guestCookie;
   globalThis.fetch = realFetch;
 }
 
+/* ------------------------------------- a walk follows the place, not the record */
+{
+  const envW = { DB: testDb() };
+  const user = await findOrCreateUser(envW, { email: 'w@example.test', provider: 'email', subject: 'w' });
+  const { token } = await createSession(envW, user.id);
+  const c = `${SESSION_COOKIE}=${token}`;
+  const one = async (id) => (await call(envW, req(`/api/maps/one?id=${encodeURIComponent(id)}`, { cookie: c }))).body.map;
+  // three maps of one lot (one a few metres off, as two geocodes of one address are) and one across town
+  await call(envW, req('/api/maps', { method: 'POST', cookie: c, body: save({ id: 'walked', lng: -85.1, lat: 42.1 }) }));
+  await call(envW, req('/api/maps', { method: 'POST', cookie: c, body: save({ id: 'same lot', lng: -85.10004, lat: 42.10002 }) }));
+  await call(envW, req('/api/maps', { method: 'POST', cookie: c, body: save({ id: 'across town', lng: -85.2, lat: 42.2 }) }));
+  const plants = { v: 1, cellM: 0.3048, boxes: [[1, 2, 0, 15]], walk: 'w1', at: '2026-11-23T21:37:00.000Z' };
+  await call(envW, req('/api/maps/tool?id=walked&tool=scan', { method: 'POST', cookie: c, body: { data: { things: [1], plants } } }));
+  const own = await one('walked'), lot = await one('same lot'), far = await one('across town');
+  check("the walk's own map reads its plants as they are", own.tools.scan.data.plants.at === plants.at && !own.tools.scan.data.plants.borrowed && !own.tools.scan.data.plants.origin);
+  const lent = lot.tools.scan?.data?.plants;
+  check('another map of the same lot reads the same walk, marked borrowed, with the point it is measured from',
+    lent?.at === plants.at && lent.borrowed === true && lent.boxes.length === 1 && lent.origin?.[0] === -85.1 && lent.origin?.[1] === 42.1 && lot.tools.scan.borrowed === true,
+    JSON.stringify(lot.tools.scan || null).slice(0, 200));
+  check('only the plants are lent, not the things placed on the other map', lot.tools.scan.data.things === undefined);
+  check('a map across town reads none', !far.tools.scan);
+  // a tool posting the borrowed part back does not make it the map's own
+  await call(envW, req('/api/maps/tool?id=same%20lot&tool=scan', { method: 'POST', cookie: c, body: { data: { things: [7], plants: lent } } }));
+  const kept = await envW.DB.prepare(`SELECT data FROM map_tools WHERE map_key = 'same lot' AND tool = 'scan'`).first();
+  check('a borrowed walk posted back is not kept in the record', JSON.parse(kept.data).plants === undefined && JSON.parse(kept.data).things[0] === 7, kept.data.slice(0, 120));
+  const again = await one('same lot');
+  check('and the map still reads the walk, beside its own things', again.tools.scan.data.plants?.borrowed === true && again.tools.scan.data.things[0] === 7 && !again.tools.scan.borrowed);
+  // a newer walk on the first map shows through at once
+  await call(envW, req('/api/maps/tool?id=walked&tool=scan', { method: 'POST', cookie: c, body: { data: { plants: { ...plants, at: '2026-11-25T10:00:00.000Z' } } } }));
+  check('a newer walk shows through at once', (await one('same lot')).tools.scan.data.plants.at === '2026-11-25T10:00:00.000Z');
+  // another account's walk on the same lot is nobody else's
+  const other = await findOrCreateUser(envW, { email: 'x@example.test', provider: 'email', subject: 'x' });
+  const c2 = `${SESSION_COOKIE}=${(await createSession(envW, other.id)).token}`;
+  await call(envW, req('/api/maps', { method: 'POST', cookie: c2, body: save({ id: 'theirs', lng: -85.1, lat: 42.1 }) }));
+  const theirs = (await call(envW, req('/api/maps/one?id=theirs', { cookie: c2 }))).body.map;
+  check("another account's map of the lot reads no walk", !theirs.tools.scan);
+}
+
 /* -------------------------------------------------------- idle guests go */
 {
   const env2 = { DB: testDb() };
