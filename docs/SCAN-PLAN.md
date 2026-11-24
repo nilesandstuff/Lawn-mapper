@@ -4598,6 +4598,29 @@ its own: the phone's plants filled it to its 52 KB (run 552: 2,455 boxes, with b
 more fits; (3) a grid of those blocks beside `seenHigh`, and the fusing trimming lidar cubes in them whatever the
 season: the leaf-calendar condition is the features session's rule, to be agreed with it.
 
+BUILT (2026-11-24, the owner: "Yes i think we should build what we know now"; the owner's three reasons to take
+lidar crown away are in CLAUDE.md): plants.py keeps `clearHigh` beside `seenHigh` (docs/MAPS.md), the whole walk's
+blocks 8 ft to 20 m up crossed by 8 m of line with nothing seen; the scan part of a map's record may hold 192 KB (main
+site run 569); scan/lib/clear-measure.js and fuse-check.mjs measure the lidar against it.
+
+HARD (runs 553, 554; the owner's lot, the walk of 2026-11-20):
+- The whole walk clears air over 4,936 sq ft at 8-16 ft up and 1,004 sq ft at 16-30 ft, none higher; 2,980 blocks;
+  4 KB. The plants kept with the map, by the phone's labels with all three air grids: 2,455 boxes, 56 KB.
+- THE LIDAR IN THAT AIR: of the 5,199 sq ft it covers on the fused grid, 170 half-metre cells of the lidar's crown
+  (43 cubic metres), 118 of them 8-16 ft up, 35 at 16-30 ft, 25 a deciduous crown's; and 39 half-metre cells of the
+  lidar's ROOFS.
+- THE LIDAR'S 153 TREE CLUMPS, by how much of their crown from 8 to 30 ft is in that air: none 115, under a quarter 5,
+  a quarter to half 1, more than half 0; 32 with too little crown that low to judge. NO WHOLE TREE IS GONE by this
+  rule at the owner's lot, which is right as far as anyone knows (none has been taken down).
+SPECULATION: the 39 roof cells are the half-metre halves of the lidar's 1 m roof columns that hang past an eave (a
+roof is never empty air, so they measure the lidar's coarseness at an edge, or a misfit); the 170 crown cells are the
+same at crowns' lower edges: the owner's third reason (shapes drifted or smeared off the canopy). The fusing leaves
+roofs to the lidar, so the 39 change nothing.
+
+ASKED OF THE FEATURES SESSION (2026-11-24; fuse.js is theirs): trim by `clearHigh` in any season (FUSE_VERSION 4),
+and the owner's whole-tree rule for a lidar clump whose crown 8-30 ft is nearly all in that air with no plant of the
+walk's under it. The scan page and fuse-check already pass `openBare` (ignored until then).
+
 ## 61. "I'm not seeing the fused map at all": a walk was tied to one record of three (2026-11-24)
 
 The owner (through the features session, 2026-11-23): "I opened my property in the shade map but I'm not seeing the
