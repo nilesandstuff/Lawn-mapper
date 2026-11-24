@@ -4588,8 +4588,16 @@ trees and the light what the walk did, or why it did nothing); the main site is 
 that is merged, since a borrowed walk fused from the wrong map's point would be off by however far apart the two
 maps' points are (0 m and 13.4 m here).
 
+LIVE 2026-11-24 00:59 UTC: the features session's PR 49 merged and the main site deployed (workflow 2, run 568; its
+log's end read: deployed, no database warning). The scan site's side went out before it (run 549). NOT SEEN by
+anyone yet: the owner has not reopened the ordinary map in the shade map since.
+
 NOT DONE: carrying the walk's map's line-up with a lent walk, so a reader can move it by the difference (0.35 m on
-the one map where it differs). To be agreed with the features session before the record changes.
+the one map where it differs). Agreed with the features session (2026-11-24): the lent plants carry
+`shiftM = [east, north]` in real metres, the line-up of the map the walk was fitted on; the shade side moves the
+walk by its own model's line-up minus that, and writes what it moved in `meta.fused.walkShiftM`. The core
+session's part (the field in /api/maps/one) is not built: the line-up is inside the lidar model file, which the
+Worker should not open on every read, so it is to be written beside the plants when they are kept.
 
 SPECULATION: 80 m is a guess at "the same lot" (two geocodes of one address are metres apart; a neighbour's lot
 mapped by the same account would be lent the walk too, which is harmless in itself, the plants being placed on the
