@@ -105,7 +105,8 @@ async function main() {
     const list_ = { length: lidar.meta.joined || 0 };
     const open = plants.seen && F.openFromSeen ? await F.openFromSeen(plants.seen, at0, F.fusedGrid(lidar.meta)) : null;
     const openHigh = plants.seenHigh && F.openHighFromSeen ? await F.openHighFromSeen(plants.seenHigh, at0, F.fusedGrid(lidar.meta)) : null;
-    const fused = F.fuseModel(lidar, plants, at0, { open, openHigh });
+    const openBare = plants.clearHigh ? await F.openHighFromSeen(plants.clearHigh, at0, F.fusedGrid(lidar.meta)) : null;
+    const fused = F.fuseModel(lidar, plants, at0, { open, openHigh, ...(openBare ? { openBare } : {}) });
     const f = fused.meta?.fused || {}, g = fused.meta?.grid || {}, lg = lidar.meta?.grid || {};
     console.log(`  THE FUSING, RUN HERE on the walk's map's lidar model (${lg.w} x ${lg.h} columns, ${list_.length} overflow parts${partsOfWalk.length !== list_.length ? `, ${partsOfWalk.length} kept` : ''}) and ${from}: MADE, in ${((Date.now() - t0) / 1000).toFixed(1)} s. Version ${f.version ?? '?'}; grid ${g.w} x ${g.h}; ${f.refined ?? '?'} cells refined, ${f.added ?? '?'} added, ${f.trimmed ?? '?'} trimmed, ${(f.moved || []).length} trees moved; the walk in leaf: ${f.walkInLeaf ?? '?'}; with open air ${open ? 'yes' : 'no'}, above 8 ft ${openHigh ? 'yes' : 'no'}.`);
     // HOW MUCH OF THE LIDAR'S CROWN SITS IN AIR THE WALK SAW EMPTY IN ANY SEASON (clear-measure.js; SCAN-PLAN 62)

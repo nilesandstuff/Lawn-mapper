@@ -37,7 +37,10 @@ export async function fuseWalk({ fetchFn, base = '', map, plants, origin, F, loa
   // the air seen open above 8 ft (plants.seenHigh), read by the fusing's own reader when it has one; the fusing trims
   // by it only where its leaf calendar allows (in leaf, or not a deciduous crown). The same call as the shade page's.
   const openHigh = plants.seenHigh && F.openHighFromSeen && F.fusedGrid ? await F.openHighFromSeen(plants.seenHigh, origin, F.fusedGrid(lidar.meta)).catch(() => null) : null;
-  const fused = F.fuseModel(lidar, plants, origin, { open, openHigh });
+  // the air above 8 ft seen EMPTY IN ANY SEASON (plants.clearHigh, SCAN-PLAN 62), read by the same band reader; a
+  // fusing that does not know it ignores it
+  const openBare = plants.clearHigh && F.openHighFromSeen && F.fusedGrid ? await F.openHighFromSeen(plants.clearHigh, origin, F.fusedGrid(lidar.meta)).catch(() => null) : null;
+  const fused = F.fuseModel(lidar, plants, origin, { open, openHigh, ...(openBare ? { openBare } : {}) });
   const files = await modelFiles(fused);
   const put = (u, body) => fetchFn(u, { ...init, method: 'PUT', headers: { 'Content-Type': 'application/octet-stream', 'X-Model-Made-From': want }, body });
   for (let i = 0; i < (files.parts || []).length; i++) { const r = await put(`${url}&file=fused&part=${i + 1}`, files.parts[i]); if (!r.ok) return { made: false, why: `part ${i + 1} refused (${r.status})` }; }
