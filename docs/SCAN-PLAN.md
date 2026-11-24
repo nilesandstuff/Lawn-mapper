@@ -4566,6 +4566,22 @@ labels when the walk kept them (`kinds: 'phone'` in the record), the vote only w
 finds fences and the built things: ARCore has no label for a fence. TO TEST at the owner's next property (a fence,
 a move about 2026-12-01): pictures again there, for the fence.
 
+## 64. Can colour say where the lidar's crown is not, where depth cannot reach? (2026-11-24)
+
+The owner's idea (CLAUDE.md, "Remember that last sentence"): tree or sky seen from a place, against what the lidar says
+is there, with the lidar giving the distance. scan/tools/crown_sky_study.py (task `crownsky`): every 2 ft x 2 ft x
+half-metre block of the lidar's crown, and of the walk's own crown and air, projected into every picture; the share
+of the pixels it covers that are plain sky blue. Judged first against the walk's DEPTH from 8 to 30 ft (its crown: two
+tree points in the block or more; its air: clearHigh's blocks).
+
+HARD (run 560, the walk of 2026-11-20, 767 pictures, 685 with blue sky in them):
+- BY "CLEAN IN 3 PICTURES OR MORE" THE COLOUR TELLS NOTHING: 68.5% of the depth's crown blocks and 79.6% of its air
+  passed; 99.1% and 100% were also hazy in 3 pictures or more. With hundreds of pictures a block is seen in dozens,
+  and three clean views come by chance. (On a simulated yard of 16 pictures the same rule worked: 0.2% / 86%.)
+SPECULATION: a picture's aim is off by 2-5 degrees (SCAN-H14 to H16), more than a 2 ft block is wide at 20 m, so a
+block's patch lands on different things in different pictures. NEXT (run 561): judged by the SHARE of its views that
+are clean, all views and views within 12 m (where the block is 3 degrees wide or more), against the depth.
+
 ## 63. The marks kept with the map, not only on the phone (2026-11-24)
 
 The owner: "I opened my home map in the AR page, the reference marks are gone. Is that a problem? Do I need to add the

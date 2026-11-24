@@ -44,6 +44,7 @@ MIN_PX = 2            # the patch is at least this many pixels across
 CLEAN_SHARE = 0.95    # of a patch sky blue: clean in that picture
 HAZY_SHARE = 0.5      # under this: something is there (or behind)
 CLEAN_VIEWS = 3       # pictures a block must be clean in
+NEAR_M = 12.0         # m: a 2 ft block is 3 degrees wide or more within this
 TREE_KIND = 2         # structures.js: a tree column's kind (3: a solid tree)
 
 
@@ -151,6 +152,9 @@ def main():
     P4 = np.stack([X, Y, -mZ, np.ones_like(X)], 1)
     nb = len(keys_all)
     clean_n, hazy_n, views = np.zeros(nb, np.int32), np.zeros(nb, np.int32), np.zeros(nb, np.int32)
+    # the same counted on NEAR views only: where the block is wide in the picture against the pictures' own pointing
+    # error (2-5 degrees, SCAN-H14 to H16), i.e. within NEAR_M
+    cleanN, viewsN = np.zeros(nb, np.int32), np.zeros(nb, np.int32)
     keys = []
     for n in sorted(x for x in os.listdir(d) if re.fullmatch(r"keys-\d+\.json", x)):
         keys += json.load(open(os.path.join(d, n)))
@@ -188,6 +192,9 @@ def main():
         views[idx] += 1
         clean_n[idx] += share >= CLEAN_SHARE
         hazy_n[idx] += share < HAZY_SHARE
+        nr = zc[idx] <= NEAR_M
+        viewsN[idx[nr]] += 1
+        cleanN[idx[nr]] += share[nr] >= CLEAN_SHARE
         used += 1
     print(f"\nCOLOUR AGAINST DEPTH: CAN THE PICTURES SAY WHERE THE LIDAR'S CROWN IS NOT? (crown_sky_study.py; blocks 2 ft x 2 ft x half a metre; a block CLEAN when {CLEAN_SHARE:.0%} of its pixels are sky blue in {CLEAN_VIEWS} pictures or more)")
     print(f"  {used:,} pictures looked at ({len(keys):,} kept after the start cut), {pics_blue:,} with blue sky in them; {nb:,} blocks: the lidar's crown 8-130 ft up, and the walk's own crown and air 8-66 ft up.")
@@ -213,6 +220,25 @@ def main():
     for lo, hi in ((8, 16), (16, 30), (30, 50), (50, 80), (80, 131)):
         m = is_l & seen_ok & (hft >= lo) & (hft < hi)
         print(f"     {lo}-{hi} ft: {int((is_l & (hft >= lo) & (hft < hi)).sum()):,} blocks, {int(m.sum()):,} seen; clean {int((m & verdict_clean & ~verdict_hazy).sum()):,}; mixed {int((m & verdict_clean & verdict_hazy).sum()):,}.")
+    # BY THE SHARE OF ITS VIEWS THAT ARE CLEAN (run 560: with hundreds of pictures, "clean in 3" is chance: 68.5% of the
+    # depth's crown blocks and 79.6% of its air passed it). Does any share separate crown from air, all views or near?
+    for lab_, cn, vn, need in (("ALL VIEWS", clean_n, views, 10), (f"NEAR VIEWS (within {NEAR_M:.0f} m)", cleanN, viewsN, 5)):
+        sh = np.where(vn > 0, cn / np.maximum(1, vn), np.nan)
+        c_ = dep_crown & (vn >= need)
+        a_ = dep_air & (vn >= need)
+        if c_.sum() < 20 or a_.sum() < 20:
+            print(f"  {lab_}: too few blocks seen {need} times or more (crown {int(c_.sum())}, air {int(a_.sum())}).")
+            continue
+        qc, qa = np.percentile(sh[c_], [25, 50, 75]), np.percentile(sh[a_], [25, 50, 75])
+        print(f"  {lab_}, blocks seen {need} times or more: the share of views that are clean sky: depth's CROWN {int(c_.sum()):,} blocks {qc[0]:.2f} / {qc[1]:.2f} / {qc[2]:.2f}; depth's AIR {int(a_.sum()):,} blocks {qa[0]:.2f} / {qa[1]:.2f} / {qa[2]:.2f} (a quarter / the middle / three quarters).")
+        rows = []
+        for thr in (0.3, 0.5, 0.7, 0.8, 0.9, 0.95):
+            rows.append(f"{thr:.2f}: crown {100 * (sh[c_] >= thr).mean():.1f}% / air {100 * (sh[a_] >= thr).mean():.1f}%")
+        print("     cleared at a share of: " + "; ".join(rows))
+        l_ = is_l & (vn >= need)
+        print("     the lidar's crown blocks seen that often, cleared at 0.8 / 0.9 by height: " + ", ".join(
+            f"{lo}-{hi} ft {int((l_ & (hft >= lo) & (hft < hi) & (sh >= 0.8)).sum())} / {int((l_ & (hft >= lo) & (hft < hi) & (sh >= 0.9)).sum())} of {int((l_ & (hft >= lo) & (hft < hi)).sum())}"
+            for lo, hi in ((8, 16), (16, 30), (30, 50), (50, 80))) + ".")
     m = is_l & dep_crown
     print(f"  The lidar's crown blocks the walk's depth also saw crown in: {int(m.sum()):,}; of those seen in 3 pictures, CLEAN by colour {int((m & seen_ok & verdict_clean).sum()):,}.")
     return 0
