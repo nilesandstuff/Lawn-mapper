@@ -42,6 +42,13 @@ FT = 3.28084
 RANGE_M = 45.0        # m from the camera: no further (a 2 ft block is two pixels there)
 MIN_PX = 2            # the patch is at least this many pixels across
 CLEAN_SHARE = 0.95    # of a patch sky blue: clean in that picture
+OPEN_R_M = (0.15, 0.3, 0.6, 1.2)   # m at the block's own range: how wide a clear stretch of sky round it must be
+# THE OWNER'S CORRECTION (2026-11-24): "some sky will be visible between the bare branches. So if this is going to
+# work with bare branches at all, then it's going to need to think about seeing large enough sections of sky. For leaf
+# on situations, those sky sections can be smaller." So besides "is the block's own patch sky", each view asks how far
+# the sky runs round the block without a break (the distance from its pixel to the nearest pixel that is not sky),
+# turned into metres at the block's range (the lidar's distance, as the owner said). A bare crown shows only small
+# gaps; air shows a stretch wider than them.
 HAZY_SHARE = 0.5      # under this: something is there (or behind)
 CLEAN_VIEWS = 3       # pictures a block must be clean in
 NEAR_M = 12.0         # m: a 2 ft block is 3 degrees wide or more within this
@@ -175,6 +182,9 @@ def main():
     # error (2-5 degrees, SCAN-H14 to H16), i.e. within NEAR_M
     cleanN, viewsN = np.zeros(nb, np.int32), np.zeros(nb, np.int32)
     cleanB, cleanBN = np.zeros(nb, np.int32), np.zeros(nb, np.int32)     # the looser test, all views and near
+    from scipy.ndimage import distance_transform_edt
+    openS = np.zeros((len(OPEN_R_M), nb), np.int32)    # views with that much clear sky round the block: strict blue
+    openB = np.zeros((len(OPEN_R_M), nb), np.int32)    # ...the looser test
     keys = []
     for n in sorted(x for x in os.listdir(d) if re.fullmatch(r"keys-\d+\.json", x)):
         keys += json.load(open(os.path.join(d, n)))
@@ -205,7 +215,9 @@ def main():
         if blue.mean() > 0.01:
             pics_blue += 1
         integ = np.pad(blue.astype(np.int32).cumsum(0).cumsum(1), ((1, 0), (1, 0)))
-        integB = np.pad(sky_bright(img).astype(np.int32).cumsum(0).cumsum(1), ((1, 0), (1, 0)))
+        bright = sky_bright(img)
+        integB = np.pad(bright.astype(np.int32).cumsum(0).cumsum(1), ((1, 0), (1, 0)))
+        dS, dB = distance_transform_edt(blue), distance_transform_edt(bright)   # pixels to the nearest non-sky
         fpx = Pm[0, 0] * W_ / 2                               # pixels per unit at depth 1
         idx = np.flatnonzero(vis)
         px = ((nx[idx] + 1) / 2 * W_).astype(np.int64)
@@ -227,6 +239,11 @@ def main():
         viewsN[idx[nr]] += 1
         cleanN[idx[nr]] += share[nr] >= CLEAN_SHARE
         cleanB[idx] += shareB >= CLEAN_SHARE
+        pyc, pxc = np.clip(py, 0, H_ - 1), np.clip(px, 0, W_ - 1)
+        mS, mB = dS[pyc, pxc] * zc[idx] / fpx, dB[pyc, pxc] * zc[idx] / fpx    # metres of clear sky round it
+        for ri, R in enumerate(OPEN_R_M):
+            openS[ri, idx] += mS >= R
+            openB[ri, idx] += mB >= R
         cleanBN[idx[nr]] += shareB[nr] >= CLEAN_SHARE
         used += 1
     print(f"\nCOLOUR AGAINST DEPTH: CAN THE PICTURES SAY WHERE THE LIDAR'S CROWN IS NOT? (crown_sky_study.py; blocks 2 ft x 2 ft x half a metre; a block CLEAN when {CLEAN_SHARE:.0%} of its pixels are sky blue in {CLEAN_VIEWS} pictures or more)")
@@ -285,6 +302,18 @@ def main():
         print("     the lidar's crown blocks seen that often, cleared at 0.8 / 0.9 by height: " + ", ".join(
             f"{lo}-{hi} ft {int((l_ & (hft >= lo) & (hft < hi) & (sh >= 0.8)).sum())} / {int((l_ & (hft >= lo) & (hft < hi) & (sh >= 0.9)).sum())} of {int((l_ & (hft >= lo) & (hft < hi)).sum())}"
             for lo, hi in ((8, 16), (16, 30), (30, 50), (50, 80))) + ".")
+    # BY HOW WIDE A STRETCH OF CLEAR SKY IS ROUND THE BLOCK (the owner's correction): the share of views with at least
+    # R metres of sky round it, for the depth's crown, the depth's air and the plain-sky controls
+    need = 10
+    c_, a_, k_ = dep_crown & (views >= need), dep_air & (views >= need), ctl & (views >= 5)
+    for nm, arr in (("STRICT BLUE", openS), ("BRIGHT SKY", openB)):
+        for ri, R in enumerate(OPEN_R_M):
+            sh = arr[ri] / np.maximum(1, views)
+            med = lambda m: float(np.median(sh[m])) if m.any() else float("nan")  # noqa: E731
+            rows = "; ".join(f"{t:.1f}: crown {100 * (sh[c_] >= t).mean():.1f}% / air {100 * (sh[a_] >= t).mean():.1f}%" for t in (0.2, 0.4, 0.6) if c_.any() and a_.any())
+            lid = is_l & (views >= need)
+            print(f"  OPEN SKY ROUND IT, {nm}, {R * FT:.1f} ft or more of clear sky round the block: share of views, middle: crown {med(c_):.2f}, air {med(a_):.2f}, controls {med(k_):.2f}. Cleared at a share of {rows}. "
+                  f"The lidar's crown at 0.4: " + ", ".join(f"{lo}-{hi} ft {int((lid & (hft >= lo) & (hft < hi) & (sh >= 0.4)).sum())} of {int((lid & (hft >= lo) & (hft < hi)).sum())}" for lo, hi in ((8, 30), (30, 50), (50, 80))) + ".")
     m = is_l & dep_crown
     print(f"  The lidar's crown blocks the walk's depth also saw crown in: {int(m.sum()):,}; of those seen in 3 pictures, CLEAN by colour {int((m & seen_ok & verdict_clean).sum()):,}.")
     return 0

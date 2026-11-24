@@ -4584,6 +4584,13 @@ HARD (run 560, the walk of 2026-11-20, 767 pictures, 685 with blue sky in them):
   views by the strict blue test, 0.00 / 0.05 / 0.13 by a looser "bright and no less blue" test. Plain sky should read
   near 1.00. So on this walk the TEST (or the pictures' aim) fails on the sky itself, before any crown is asked about:
   nothing above says whether the owner's idea works. (On a simulated yard the controls read 1.00.)
+THE OWNER (2026-11-24): the sky on the walk of 2026-11-20 "was mostly blue, but there were some light clouds to the
+southwest", and: "some sky will be visible between the bare branches. So if this is going to work with bare branches at
+all, then it's going to need to think about seeing large enough sections of sky. For leaf on situations, those sky
+sections can be smaller." BUILT: besides a block's own patch, each view asks how far the sky runs round the block
+without a break (the distance from its pixel to the nearest non-sky pixel), in metres at the block's range (the
+lidar's distance): 0.5, 1, 2 and 4 ft of clear sky round it. On the simulated yard, at 2 ft in 40% of views: crown 0%
+cleared, air 78%, the phantom crown found.
 NEXT (run 564): the colour of the controls' pixels: blue (a threshold to fix), white or grey (an overcast or hazy sky:
 this walk cannot answer), or dark (the aim is off).
 
