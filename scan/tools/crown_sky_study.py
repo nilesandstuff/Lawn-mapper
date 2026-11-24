@@ -180,6 +180,7 @@ def main():
         keys += json.load(open(os.path.join(d, n)))
     keys = [k for k in keys if os.path.exists(os.path.join(d, k["name"])) and k.get("t", 0) >= cut]
     used, pics_blue = 0, 0
+    ctl_rgb = []   # the mean colour of each control patch in each view: blue sky, white sky, or not sky at all
     for k in keys:
         try:
             img = np.asarray(Image.open(os.path.join(d, k["name"])).convert("RGB"))
@@ -215,6 +216,10 @@ def main():
         area = np.maximum(1, (x1 - x0) * (y1 - y0))
         share = (integ[y1, x1] - integ[y0, x1] - integ[y1, x0] + integ[y0, x0]) / area
         shareB = (integB[y1, x1] - integB[y0, x1] - integB[y1, x0] + integB[y0, x0]) / area
+        cm = ctl[idx]
+        if cm.any():
+            for q_ in np.flatnonzero(cm)[:50]:
+                ctl_rgb.append(img[y0[q_]:y1[q_], x0[q_]:x1[q_]].reshape(-1, 3).mean(0))
         views[idx] += 1
         clean_n[idx] += share >= CLEAN_SHARE
         hazy_n[idx] += share < HAZY_SHARE
@@ -226,6 +231,12 @@ def main():
         used += 1
     print(f"\nCOLOUR AGAINST DEPTH: CAN THE PICTURES SAY WHERE THE LIDAR'S CROWN IS NOT? (crown_sky_study.py; blocks 2 ft x 2 ft x half a metre; a block CLEAN when {CLEAN_SHARE:.0%} of its pixels are sky blue in {CLEAN_VIEWS} pictures or more)")
     print(f"  {used:,} pictures looked at ({len(keys):,} kept after the start cut), {pics_blue:,} with blue sky in them; {nb:,} blocks: the lidar's crown 8-130 ft up, and the walk's own crown and air 8-66 ft up.")
+    if ctl_rgb:
+        C_ = np.array(ctl_rgb); lum = C_.sum(1)
+        qs = np.percentile(C_, [25, 50, 75], axis=0)
+        print(f"  WHAT THE CONTROLS' PIXELS ARE (plain sky 30 m up, {len(C_):,} views): mean red / green / blue at a quarter, the middle, three quarters: "
+              + "; ".join(f"{int(a)} / {int(b)} / {int(c)}" for a, b, c in qs)
+              + f". Dark (all three under 100 on average, not sky: the aim off) {100 * (lum < 300).mean():.0f}%; white or grey (bright, blue within 15 of red) {100 * ((lum >= 450) & (C_[:, 2] - C_[:, 0] < 15)).mean():.0f}%; blue (blue 30 or more over red) {100 * (C_[:, 2] - C_[:, 0] >= 30).mean():.0f}%.")
     if not pics_blue:
         print("  NO BLUE SKY in the pictures (overcast, or dusk): the colour can say nothing on this walk.")
         return 0
