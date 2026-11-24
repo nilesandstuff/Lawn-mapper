@@ -16,7 +16,7 @@
  */
 import { createHash } from 'node:crypto';
 import { BUCKET, CORPUS_BUCKET, readObject, walkOk, API, account, list } from './twin-r2.mjs';
-import { loadModel } from '../../public/lib/lidar-model.js';
+import { loadModel, unpackModel } from '../../public/lib/lidar-model.js';
 
 const MAIN_DB = 'lawn-mapper';
 let d1 = null;
@@ -54,7 +54,7 @@ async function main() {
   const token = process.env.CLOUDFLARE_API_TOKEN, base = `${API}/accounts/${await account(token)}/r2/buckets/${CORPUS_BUCKET}`;
   maps.sort((a, b) => (a.key === key ? -1 : b.key === key ? 1 : String(b.updated_at).localeCompare(String(a.updated_at))));
   console.log(`\nWHY NO FUSED MAP? (walk ${walk}) THE OWNER'S MAPS OF THAT PLACE (within 260 ft of the walk's map): ${maps.length}.`);
-  let i = 0, lidarKeyOfWalk = null, partsOfWalk = [];
+  let i = 0, lidarKeyOfWalk = null, partsOfWalk = [], shiftOfWalk = null;
   for (const m of maps) {
     const name = `map ${String.fromCharCode(65 + i++)}${m.key === key ? ' (THE WALK\'S MAP)' : ''}`;
     const prefix = `models/user/${uid}/${createHash('sha256').update(m.key).digest('hex')}/`;
@@ -64,6 +64,19 @@ async function main() {
     if (m.key === key) { lidarKeyOfWalk = lidar ? prefix + 'shade.bin' : null; partsOfWalk = objs.filter((o) => /\/shade\.\d+\.bin$/.test(o.key)).map((o) => o.key); }
     const sc = tools.find((t) => t.map_key === m.key && t.tool === 'scan'), sh = tools.find((t) => t.map_key === m.key && t.tool === 'shade');
     console.log(`  ${name}: saved ${when(m.updated_at)}${m.admin_save ? ', an admin save' : ''}. Shade map's part: ${sh ? `yes (${when(sh.updated_at)})` : 'NONE'}; lidar model: ${lidar ? when(lidar.last_modified) : 'NONE'}; FUSED MODEL: ${fused ? `${when(fused.last_modified)}, ${(fused.size / 1e6).toFixed(2)} MB` : 'NONE'}.`);
+    // THE LINE-UP (the features session's caveat, 2026-11-24): a walk is fitted to ITS map's lidar as that map lined it up
+    // (meta.lidar.shift, EPSG:3857 metres; real metres are that times cos(latitude)); lent to another map of the lot it sits
+    // off by the difference of the two line-ups. And how far apart the two maps' points are. Metres only.
+    if (lidar) {
+      try {
+        const lm = await unpackModel(new Uint8Array(await readObject(CORPUS_BUCKET, prefix + 'shade.bin')).buffer);
+        const sh = lm.meta?.lidar?.shift, k = Math.cos((m.lat * Math.PI) / 180);
+        const real = Array.isArray(sh) && sh.every(Number.isFinite) ? [sh[0] * k, sh[1] * k] : null;
+        if (m.key === key) shiftOfWalk = real;
+        const apart = metres(at0, [m.lng, m.lat]);
+        console.log(`      Its lidar's line-up: ${real ? `moved ${Math.hypot(real[0], real[1]).toFixed(2)} m` : 'no shift kept (not moved, or not confident)'}${m.key !== key ? `${real && shiftOfWalk ? `; ${Math.hypot(real[0] - shiftOfWalk[0], real[1] - shiftOfWalk[1]).toFixed(2)} m from the walk's map's line-up` : real || shiftOfWalk ? '; the walk\'s map\'s line-up is ' + (shiftOfWalk ? `${Math.hypot(shiftOfWalk[0], shiftOfWalk[1]).toFixed(2)} m, this one none` : 'none') : ''}; its point is ${apart.toFixed(1)} m from the walk's map's point` : ''}; ${lm.meta?.grid?.w} x ${lm.meta?.grid?.h} columns.`);
+      } catch (e) { console.log(`      Its lidar model could not be read (${String(e?.message || e).slice(0, 80)}).`); }
+    }
     console.log(`      The scan tool's part of its record: ${sc ? `${(sc.bytes / 1e3).toFixed(0)} KB, written ${when(sc.updated_at)}; PLANTS: ${sc.boxes ? `${sc.boxes} boxes, from ${String(sc.pwalk) === String(walk) ? 'this walk' : 'another walk'}, made ${when(sc.pat)}; open air from the ground ${sc.sw ? 'yes' : 'NO'}, above 8 ft ${sc.shw ? 'yes' : 'NO'}` : 'NONE'}` : 'NONE (no plants: the shade map has nothing to fuse for this map)'}.`);
   }
   // the newest plants the workflow kept for the walk's map, against what the record holds
