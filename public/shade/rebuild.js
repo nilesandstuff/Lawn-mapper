@@ -205,7 +205,8 @@ export async function rebuildModel(mapId, { onProgress = () => {}, signal = null
        the walk, in a file of its own (file=fused), made from the model just saved. X-Model-Made-From names the lidar
        file's server write time when the server answered it (the shade builder stores it itself, with its own). */
     let fusedInfo = null;
-    const plants = site.map?.plants, origin = site.map?.origin;
+    const plants = site.map?.plants;
+    const origin = Array.isArray(plants?.origin) && plants.origin.length === 2 && plants.origin.every(Number.isFinite) ? plants.origin : site.map?.origin; // a lent walk's own point first
     if (plants?.boxes?.length && origin) {
       try {
         const open = plants.seen ? await openFromSeen(plants.seen, origin, fusedGrid(fin.meta)).catch(() => null) : null;

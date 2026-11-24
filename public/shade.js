@@ -209,7 +209,10 @@ function saveModelFile({ now = false } = {}) {
  * (sun-ui.js, with the lidar alone one tap away).
  */
 async function saveFusedFile(site, fin, lidarAt = null) {
-  const plants = site.map?.plants, origin = site.map?.origin;
+  const plants = site.map?.plants;
+  /* the point the walk's metres are measured from: its own (plants.origin, a walk lent from another of the account's
+     maps of this lot: the core session's "a walk follows the place, not the record"), else this map's */
+  const origin = Array.isArray(plants?.origin) && plants.origin.length === 2 && plants.origin.every(Number.isFinite) ? plants.origin : site.map?.origin;
   view.fusedFor = site;
   if (!plants?.boxes?.length || !origin) {
     view.fused = null;
@@ -225,7 +228,7 @@ async function saveFusedFile(site, fin, lidarAt = null) {
     const f = fused.meta.fused;
     track('fused', `${f.refined} refined, ${f.added} added, ${f.trimmed} trimmed, ${f.moved.length} trees moved`);
     const day = Number.isFinite(Number(plants.walk)) ? new Date(Number(plants.walk)).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : null;
-    walkNote(`Refined by your yard walk${day ? ` of ${day}` : ''}${f.walkInLeaf ? '' : ' (made with the leaves off, so bare crowns keep the lidar\'s density)'}: ${f.refined.toLocaleString()} half-meter blocks reshaped, ${f.added.toLocaleString()} added, ${f.trimmed.toLocaleString()} trimmed where the walk saw open air, ${f.moved.length} tree${f.moved.length === 1 ? '' : 's'} moved.`);
+    walkNote(`Refined by your yard walk${day ? ` of ${day}` : ''}${plants.borrowed ? ', made on another of your maps of this lot' : ''}${f.walkInLeaf ? '' : ' (made with the leaves off, so bare crowns keep the lidar\'s density)'}: ${f.refined.toLocaleString()} half-meter blocks reshaped, ${f.added.toLocaleString()} added, ${f.trimmed.toLocaleString()} trimmed where the walk saw open air, ${f.moved.length} tree${f.moved.length === 1 ? '' : 's'} moved.`);
     view.sun?.setFused(fused);
     view.trees?.setFused?.(fused);
     /* WHAT IT WAS MADE FROM (docs/MAPS.md, the fused model; the same rule as the scan page's fuse-walk.js madeFromOf):
