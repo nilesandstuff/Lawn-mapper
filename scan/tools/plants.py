@@ -366,7 +366,7 @@ CLEAR_NEED_M = 8.0     # m of sight line through a block with nothing seen in it
 CLEAR_STEP = 0.1       # m between samples along a line
 
 
-def clear_of(recs, flags, track, cut_s, fit, sq):
+def clear_of(recs, flags, track, cut_s, fit, sq, want_blocks=False):
     """THE AIR A WALK SAW EMPTY IN ANY SEASON (core session, 2026-11-24; docs/SCAN-PLAN.md 62; the owner: "Yes i think
     we should build what we know now"). One line through a bare crown usually misses every twig, so `seenHigh` is
     trimmed by only after a walk in leaf. But a bare crown stops some lines: on the walk of 2026-11-20 a line inside a
@@ -443,6 +443,8 @@ def clear_of(recs, flags, track, cut_s, fit, sq):
     hb = lambda lo, hi: slice(int((lo / FT - CLEAR_FROM) / CLEAR_SLAB), int((hi / FT - CLEAR_FROM) / CLEAR_SLAB))  # noqa: E731
     st = {"squares": int(has.sum()), "blocks": int(clear.sum()),
           "byHeight": {f"{lo}-{hi}": int(clear[:, hb(lo, hi)].any(1).sum()) * 4 for lo, hi in ((8, 16), (16, 30), (30, 50), (50, 66))}}
+    if want_blocks:   # for studies (crown_sky_study.py): the blocks themselves, (w * h, ns), and the lines' metres
+        st.update({"_clear": clear, "_seen": seen_in, "_path": path, "_ns": ns})
     return {"cellM": SEEN_CELL, "i0": i0, "j0": j0, "w": w, "h": h, "unitDm": 1, "notSeen": 255, "needM": CLEAR_NEED_M,
             "what": "for each square lo then hi, in decimetres over the ground: the longest band of air above 8 ft the walk's lines crossed for needM metres or more, half a metre at a time, with nothing seen in it: air in ANY season; 0 0 no claim, 255 255 never looked; rows south to north",
             "enc": "zlib+base64", "bands": base64.b64encode(zlib.compress(bands_.tobytes(), 9)).decode()}, st
