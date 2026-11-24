@@ -61,12 +61,13 @@ def sky_blue(img):
 
 
 def sky_bright(img):
-    """THE LOOSER TEST (run 561: by the strict one, crown and air alike were clean in 9% of their views, which says the
-    test, not the scene): pale sky counts too. Bright (within 75% of the picture's own 99th-percentile brightness) and
-    no less blue than red or green. A bare twig against it is darker."""
+    """THE RELATIVE TEST (run 564: the plain-sky controls' pixels were blue in the middle at 108 / 141 / 162, a quarter
+    of them darker, 79 / 104 / 114, which the strict test's "blue over 140" throws out; this camera's sky is darker than
+    the roof-edge colours it was measured on). Blue 25 or more over red, no less than green, and not dark (blue 90 or
+    more). Bare twigs (browns and greys) fail it; white cloud fails it too (the owner: "some light clouds to the
+    southwest"), which only makes the stretch of sky round a block look shorter, never longer."""
     r, g, b = (img[..., i].astype(np.int32) for i in range(3))
-    lum = r + g + b
-    return (lum >= 0.75 * np.percentile(lum, 99)) & (b >= r) & (b >= g - 5)
+    return (b - r >= 25) & (b >= g) & (b >= 90)
 
 
 def main():
@@ -190,6 +191,12 @@ def main():
         keys += json.load(open(os.path.join(d, n)))
     keys = [k for k in keys if os.path.exists(os.path.join(d, k["name"])) and k.get("t", 0) >= cut]
     used, pics_blue = 0, 0
+    ctl_blocked = [0, 0]
+    try:
+        stand = np.fromfile(os.path.join(d, "sky-surface.bin"), dtype="<f4") - lg     # how high the lidar's things stand
+        stand = np.where(np.isfinite(stand), stand, 0.0)
+    except Exception:
+        stand = np.zeros(G["w"] * G["h"])
     ctl_rgb = []   # the mean colour of each control patch in each view: blue sky, white sky, or not sky at all
     for k in keys:
         try:
@@ -205,10 +212,26 @@ def main():
         wq = np.where(np.abs(clip[:, 3]) < 1e-9, 1e-9, clip[:, 3])
         nx, ny = clip[:, 0] / wq, clip[:, 1] / wq
         vis = (zc > 1.0) & ((zc < RANGE_M) | (ctl & (zc < 2 * RANGE_M))) & (np.abs(nx) < 0.97) & (np.abs(ny) < 0.97)
-        if ctl.any():   # a control counts only when seen steeply
+        if ctl.any():   # a control counts only when seen steeply, and with nothing of the lidar's in the way
             camp = V[:3, 3]
             el = np.degrees(np.arctan2(P4[:, 1] - camp[1], np.hypot(P4[:, 0] - camp[0], P4[:, 2] - camp[2])))
             vis &= ~ctl | (el >= 35)
+            cv = np.flatnonzero(vis & ctl)
+            if len(cv):
+                tq = np.linspace(0.03, 0.97, 48)[:, None, None]
+                Q = camp[None, None, :] + (P4[cv, :3][None] - camp[None, None, :]) * tq      # session points on each line
+                qx, qy, qz = Q[..., 0].ravel(), Q[..., 1].ravel(), Q[..., 2].ravel()
+                qe, qn = cth * qx - sth * (-qz) + T["tx"], sth * qx + cth * (-qz) + T["ty"]
+                _, nq = gtree.query(np.stack([np.floor(qe), np.floor(qn)], 1))
+                qh = (qy - gmed[nq]) * s_
+                cc_ = np.floor((qe - G["x0"]) / G["cell"]).astype(np.int64)
+                rr_ = np.floor((G["y1"] - qn) / G["cellY"]).astype(np.int64)
+                okq = (cc_ >= 0) & (cc_ < G["w"]) & (rr_ >= 0) & (rr_ < G["h"])
+                standq = np.zeros(len(qe))
+                standq[okq] = stand[rr_[okq] * G["w"] + cc_[okq]]
+                blocked = ((qh < standq + 0.3) & (standq > 2.0)).reshape(len(tq), len(cv)).any(0)
+                vis[cv[blocked]] = False
+                ctl_blocked[0] += int(blocked.sum()); ctl_blocked[1] += len(cv)
         if not vis.any():
             continue
         blue = sky_blue(img)
@@ -248,6 +271,8 @@ def main():
         used += 1
     print(f"\nCOLOUR AGAINST DEPTH: CAN THE PICTURES SAY WHERE THE LIDAR'S CROWN IS NOT? (crown_sky_study.py; blocks 2 ft x 2 ft x half a metre; a block CLEAN when {CLEAN_SHARE:.0%} of its pixels are sky blue in {CLEAN_VIEWS} pictures or more)")
     print(f"  {used:,} pictures looked at ({len(keys):,} kept after the start cut), {pics_blue:,} with blue sky in them; {nb:,} blocks: the lidar's crown 8-130 ft up, and the walk's own crown and air 8-66 ft up.")
+    if ctl_blocked[1]:
+        print(f"  CONTROLS: of {ctl_blocked[1]:,} steep views of them, {ctl_blocked[0]:,} ({100 * ctl_blocked[0] / ctl_blocked[1]:.0f}%) had something of the lidar's (a crown, a roof) in the line of sight, and were not counted.")
     if ctl_rgb:
         C_ = np.array(ctl_rgb); lum = C_.sum(1)
         qs = np.percentile(C_, [25, 50, 75], axis=0)
@@ -279,13 +304,13 @@ def main():
     # BY THE SHARE OF ITS VIEWS THAT ARE CLEAN (run 560: with hundreds of pictures, "clean in 3" is chance: 68.5% of the
     # depth's crown blocks and 79.6% of its air passed it). Does any share separate crown from air, all views or near?
     for lab_, cn, vn, need in (("STRICT BLUE, ALL VIEWS", clean_n, views, 10), (f"STRICT BLUE, NEAR VIEWS (within {NEAR_M:.0f} m)", cleanN, viewsN, 5),
-                               ("BRIGHT SKY, ALL VIEWS", cleanB, views, 10), (f"BRIGHT SKY, NEAR VIEWS (within {NEAR_M:.0f} m)", cleanBN, viewsN, 5)):
+                               ("RELATIVE BLUE, ALL VIEWS", cleanB, views, 10), (f"RELATIVE BLUE, NEAR VIEWS (within {NEAR_M:.0f} m)", cleanBN, viewsN, 5)):
         sh = np.where(vn > 0, cn / np.maximum(1, vn), np.nan)
         cc = ctl & (views >= 5)
         if lab_.endswith("ALL VIEWS") and not cc.any():
             print(f"  {lab_}: CONTROLS: none of the {int(ctl.sum())} was seen 5 times steeply enough.")
         if lab_.endswith("ALL VIEWS") and cc.any():
-            qq = np.percentile(cleanB[cc] / np.maximum(1, views[cc]) if lab_.startswith("BRIGHT") else clean_n[cc] / np.maximum(1, views[cc]), [25, 50, 75])
+            qq = np.percentile(cleanB[cc] / np.maximum(1, views[cc]) if lab_.startswith("RELATIVE") else clean_n[cc] / np.maximum(1, views[cc]), [25, 50, 75])
             print(f"  {lab_}: CONTROLS (plain sky, 30 m up, seen 35 degrees up or more; {int(cc.sum())} blocks): the share of views clean {qq[0]:.2f} / {qq[1]:.2f} / {qq[2]:.2f}. Near 1.00 if the test and the aim are right.")
         c_ = dep_crown & (vn >= need)
         a_ = dep_air & (vn >= need)
@@ -306,7 +331,7 @@ def main():
     # R metres of sky round it, for the depth's crown, the depth's air and the plain-sky controls
     need = 10
     c_, a_, k_ = dep_crown & (views >= need), dep_air & (views >= need), ctl & (views >= 5)
-    for nm, arr in (("STRICT BLUE", openS), ("BRIGHT SKY", openB)):
+    for nm, arr in (("STRICT BLUE", openS), ("RELATIVE BLUE", openB)):
         for ri, R in enumerate(OPEN_R_M):
             sh = arr[ri] / np.maximum(1, views)
             med = lambda m: float(np.median(sh[m])) if m.any() else float("nan")  # noqa: E731

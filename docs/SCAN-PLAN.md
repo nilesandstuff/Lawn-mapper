@@ -4591,8 +4591,12 @@ sections can be smaller." BUILT: besides a block's own patch, each view asks how
 without a break (the distance from its pixel to the nearest non-sky pixel), in metres at the block's range (the
 lidar's distance): 0.5, 1, 2 and 4 ft of clear sky round it. On the simulated yard, at 2 ft in 40% of views: crown 0%
 cleared, air 78%, the phantom crown found.
-NEXT (run 564): the colour of the controls' pixels: blue (a threshold to fix), white or grey (an overcast or hazy sky:
-this walk cannot answer), or dark (the aim is off).
+- WHAT THE CONTROLS' PIXELS ARE (run 564, 2,827 views): mean red / green / blue 79 / 104 / 114, 108 / 141 / 162,
+  156 / 173 / 213 (a quarter / the middle / three quarters); blue 53%, white or grey 14%, dark 22%. So the strict test
+  ("blue over 140") throws out a camera's darker blue sky; the white is the owner's light clouds.
+SPECULATION: the dark 22% are mostly crowns NEAR the phone in the line of sight (a tree a few metres off fills the view
+at 35-40 degrees up), not a wrong aim. NEXT (run 565): a relative test (blue 25 over red, no less than green, blue 90 or
+more), and a control view counted only when the lidar has nothing standing in its line of sight.
 
 ## 63. The marks kept with the map, not only on the phone (2026-11-24)
 
