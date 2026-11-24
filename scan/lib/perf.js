@@ -86,14 +86,21 @@ export function newPerf({ now = () => performance.now() } = {}) {
   let lastStart = null, frames = 0, long = 0, stalls = 0, firstFrameAt = null, lastFrameAt = null;
   let lastPos = null, lastT = null, stillFor = 0, jumps = 0, jumpMax = 0, stillS = 0;
   const up = { parts: 0, ok: 0, retry: 0, dropped: 0, bytes: 0, ms: 0, openedAt: null, doneAt: null };
+  const bySend = { on: { gap: hist(1000), n: 0, stalls: 0, ms: 0 }, off: { gap: hist(1000), n: 0, stalls: 0, ms: 0 } };
   return {
     /** Seconds since the page began, kept under `name` the first time it is said. */
     stage(name) { if (stages[name] == null) stages[name] = r1((now() - t0) / 1000); },
     /** One frame: when the page began work on it and when it finished. */
-    frame(start, end) {
+    frame(start, end, sending = null) {
       frames++;
       if (firstFrameAt == null) firstFrameAt = start;
-      if (lastStart != null) { const g = start - lastStart; gap.add(g); if (g > LONG_MS) long++; if (g > STALL_MS) stalls++; }
+      if (lastStart != null) {
+        const g = start - lastStart; gap.add(g); if (g > LONG_MS) long++; if (g > STALL_MS) stalls++;
+        /* WHILE A PART WAS ON ITS WAY, OR NOT (2026-11-24; the owner: "I'm wonder if the continuous upload during the
+           walks is part of the problem with stuttering and jumps"): the same gaps, split by whether the outbox was
+           sending when the frame began. A send is not the page's work on a frame, so the split is the only way to see it. */
+        if (sending != null) { const b = sending ? bySend.on : bySend.off; b.gap.add(g); b.n++; if (g > STALL_MS) b.stalls++; b.ms += g; }
+      }
       lastStart = start; lastFrameAt = end;
       work.add(end - start);
     },
@@ -129,6 +136,7 @@ export function newPerf({ now = () => performance.now() } = {}) {
           longShare: gap.n() ? +(long / gap.n()).toFixed(3) : null, stalls,
           workMs: { median: work.q(0.5), p95: work.q(0.95), worst: Math.round(work.max()) },
           workShare: walkS > 0 && work.n() ? +((work.mean() * work.n()) / (walkS * 1000)).toFixed(2) : null,
+          bySend: bySend.on.n + bySend.off.n ? Object.fromEntries(['on', 'off'].map((k) => [k, { n: bySend[k].n, s: Math.round(bySend[k].ms / 1000), gapMedian: bySend[k].gap.q(0.5), gapP95: bySend[k].gap.q(0.95), stallsPerMin: bySend[k].ms > 0 ? r1(bySend[k].stalls / (bySend[k].ms / 60000)) : null }])) : null,
         } : null,
         jitter: lastPos ? {
           stillS: Math.round(stillS), stillMmPerFrame: still.n() ? { median: still.q(0.5), p95: still.q(0.95), worst: Math.round(still.max()) } : null,
@@ -161,10 +169,11 @@ export function perfLines(p) {
     `speed, opening (seconds after the page began): ${Object.entries(s).map(([k, v]) => `${k} ${v}`).join(', ') || 'nothing marked'}`,
     `speed, downloads: ${res || 'none seen'}`,
     `speed, frames: ${f ? `${f.n} at ${f.perS ?? '?'} a second; gap between frames median ${f.gapMs.median} ms, 95% under ${f.gapMs.p95}, 99% under ${f.gapMs.p99}, worst ${f.gapMs.worst}; ${Math.round((f.longShare || 0) * 100)}% of gaps over ${LONG_MS} ms, ${f.stalls} stalls over ${STALL_MS} ms; the page's own work a frame median ${f.workMs.median} ms, 95% under ${f.workMs.p95}, worst ${f.workMs.worst} (${Math.round((f.workShare || 0) * 100)}% of the walk's time)` : 'no frames'}`,
+    ...(f?.bySend ? [`speed, frames while a part was being sent / while none was: ${['on', 'off'].map((k) => { const b = f.bySend[k]; return b.n ? `${b.s} s, gap median ${b.gapMedian} ms, 95% under ${b.gapP95}, ${b.stallsPerMin} stalls over ${STALL_MS} ms a minute` : 'none'; }).join(' / ')}`] : []),
     `speed, jitter: ${j ? `${j.stillMmPerFrame ? `held still ${j.stillS} s, its place moved median ${j.stillMmPerFrame.median} mm a frame, 95% under ${j.stillMmPerFrame.p95}, worst ${j.stillMmPerFrame.worst}` : 'never held still long enough to say'}; ${j.jumps} jumps over ${JUMP_M * 100} cm in one frame${j.jumps ? ` (worst ${j.jumpWorstCm} cm)` : ''}` : 'no poses'}`,
     `speed, where a frame's time goes: ${where || 'not timed'}`,
     `speed, waits: ${waits || 'none timed'}`,
-    `speed, upload: ${u ? `${u.sends} sends (${u.ok} taken, ${u.retried} to try again, ${u.refused} refused), ${u.kb} KB; a send median ${u.sendMs.median} ms, 95% under ${u.sendMs.p95}, worst ${u.sendMs.worst}; ${u.inSendsS} s inside sends${u.wallS != null ? `, ${u.wallS} s from the first part kept to ${u.finished ? 'the last gone' : 'now (NOT finished)'}` : ''}; ${u.kbPerS ?? '?'} KB a second while sending` : 'nothing sent'}`,
+    `speed, upload${p.uploadsHeld ? ' (HELD until the walk ended, as asked)' : ''}: ${u ? `${u.sends} sends (${u.ok} taken, ${u.retried} to try again, ${u.refused} refused), ${u.kb} KB; a send median ${u.sendMs.median} ms, 95% under ${u.sendMs.p95}, worst ${u.sendMs.worst}; ${u.inSendsS} s inside sends${u.wallS != null ? `, ${u.wallS} s from the first part kept to ${u.finished ? 'the last gone' : 'now (NOT finished)'}` : ''}; ${u.kbPerS ?? '?'} KB a second while sending` : 'nothing sent'}`,
     `speed, phone: ${d.cores ?? '?'} cores, ${d.memoryGb ?? '?'} GB, connection ${d.net ?? '?'}${d.downMbps != null ? ` ${d.downMbps} Mbps` : ''}${d.heapMb != null ? `, page memory ${d.heapMb} MB` : ''}`,
   ];
 }

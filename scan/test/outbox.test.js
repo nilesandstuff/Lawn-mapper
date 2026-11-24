@@ -108,4 +108,18 @@ assert.equal(sizeOf('abc'), 3); assert.equal(sizeOf(new ArrayBuffer(10)), 10); a
   assert.deepEqual(got.slice(0, 2).sort(), ['p0', 'p2'], 'the group\'s others landed before the wait');
   assert.equal(got.filter((n) => n === 'p1').length, 1);
 }
+// HELD (2026-11-24): parts added while held are kept and not sent; let go, they all go
+{
+  const store = memoryStore(), got = [];
+  const ob = newOutbox({ store, send: async (p) => { got.push(p.name); return 'ok'; }, sleep: async () => {} });
+  ob.hold(true);
+  await ob.add('w', 'a', 'x', 'aa'); await ob.add('w', 'b', 'x', 'bb');
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(got.length, 0, 'nothing sent while held');
+  assert.equal((await store.all()).length, 2, 'both kept on the phone');
+  ob.hold(false);
+  await new Promise((r) => setTimeout(r, 50));
+  assert.deepEqual(got.sort(), ['a', 'b'], 'both sent once let go');
+  assert.equal((await store.all()).length, 0);
+}
 console.log('outbox: ok');

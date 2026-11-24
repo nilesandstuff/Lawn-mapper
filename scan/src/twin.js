@@ -234,7 +234,7 @@ export async function plants(request, env, url, { isAdmin }) {
  * WHAT THE OWNER ERASED ON THE MAP (core session, 2026-11-24; the owner: "Give me an eraser so I can show the parts
  * that are wrong... I'll only be able to edit based on the alignment to the photo"): edits/<map>.json, the squares of
  * a walk's ground and plants the owner marked as not matching the photo, each with its kind. Nothing the walk made is
- * changed by it; studies read it as the owner's own look. The one it replaces is kept under edits/backup/. Admin only.
+ * changed by it. NOT ground truth: the aerial photo it was judged against may be off the walk (the owner). The one it replaces is kept under edits/backup/. Admin only.
  *   GET /api/scan/edits?map=   the file, or { none: true }
  *   PUT /api/scan/edits?map=   { v: 1, at, erased: [[layer 'g' or 'p', i, j, kind], ...] } (at most MAX_EDITS_BYTES)
  */

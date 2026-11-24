@@ -90,7 +90,7 @@ function perfOf(wp) {
   const c = navigator.connection || {};
   const device = { cores: navigator.hardwareConcurrency ?? null, memoryGb: navigator.deviceMemory ?? null, net: c.effectiveType ?? null, downMbps: c.downlink ?? null,
     heapMb: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1e6) : null };
-  return { ...(wp || pagePerf).summary({ device, resources: res }), stagesS: pagePerf.summary().stagesS };
+  return { ...(wp || pagePerf).summary({ device, resources: res, uploadsHeld: !!st.holdLast }), stagesS: pagePerf.summary().stagesS };
 }
 // the photo frame and the AR frame are both "frame": keep the AR one apart
 st.ar = null;
@@ -977,6 +977,12 @@ async function startAR(engine, { anyway = false } = {}) {
   const overlay = $('#overlay');
   pagePerf.stage('AR asked'); st.wperf = newPerf(); st.wperfAsked = performance.now(); st.wperfShapes = false;
   st.walk = newWalk({ engine, phone: navigator.userAgent });
+  /* SENT AFTER THE WALK, NOT DURING IT, when asked (2026-11-24; the owner: "I'm wonder if the continuous upload during
+     the walks is part of the problem with stuttering and jumps"): parts are still kept on the phone as they come, and
+     go when the walk ends. The walk's summary says which way it was made and how its frames went while parts were
+     being sent and while none were (lib/perf.js), so two walks answer the question. */
+  st.holdUploads = st.holdLast = !!$('#hold-uploads')?.checked;
+  if (st.holdUploads) st.outbox?.hold?.(true);
   tellApp(st.upStatus || { pending: 0 });   // the keep-running service starts now, while the app is in front
   st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.occ = null; st.occFull = 0; st.occAt = 0; st.walkGround = new Map(); st.spikes = { pictures: 0, cells: 0, flagged: 0 }; st.walkAsk = null; st.walkAt = 0; st.walkStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null }; st.crumbs = newCrumbs();
   st.walk.checks = [];
@@ -1197,7 +1203,7 @@ function onFrame(f) {
   const t0 = performance.now();
   if (st.wperf && st.wperfAsked != null) { st.wperf.time('AR asked to first frame', t0 - st.wperfAsked); st.wperfAsked = null; pagePerf.stage('first frame'); }
   try { frameWork(f); } finally {
-    if (st.wperf && st.walk) { st.wperf.frame(t0, performance.now()); if (f.pose?.position && f.tracking !== false) st.wperf.pose(f.pose.position, t0 / 1000); }
+    if (st.wperf && st.walk) { st.wperf.frame(t0, performance.now(), !!(st.upStatus?.sending && !st.holdUploads)); if (f.pose?.position && f.tracking !== false) st.wperf.pose(f.pose.position, t0 / 1000); }
   }
 }
 function frameWork(f) {
@@ -1577,7 +1583,9 @@ function hud(f) {
   const again = target && L.marks.some((m) => m.id === target.id);
   $('#mark').hidden = !st.tapMode; $('#startover').hidden = !!st.tapMode;
   $('#mark').textContent = target ? (target.roof && !again ? (st.sightPaused ? `Go on with ${target.name}` : `Pause ${target.name} (roof)`) : `Mark ${target.name}${again ? ' again' : ''}`) : 'Mark';
-  if (f.t - (st.mapAt || 0) > 1000 && fitFor(L, w.odo)) { st.mapAt = f.t; const tm = performance.now(); drawMap(); st.wperf?.time('frame: placement map redrawn (hidden page)', performance.now() - tm); }
+  /* (2026-11-24: 33-44 ms a time, 5-6% of a walk's frame time, once the walk's ground and plants were drawn on it; it is
+     not on screen during a walk) redrawn only when it can be seen */
+  if (f.t - (st.mapAt || 0) > 1000 && fitFor(L, w.odo) && $('#map')?.offsetParent) { st.mapAt = f.t; const tm = performance.now(); drawMap(); st.wperf?.time('frame: placement map redrawn (hidden page)', performance.now() - tm); }
 }
 
 /** The lidar ground at a map point from the 1 m grid the worker sent; `fallback` off the grid. */
@@ -2038,6 +2046,7 @@ function finish() {
   }
   st.twin = null;
   st.tracker = null; st.walk = null; st.L = null; st.ar = null; st.drawer = null;
+  if (st.holdUploads) { st.holdUploads = false; st.outbox?.hold?.(false); }
   setTimeout(() => tellApp(st.outbox?.status?.() || st.upStatus || { pending: 0 }), 0);   // the walk over: the service runs until the outbox is empty
   st.replayOf = null; st.replayImage = null; st.replaySmall = false; // a replay is one walk; the next starts from the camera again
   $('#overlay').hidden = true; document.body.classList.remove('in-ar');
@@ -2201,8 +2210,9 @@ function layerControls() {
 /* THE ERASER (the owner, 2026-11-24: "There's definitely some errors. Give me an eraser so I can show the parts that
    are wrong. To be clear, I'll only be able to edit based on the alignment to the photo... I can't say whether the
    errors are alignment issues or legitimate mismarked grass/soil/pavement"). A square erased is the owner saying "this
-   does not match the photo", no more: kept with its kind, beside the map on the server (src/twin.js edits), so the
-   walk can be measured against it later; nothing the walk made is changed. Only kinds shown can be erased. */
+   does not match the AERIAL PHOTO", no more, and the photo may itself be off the walk ("It's not ground truth"): kept
+   with its kind, beside the map on the server (src/twin.js edits), as a comparison; nothing the walk made is changed.
+   Only kinds shown can be erased. */
 function eraseAt(m) {
   const R = (Number($('#eraser-size')?.value) || 2) / 3.281;
   if (!st.erased) st.erased = new Map();

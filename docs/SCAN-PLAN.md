@@ -4566,6 +4566,21 @@ labels when the walk kept them (`kinds: 'phone'` in the record), the vote only w
 finds fences and the built things: ARCore has no label for a fence. TO TEST at the owner's next property (a fence,
 a move about 2026-12-01): pictures again there, for the fence.
 
+## 67. Does sending during a walk make it stutter? (2026-11-24)
+
+The owner: "There were still performance issues during the walk... I'm wonder if the continuous upload during the
+walks is part of the problem with stuttering and jumps." HARD (the walks' own stopwatch, run 577): 21:48 walk 10.2
+frames a second, 646 stalls over 250 ms, the page's own work 57% of the time; 22:04 walk 13.2 a second, 282 stalls,
+49%. Of the page's frame work: the camera picture read and ground colour about 40%, the three depth grids kept with
+each picture 15% (100-124 ms a picture), drawing the AR shapes 15-18%, and THE HIDDEN PLACEMENT MAP REDRAWN 5-6%
+(33-44 ms a time; 0% on the walk of 2026-11-22): the walk's ground and plants drawn on it since (64-65) made each
+redraw heavy, the core session's own doing. A send is not frame work, so nothing above says whether sending stutters.
+BUILT: (1) the placement map redrawn during a walk only when on screen; (2) each walk counts its frame gaps and stalls
+while a part was being sent and while none was (lib/perf.js bySend; "speed, frames while a part was being sent / while
+none was"); (3) a box on the start page, "Send the walk's points and pictures after the walk, not during it": parts
+are kept on the phone as they come and go at the walk's end (outbox hold), and the walk's summary says so. A walk
+each way answers the owner's question.
+
 ## 66. The background upload stopped part way (2026-11-24)
 
 The owner: "I did 2 small walks. They're still uploading... The background upload doesn't appear to be working."
@@ -4577,7 +4592,10 @@ next waited, by then often with the app in the background, which Android refuses
 the page was paused and the parts waited on the phone. FIX (page only, the scan site): from the walk's start until the
 walk has ended and the outbox is empty, at least one part is said to wait, so the service started in the foreground
 stays started (app.js tellApp). Parts already waiting go when the app next opens, as before. Not yet seen to work: the
-next walk will say.
+next walk will say. The owner (2026-11-24): "I'm not talking about during the walk, I'm talking about after the walk.
+Its very inconvenient to leave the app open for 20 minutes after a walk while it uploads." That is the case the fix is
+for: the service has to be running at the moment the app goes to the background, and it was often off then, switched
+off during the walk whenever the outbox caught up; started again from the background, Android refused it.
 
 ## 65. The ground as the walk saw it: paving and grass, against the traced lawn (2026-11-24)
 
@@ -4627,8 +4645,10 @@ will say. And: "There's definitely some errors. Give me an eraser so I can show 
 I'll only be able to edit based on the alignment to the photo.... I can't say whether the errors are alignment issues
 or legitimate mismarked grass/soil/pavement." BUILT: an eraser on the start page's map (one finger erases, two move
 the map; a size in feet; undo; "show what I erased" in red); each erased square kept with its kind beside the map
-(edits/<map>.json in the twin bucket, GET/PUT /api/scan/edits?map=), changing nothing the walk made: the owner's own
-look, "does not match the photo", for the walk to be measured against.
+(edits/<map>.json in the twin bucket, GET/PUT /api/scan/edits?map=), changing nothing the walk made. NOT GROUND TRUTH (the owner, 2026-11-24: "By photo, i meant aerial imagery. It's not
+ground truth, because I don't know if the aerial imagery lines up with the walk"): an erased square says the walk's
+square does not match the AERIAL PHOTO, which may itself be off the walk (the owner sees the trace 2-3 m off the
+lidar's brightness); a comparison to read with that in mind, never a score of the walk.
 BUILT for the owner's eyes: the phone's squares kept with the map (surfaces.py --keep, surfaces-keep.mjs:
 surfaces/<map>.json in the twin bucket; GET /api/scan/surfaces?map=), drawn on the start page's map under the traced
 lawn: paving grey, grass pale green (app.js askSurfaces).

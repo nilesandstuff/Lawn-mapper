@@ -65,7 +65,7 @@ export async function idbStore(name = 'yard-ar', table = 'outbox') {
 export const PARALLEL = 4;
 export function newOutbox({ store, send, onChange = () => {}, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)), parallel = PARALLEL }) {
   const st = { pending: 0, bytes: 0, walks: 0, sending: false, waitingMs: 0, sent: 0, sentBytes: 0, dropped: 0, lastDrop: null, off: null, lastError: null, store: store.kind };
-  let running = false, kickAgain = false, seq = 0;
+  let running = false, kickAgain = false, seq = 0, held = false;
   /* (2026-11-07, the owner's first outdoor walk in the app: its pins and its Street View trail never reached the
      bucket) a part written again while its older copy waited in this round's list, or was on its way, must not be
      deleted when the older copy lands: live.json is rewritten every few seconds and at the walk's end, and the end's
@@ -83,13 +83,14 @@ export function newOutbox({ store, send, onChange = () => {}, now = () => Date.n
     onChange({ ...st });
   };
   async function run() {
+    if (held) return;   // HELD (2026-11-24): kept on the phone, sent when let go (a walk that sends only at its end)
     if (running) { kickAgain = true; return; }
     running = true;
     try {
       let backoff = 0;
       for (;;) {
         kickAgain = false; // what arrives from here on is seen by the next look
-        if (st.off) break;
+        if (st.off || held) break;
         const all = await store.all();
         if (!all.length) break;
         st.sending = true; st.waitingMs = 0; await emit();
@@ -133,6 +134,8 @@ export function newOutbox({ store, send, onChange = () => {}, now = () => Date.n
       run();
     },
     kick: () => run(),
+    /** Hold the sending (parts are still kept), or let it go and send. */
+    hold(v) { held = !!v; st.held = held; if (!held) run(); else emit(); },
     refresh: () => emit(),
   };
 }
