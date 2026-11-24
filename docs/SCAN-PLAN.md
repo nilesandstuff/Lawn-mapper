@@ -4613,13 +4613,19 @@ turned left (1,030 landings, 57 pictures); the phone's own sky points, 3 landing
 sky colour made plain sky read 0.00 / 0.00 / 0.09 clean: worse; dropped. BUT the phone was held 0.85 m up, so a point
 1-6 ft up can stand against the sky; NEXT (run 568): only points LOWER THAN THE CAMERA (below the horizon, where no sky
 is), against a random pixel's chance of being sky.
+RUN 568, THE PICTURES' GEOMETRY IS RIGHT (HARD): points lower than the camera (716 landings, 26 pictures) land on
+sky 1.3% the picture as kept, 9.2% upside down, 6.3% mirrored, 2.4% turned right, 6.8% turned left; a pixel picked at
+random is sky 14% of the time. So a block is put where the picture really shows it, and what failed on this walk is
+the COLOUR TEST of sky (plain sky with nothing of the lidar's in the way read clean in 0.27 of its views): pixel noise,
+the light clouds, trees the lidar does not hold (grown since the flight, or beyond the model's edge), or a mix.
 THE OWNER (2026-11-24): "The arcore scene semantics has a label for sky... looking at the sample pics from the
 labelling studies, it largely avoids marking trees as sky when it does it's own segmentation." The walks kept ARCore's
 label only on DEPTH POINTS, and the sky has no depth (3 of a walk's points labelled sky). BUILT: the page keeps the
 label of every cell of the grid kept with each picture (72 x 128, sky included, in the picture's own frame) as
 key-NNNN.sem (app.js keySem; the scan site's parts; no app update: the page is the scan site's); crown_sky_study.py
 reads it as a third sky (the block's own patch, and the owner's open sky round it). On the simulated yard, 2 ft round
-in 40% of views: crown 0%, air 83%. NO WALK HAS IT YET: the next walk will be the first.
+in 40% of views: crown 0%, air 83%. NO WALK HAS IT YET: the next walk will be the first. Live on the scan site 2026-11-24 ~19:36 UTC (run 569; log's end:
+live, the page check passed).
 (Run 567 as planned:) two-sided: LOW SOLIDS (1-6 ft, rarely against sky; the right way lowest) and the points the PHONE
 labelled sky (the right way highest); and the sky judged by each picture's OWN sky colour (the median of its plainly
 blue pixels, a pixel within 40 of it), since fixed thresholds failed on pixel noise and exposure.
