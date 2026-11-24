@@ -4566,6 +4566,20 @@ labels when the walk kept them (`kinds: 'phone'` in the record), the vote only w
 finds fences and the built things: ARCore has no label for a fence. TO TEST at the owner's next property (a fence,
 a move about 2026-12-01): pictures again there, for the fence.
 
+## 63. The marks kept with the map, not only on the phone (2026-11-24)
+
+The owner: "I opened my home map in the AR page, the reference marks are gone. Is that a problem? Do I need to add the
+same corners back in the same order before the next walk?" HARD (fuse-check, run 557): the map opened was the right
+one (the admin save the walks are made on: its reference walk kept since 2026-11-22 22:53 UTC, 16 walks made on it;
+its record written 15:31 UTC that day, when the owner opened it, and its fused model rewritten by the shade map at
+15:32 with fusing 4). The REFERENCE WALK WAS NOT LOST; only the marks were. They lived only in the phone's own storage
+(app.js `scan-points:<map>`), which had been emptied on the phone; how, the page cannot say.
+FIX: the marks are kept with the map (src/twin.js marks: marks/<map>.json in the twin bucket, the one replaced kept
+under marks/backup/); the start page reads them when a map opens and writes them a moment after each change, the
+newer of the phone's and the server's winning (askMarks, putMarks); page-check opens a map whose marks are only on the
+server and finds them shown. Put back for the owner's map from the walk of 2026-11-20's own record (every walk keeps
+the marks it was made with in its live.json; marks-restore.mjs, task `placed`, walk `<id>:marks`).
+
 ## 62. Can a leaf-off walk take lidar branches away? (2026-11-24)
 
 The owner: "right now, we are only adding branches that are missing from lidar because bare branches are harder to
@@ -4624,7 +4638,9 @@ deployed (workflow 2 run on 221dbd2; log's end: deployed, no database warning); 
 the push (its log's end read: live, twins kept).
 HARD (run 556, fusing 4 on the owner's lot, the phone's plants and all three air grids): 916 half-metre cells
 refined, 2,957 added, 475 trimmed, 132 of them by the air seen empty in any season; 6 trees moved (8 before, with the
-vote's plants); 0 lidar trees taken away, as the clump count above said. NOT LOOKED AT by anyone yet.
+vote's plants); 0 lidar trees taken away, as the clump count above said. NOT LOOKED AT by anyone yet. The owner's
+map took these plants into its record at 15:31 UTC (the AR start page) and the shade map rewrote its fused model at
+15:32 (run 557's listing): fusing 4 has run on the owner's lot in the owner's own browser.
 
 ## 61. "I'm not seeing the fused map at all": a walk was tied to one record of three (2026-11-24)
 
