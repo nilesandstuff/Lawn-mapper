@@ -17,6 +17,7 @@
 import { createHash } from 'node:crypto';
 import { BUCKET, CORPUS_BUCKET, readObject, walkOk, API, account, list } from './twin-r2.mjs';
 import { loadModel, unpackModel } from '../../public/lib/lidar-model.js';
+import { lidarInClear } from '../lib/clear-measure.js';
 
 const MAIN_DB = 'lawn-mapper';
 let d1 = null;
@@ -107,6 +108,18 @@ async function main() {
     const fused = F.fuseModel(lidar, plants, at0, { open, openHigh });
     const f = fused.meta?.fused || {}, g = fused.meta?.grid || {}, lg = lidar.meta?.grid || {};
     console.log(`  THE FUSING, RUN HERE on the walk's map's lidar model (${lg.w} x ${lg.h} columns, ${list_.length} overflow parts${partsOfWalk.length !== list_.length ? `, ${partsOfWalk.length} kept` : ''}) and ${from}: MADE, in ${((Date.now() - t0) / 1000).toFixed(1)} s. Version ${f.version ?? '?'}; grid ${g.w} x ${g.h}; ${f.refined ?? '?'} cells refined, ${f.added ?? '?'} added, ${f.trimmed ?? '?'} trimmed, ${(f.moved || []).length} trees moved; the walk in leaf: ${f.walkInLeaf ?? '?'}; with open air ${open ? 'yes' : 'no'}, above 8 ft ${openHigh ? 'yes' : 'no'}.`);
+    // HOW MUCH OF THE LIDAR'S CROWN SITS IN AIR THE WALK SAW EMPTY IN ANY SEASON (clear-measure.js; SCAN-PLAN 62)
+    const pc = keptJ?.clearHigh ? keptJ : plants;
+    if (pc?.clearHigh) {
+      const cl = await F.openHighFromSeen(pc.clearHigh, Array.isArray(pc.origin) ? pc.origin : at0, F.fusedGrid(lidar.meta));
+      const q = lidarInClear(lidar, cl, F.FUSE_SUB || 2), cube = 0.25 * (lidar.meta.layers.dz || 1);
+      const hz = q.clumps.hist;
+      console.log(`  THE LIDAR'S CROWN IN AIR THE WALK SAW EMPTY IN ANY SEASON (${pc === keptJ ? 'the plants kept by the workflow' : 'the record'}): the walk's cleared air covers ${(q.cells * 0.25 * 10.764).toFixed(0)} sq ft of the fused grid; `
+        + `in it ${q.crown.toLocaleString()} half-metre crown cells of the lidar's (${(q.crown * cube).toFixed(0)} cubic metres), ${q.crownDecid.toLocaleString()} of them a deciduous crown's; by height `
+        + q.byHeight.map((b) => `${b.from}-${b.to > 100 ? 'up' : b.to} ft ${b.cubes.toLocaleString()}`).join(', ') + `; and ${q.roof.toLocaleString()} of the lidar's ROOF cells (a roof in empty air: the walk or the lidar misplaced there).`);
+      console.log(`    The lidar's ${q.clumps.n} tree clumps, by how much of their crown from 8 to 30 ft is in that air: none ${hz.none}, under a quarter ${hz.under25}, a quarter to half ${hz.to50}, half to 90% ${hz.to90}, 90% or more ${hz.over90}; too little crown that low to judge ${hz.notJudged}.`
+        + (q.clumps.mostlyClear.length ? ` The 90%-or-more ones (each: lidar columns, crown cells 8-30 ft, crown cells above 30 ft): ${q.clumps.mostlyClear.map((g) => `${g.cols}/${g.lower}/${g.upper}`).join('; ')}.` : ''));
+    } else console.log('  The lidar\'s crown in air seen empty in any season: not measured (no clearHigh in the plants yet).');
   } catch (e) { console.log(`  THE FUSING, RUN HERE: FAILED: ${String(e?.message || e).slice(0, 300)}`); }
 }
 

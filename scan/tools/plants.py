@@ -359,6 +359,95 @@ def seen_of(recs, flags, track, cut_s, fit):
             "enc": "zlib+base64", "clearTo": base64.b64encode(zlib.compress(val.tobytes(), 9)).decode(), "_high": high}, st
 
 
+CLEAR_FROM = 8 / FT    # m: the air cleared in any season, from 8 ft up (below, `seen` already speaks in any season)
+CLEAR_TOP = 20.0       # m over the ground: no higher (a ground walk sees next to nothing above about 30 ft: SCAN-PLAN 62)
+CLEAR_SLAB = 0.5       # m: the blocks are 2 ft squares, half a metre high, as measured
+CLEAR_NEED_M = 8.0     # m of sight line through a block with nothing seen in it (SCAN-PLAN 62: wrong 1.2% on crowns)
+CLEAR_STEP = 0.1       # m between samples along a line
+
+
+def clear_of(recs, flags, track, cut_s, fit, sq):
+    """THE AIR A WALK SAW EMPTY IN ANY SEASON (core session, 2026-11-24; docs/SCAN-PLAN.md 62; the owner: "Yes i think
+    we should build what we know now"). One line through a bare crown usually misses every twig, so `seenHigh` is
+    trimmed by only after a walk in leaf. But a bare crown stops some lines: on the walk of 2026-11-20 a line inside a
+    crown ended there at 0.58 per metre in the sparsest quarter of crowns (0.92 in the middle). A 2 ft square, half a
+    metre high, 8 ft up or more, that the walk's lines crossed for CLEAR_NEED_M metres or more with NOTHING seen in it
+    is air whatever the season: held against itself (one half of the walk clearing, the other saying where crowns
+    are), that rule cleared 1.2% of crown blocks wrongly (bare_study.py, run 552). Same shape as `seenHigh` (`sq`: its
+    i0, j0, w, h), in decimetres (unitDm 1): the LONGEST unbroken band of such blocks above 8 ft in each square.
+    -> (clearHigh dict or None, stats)"""
+    import base64
+    import zlib
+    if len(track) < 10 or not fit or not sq:
+        return None, {}
+    i0, j0, w, h = sq
+    t_, x_, y_, z_, g_ = (recs[:, i].astype(np.float64) for i in (0, 2, 3, 4, 5))
+    ok = np.isfinite(x_) & np.isfinite(y_) & np.isfinite(z_) & np.isfinite(g_) & (t_ >= cut_s) & ((flags & 3) == 0)
+    if ok.sum() < 1000:
+        return None, {}
+    P = np.stack([x_[ok], y_[ok], z_[ok]], 1)
+    gp, tt = g_[ok], t_[ok]
+    i_ = np.clip(np.searchsorted(track[:, 0], tt), 1, len(track) - 1)
+    i_ = np.where(np.abs(track[i_ - 1, 0] - tt) < np.abs(track[i_, 0] - tt), i_ - 1, i_)
+    C = track[i_, 1:4]
+    from scipy.spatial import cKDTree
+    gij = np.floor(P[:, [0, 2]]).astype(np.int64)
+    o = np.lexsort((gij[:, 1], gij[:, 0]))
+    gs, gy = gij[o], gp[o]
+    brk = np.flatnonzero(np.r_[True, (np.diff(gs, axis=0) != 0).any(1)])
+    gmed = np.array([np.median(gy[a:b]) for a, b in zip(brk, np.r_[brk[1:], len(gy)])])
+    gtree = cKDTree(gs[brk].astype(np.float64))
+    k_ = float(fit.get("s") or 1.0)
+    cth, sth = np.cos(fit["theta"]) * k_, np.sin(fit["theta"]) * k_
+    ns = int(np.ceil((CLEAR_TOP - CLEAR_FROM) / CLEAR_SLAB))
+    nb = w * h * ns
+
+    def key(X, Z, hh):
+        e_, n_ = cth * X - sth * (-Z) + fit["tx"], sth * X + cth * (-Z) + fit["ty"]
+        c_ = np.floor(e_ / SEEN_CELL).astype(np.int64) - i0
+        r_ = np.floor(n_ / SEEN_CELL).astype(np.int64) - j0
+        k = np.floor((hh - CLEAR_FROM) / CLEAR_SLAB).astype(np.int64)
+        good = (hh >= CLEAR_FROM) & (k < ns) & (c_ >= 0) & (c_ < w) & (r_ >= 0) & (r_ < h)
+        return np.where(good, (r_ * w + c_) * ns + k, -1)
+    # what was seen in each block: every point there, whatever it was labelled (heights in the map's metres)
+    kp = key(P[:, 0], P[:, 2], (P[:, 1] - gp) * k_)
+    seen_in = np.bincount(kp[kp >= 0], minlength=nb)
+    D = P - C
+    L = np.linalg.norm(D, axis=1)
+    use = (L >= 0.8) & (L <= SEEN_REACH)
+    path = np.zeros(nb)
+    for s_ in np.arange(0.5, float(L[use].max()) if use.any() else 0.0, CLEAR_STEP):
+        m = use & (s_ < L - np.maximum(0.4, SEEN_SHORT * L))
+        if not m.any():
+            break
+        q = C[m] + D[m] * (s_ / L[m])[:, None]
+        _, near = gtree.query(np.floor(q[:, [0, 2]]))
+        kq = key(q[:, 0], q[:, 2], (q[:, 1] - gmed[near]) * k_)
+        kq = kq[kq >= 0]
+        if len(kq):
+            path += np.bincount(kq, minlength=nb) * CLEAR_STEP
+    path, seen_in = path.reshape(w * h, ns), seen_in.reshape(w * h, ns)
+    clear = (path >= CLEAR_NEED_M) & (seen_in == 0)
+    looked = (path > 0).any(1)
+    best_len = np.zeros(w * h, np.int64); best_lo = np.zeros(w * h, np.int64); cur = np.zeros(w * h, np.int64)
+    for k in range(ns):
+        cur = np.where(clear[:, k], cur + 1, 0)
+        better = cur > best_len
+        best_len = np.where(better, cur, best_len); best_lo = np.where(better, k - cur + 1, best_lo)
+    has = best_len >= 1
+    lo_dm = np.clip(np.round((CLEAR_FROM + best_lo * CLEAR_SLAB) * 10), 0, 254).astype(np.uint8)
+    hi_dm = np.clip(np.round((CLEAR_FROM + (best_lo + best_len) * CLEAR_SLAB) * 10), 0, 254).astype(np.uint8)
+    bands_ = np.zeros((w * h, 2), np.uint8)
+    bands_[has, 0] = lo_dm[has]; bands_[has, 1] = hi_dm[has]
+    bands_[~looked] = 255
+    hb = lambda lo, hi: slice(int((lo / FT - CLEAR_FROM) / CLEAR_SLAB), int((hi / FT - CLEAR_FROM) / CLEAR_SLAB))  # noqa: E731
+    st = {"squares": int(has.sum()), "blocks": int(clear.sum()),
+          "byHeight": {f"{lo}-{hi}": int(clear[:, hb(lo, hi)].any(1).sum()) * 4 for lo, hi in ((8, 16), (16, 30), (30, 50), (50, 66))}}
+    return {"cellM": SEEN_CELL, "i0": i0, "j0": j0, "w": w, "h": h, "unitDm": 1, "notSeen": 255, "needM": CLEAR_NEED_M,
+            "what": "for each square lo then hi, in decimetres over the ground: the longest band of air above 8 ft the walk's lines crossed for needM metres or more, half a metre at a time, with nothing seen in it: air in ANY season; 0 0 no claim, 255 255 never looked; rows south to north",
+            "enc": "zlib+base64", "bands": base64.b64encode(zlib.compress(bands_.tobytes(), 9)).decode()}, st
+
+
 def phone_kinds(d, n):
     """The kinds by the phone's own labels alone (labels-NNNN.bin, byte 0 = ARCore's label + 1; studies.py PHONE_KIND),
     in the cloud parts' order; None when the labels do not match the points."""
@@ -516,6 +605,11 @@ def main():
             if high:
                 doc["seenHigh"] = high
                 print(f"  THE AIR SEEN OPEN ABOVE 8 FT, a band for each square: {sst.get('highSquares', 0):,} squares have one of 2 ft or more; in the middle from {sst.get('highMidLoFt', 0):.0f} to {sst.get('highMidHiFt', 0):.0f} ft up, the highest to {sst.get('highTopFt', 0):.0f} ft; {len(high['bands']) / 1e3:.0f} KB. What it was seen THROUGH, and in which season, it does not say.")
+            ch, cst = clear_of(recs, flags, read_track(d), cut, fit["T"], (seen["i0"], seen["j0"], seen["w"], seen["h"]))
+            if ch:
+                doc["clearHigh"] = ch
+                print(f"  THE AIR SEEN EMPTY IN ANY SEASON, 8 ft up or more ({CLEAR_NEED_M:.0f} m of line through each half-metre block with nothing seen in it; SCAN-PLAN 62): {cst['blocks']:,} blocks, in {cst['squares']:,} squares of 2 ft; the ground under it by height: "
+                      + ", ".join(f"{k} ft {v:,} sq ft" for k, v in cst["byHeight"].items()) + f"; {len(ch['bands']) / 1e3:.0f} KB.")
             print(f"  WHERE IT LOOKED AND SAW OPEN AIR: {sst['lines']:,} sight lines, of any length (each left unclaimed for its last {SEEN_SHORT * 100:.0f}%); {sst['squares']:,} squares of 2 ft covered ({sst['squares'] * 4:,} sq ft); open all the way to {SEEN_TOP_FT} ft in {sst['openTop']:,}, not seen open from the ground in {sst['openNone']:,} (something there, or the ground not seen from near); {len(seen['clearTo']) / 1e3:.0f} KB.")
         else:
             print(f"  Where it looked and saw open air: NOT kept ({sst.get('why') or 'no camera track beside the twin, or too few points'}).")

@@ -26,6 +26,12 @@ export const USER_MAX_MAPS = 50;
 export const GUEST_IDLE_DAYS = 90;
 /** One tool's part of one map. A traced line and a few hundred erased cells fit easily. */
 export const TOOL_MAX_BYTES = 64 * 1024;
+/* THE YARD WALK'S PART IS BIGGER (core session, 2026-11-24): a walk's plants on the map, where it saw open air, and
+   where it saw air in any season (docs/MAPS.md, the scan part) filled 52 KB of the 64 at the owner's lot with the
+   phone's own labels, before the things placed and the air cleared in leaf-off months. Up to this, for the scan tool
+   alone; every other tool's part stays at TOOL_MAX_BYTES. */
+export const TOOL_MAX_BYTES_OF = { scan: 192 * 1024 };
+export const toolMaxBytes = (tool) => TOOL_MAX_BYTES_OF[tool] || TOOL_MAX_BYTES;
 
 export const GUEST_COOKIE = 'lm_guest';
 const GUEST_MAX_AGE = 60 * 60 * 24 * 400; // a browser caps a cookie at 400 days
@@ -489,7 +495,7 @@ async function adoptModels(env, guestId, userId, keys) {
 export async function putTool(env, owner, key, tool, data, basedOn) {
   if (!isTool(tool)) return { error: 'unknown-tool' };
   const body = JSON.stringify(data ?? null);
-  if (body.length > TOOL_MAX_BYTES) return { error: 'too-big', max: TOOL_MAX_BYTES };
+  if (body.length > toolMaxBytes(tool)) return { error: 'too-big', max: toolMaxBytes(tool) };
   const { table, col } = T(owner);
   const exists = await env.DB.prepare(`SELECT 1 AS y FROM ${table} WHERE ${col} = ? AND key = ?`).bind(owner.id, key).first();
   if (!exists) return { error: 'no-map' };

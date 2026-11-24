@@ -110,6 +110,7 @@ jobs:
           node scan/test/semantics.test.js
           node scan/test/walkfix.test.js
           node scan/test/fuse-walk.test.js
+          node scan/test/clear-measure.test.js
           node tools/lidar-model.test.js
 
       - name: The 8th Wall engine binary (pinned)

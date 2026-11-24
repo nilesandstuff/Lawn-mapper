@@ -241,6 +241,17 @@ THE GOAL OF THE YARD AR TOOL (the owner, 2026-11-22: "Just a reminder of the goa
   - "each walk uses the shape reference to get a fix, and adds to future shape references. But only overwrites
     existing reference shapes if there's a high degree of confidence that the new info is actually better."
 
+TAKING LIDAR CROWN AWAY (the owner, 2026-11-24, after docs/SCAN-PLAN.md 62 showed a leaf-off walk can say "this air
+is empty" 8-30 ft up): three reasons, all to be covered: branches trimmed since the flight ("mostly happens close to
+the ground"); whole trees removed ("Easy with isolated crowns. Zero branches (or a trunk) seen within a certain
+distance of the ground where lidar says there should be tree, means that tree is gone. Harder with touching
+canopies"); and lidar shapes that drift off the real canopy ("Easy near the ground, harder up higher... remove the
+canopy in a tree-shaped line"). AND THE OWNER'S STANDING IDEA FOR WHAT DEPTH CANNOT REACH ("Remember that last
+sentence"): "we can rely on color a lot for tweaking canopies beyond the distance of the actual depth finding by
+comparing whether or not tree or sky is visible from a position and comparing that with what the lidar says there
+should be... And we use the lidar to estimate what the distance should be for the edits" -- best in leaf-off months
+on a clear day, sky blue against branches.
+
 ADDED TO THE ROADMAP BY THE OWNER, 2026-11-22 ("fit this in whenever and however you need to"):
 
   - THE AR REFINES THE LIDAR'S SHAPES FOR THE SHADE MAP AND THE WATER MAP. "Not directly writing over the lidar

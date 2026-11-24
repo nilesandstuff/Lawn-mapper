@@ -17,7 +17,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { BUCKET, readObject, writeObject, walkOk } from './twin-r2.mjs';
 
-export const MAX_BYTES = 52000;   // of the 64 KB the scan tool's part of a map's record may hold (docs/MAPS.md); the placed things have the rest
+export const MAX_BYTES = 160000;  // of the 192 KB the scan tool's part of a map's record may hold (docs/MAPS.md; 64 KB until 2026-11-24); the placed things have the rest
 
 async function main() {
   const [walk, dir] = process.argv.slice(2);
@@ -31,6 +31,7 @@ async function main() {
   const out = { ...j, walk: String(walk), at: new Date().toISOString() };
   let body = Buffer.from(JSON.stringify(out));
   // too big with where the walk saw open air (`seen`): the plants go without it, and that is said
+  if (body.length > MAX_BYTES && out.clearHigh) { delete out.clearHigh; body = Buffer.from(JSON.stringify(out)); console.log(`The air seen empty in any season is LEFT OUT: with it the file is over the ${MAX_BYTES / 1e3} KB there is room for.`); }
   if (body.length > MAX_BYTES && out.seenHigh) { delete out.seenHigh; body = Buffer.from(JSON.stringify(out)); console.log(`The air seen open above 8 ft is LEFT OUT: with it the file is over the ${MAX_BYTES / 1e3} KB there is room for.`); }
   if (body.length > MAX_BYTES && out.seen) { delete out.seen; body = Buffer.from(JSON.stringify(out)); console.log(`Where the walk saw open air is LEFT OUT: with it the file is over the ${MAX_BYTES / 1e3} KB there is room for.`); }
   if (body.length > MAX_BYTES) { console.log(`Plants NOT kept with the map: ${(body.length / 1e3).toFixed(0)} KB, over the ${MAX_BYTES / 1e3} KB there is room for in the map's record.`); process.exitCode = 1; return; }

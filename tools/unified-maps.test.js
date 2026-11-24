@@ -299,6 +299,12 @@ let guestCookie;
   // a newer walk on the first map shows through at once
   await call(envW, req('/api/maps/tool?id=walked&tool=scan', { method: 'POST', cookie: c, body: { data: { plants: { ...plants, at: '2026-11-25T10:00:00.000Z' } } } }));
   check('a newer walk shows through at once', (await one('same lot')).tools.scan.data.plants.at === '2026-11-25T10:00:00.000Z');
+  // the yard walk's part may be bigger than any other tool's (192 KB against 64)
+  const big = { plants: { ...plants, pad: 'x'.repeat(100 * 1024) } };
+  const okBig = await call(envW, req('/api/maps/tool?id=walked&tool=scan', { method: 'POST', cookie: c, body: { data: big } }));
+  const noBig = await call(envW, req('/api/maps/tool?id=walked&tool=shade', { method: 'POST', cookie: c, body: { data: big } }));
+  check("a walk's part of 100 KB is kept; another tool's is refused", okBig.res.status === 200 && noBig.res.status === 400 && noBig.body.error === 'too-big', `${okBig.res.status} ${noBig.res.status}`);
+  await call(envW, req('/api/maps/tool?id=walked&tool=scan', { method: 'POST', cookie: c, body: { data: { plants: { ...plants, at: '2026-11-25T10:00:00.000Z' } } } }));
   // another account's walk on the same lot is nobody else's
   const other = await findOrCreateUser(envW, { email: 'x@example.test', provider: 'email', subject: 'x' });
   const c2 = `${SESSION_COOKIE}=${(await createSession(envW, other.id)).token}`;
