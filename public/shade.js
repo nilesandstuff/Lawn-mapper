@@ -189,13 +189,16 @@ function saveModelFile({ now = false } = {}) {
   if (!site?.map?.id || !view.trees?.finished) return;
   clearTimeout(modelTimer);
   modelTimer = setTimeout(async () => {
+    let fin = null, lidarAt = null;
     try {
-      const fin = finishedModel({ ...view.trees.finished(), surround: view.surround || null, fences: view.fences || [], lidar: view.model?.lidar || null, flown: view.model?.flown || null, photo: view.model?.green?.frame || null, basedOn: site.map.at || null });
+      fin = finishedModel({ ...view.trees.finished(), surround: view.surround || null, fences: view.fences || [], lidar: view.model?.lidar || null, flown: view.model?.flown || null, photo: view.model?.green?.frame || null, basedOn: site.map.at || null });
       const files = await modelFiles(fin); // gzipped (lidar-model.js packModel); over 48 MB, overflow parts beside it
       const res = await putModelFiles(fetch, '', site.map.id, files);
       if (!res.ok) track('model', `refused ${res.status}${res.part ? ` (part ${res.part})` : ''}`); else track('model', `${Math.round(res.bytes / 1024)} KB${res.parts ? ` in ${res.parts + 1} files` : ''}`);
-      await saveFusedFile(site, fin, res.ok ? res.at : null);
+      lidarAt = res.ok ? res.at : null;
     } catch (e) { track('model', `failed: ${String(e.message).slice(0, 60)}`); }
+    /* the walk's refinement is made (and shown) even when the lidar model's own save failed */
+    if (fin) await saveFusedFile(site, fin, lidarAt);
   }, now ? 0 : 1000);
 }
 
@@ -206,9 +209,17 @@ function saveModelFile({ now = false } = {}) {
  * (sun-ui.js, with the lidar alone one tap away).
  */
 async function saveFusedFile(site, fin, lidarAt = null) {
-  const plants = site.map?.plants, origin = site.map?.origin;
+  const plants = site.map?.plants;
+  /* the point the walk's metres are measured from: its own (plants.origin, a walk lent from another of the account's
+     maps of this lot: the core session's "a walk follows the place, not the record"), else this map's */
+  const origin = Array.isArray(plants?.origin) && plants.origin.length === 2 && plants.origin.every(Number.isFinite) ? plants.origin : site.map?.origin;
   view.fusedFor = site;
-  if (!plants?.boxes?.length || !origin) { view.fused = null; return; }
+  if (!plants?.boxes?.length || !origin) {
+    view.fused = null;
+    /* Said only where the map has a yard walk's part at all (the Yard AR tool has been used on it). */
+    walkNote(site.map?.scanPart ? 'No yard walk\'s plants on this map yet, so the trees are the lidar\'s alone. A walk\'s plants reach the map when it is next opened on the Yard AR start page.' : '');
+    return;
+  }
   try {
     const open = plants.seen ? await openFromSeen(plants.seen, origin, fusedGrid(fin.meta)).catch(() => null) : null;
     const openHigh = plants.seenHigh ? await openHighFromSeen(plants.seenHigh, origin, fusedGrid(fin.meta)).catch(() => null) : null;
@@ -216,6 +227,8 @@ async function saveFusedFile(site, fin, lidarAt = null) {
     view.fused = fused;
     const f = fused.meta.fused;
     track('fused', `${f.refined} refined, ${f.added} added, ${f.trimmed} trimmed, ${f.moved.length} trees moved`);
+    const day = Number.isFinite(Number(plants.walk)) ? new Date(Number(plants.walk)).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : null;
+    walkNote(`Refined by your yard walk${day ? ` of ${day}` : ''}${plants.borrowed ? ', made on another of your maps of this lot' : ''}${f.walkInLeaf ? '' : ' (made with the leaves off, so bare crowns keep the lidar\'s density)'}: ${f.refined.toLocaleString()} half-meter blocks reshaped, ${f.added.toLocaleString()} added, ${f.trimmed.toLocaleString()} trimmed where the walk saw open air, ${f.moved.length} tree${f.moved.length === 1 ? '' : 's'} moved.`);
     view.sun?.setFused(fused);
     view.trees?.setFused?.(fused);
     /* WHAT IT WAS MADE FROM (docs/MAPS.md, the fused model; the same rule as the scan page's fuse-walk.js madeFromOf):
@@ -228,7 +241,15 @@ async function saveFusedFile(site, fin, lidarAt = null) {
     if (at && stored === want) { track('fused', 'kept: already made from this lidar and this walk'); return; }
     const res = await putModelFiles(fetch, '', site.map.id, await modelFiles(fused), 'fused', { madeFrom: at ? want : null });
     if (!res.ok) track('fused', `refused ${res.status}`);
-  } catch (e) { view.fused = null; track('fused', `failed: ${String(e.message).slice(0, 60)}`); }
+  } catch (e) {
+    track('fused', `failed: ${String(e.message).slice(0, 60)}`);
+    if (!view.fused) walkNote(`Your yard walk could not be fused with the lidar (${String(e?.message || e).slice(0, 120)}), so the trees are the lidar's alone.`);
+  }
+}
+
+/** What the yard walk did to this map's trees, said under the trees and the light (empty: nothing to say). */
+function walkNote(text) {
+  for (const id of ['#tr-walk-note', '#sun-walk-note']) { const el = $(id); if (el) { el.textContent = text; el.hidden = !text; } }
 }
 
 /** Do the erased cells kept on the server belong to this model's grid (the lot and the lidar unchanged)? */

@@ -18,7 +18,7 @@ export function siteFromSave(s) {
     lawn: (s.shapes || []).map(asFeature).filter(Boolean),
     tracedOn: tracedOn(s),
     county: s.county || null,
-    map: { id: s.id, at: s.at || null, shade: part, plants: s.tools?.scan?.data?.plants || null, origin: Number.isFinite(s.lng) && Number.isFinite(s.lat) ? [s.lng, s.lat] : null },
+    map: { id: s.id, at: s.at || null, shade: part, plants: s.tools?.scan?.data?.plants || null, scanPart: !!s.tools?.scan, origin: Number.isFinite(s.lng) && Number.isFinite(s.lat) ? [s.lng, s.lat] : null },
   };
   /* The line traced here last time, when the county had none. */
   if (!site.parcel && part?.lot && !lotProblem(part.lot)) site.parcel = lotFeature(part.lot);
