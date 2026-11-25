@@ -839,6 +839,14 @@ jobs:
             REF_SCALE="${{ inputs.calib }}" node scan/tools/reference-build.mjs against $dirs | tee reference.txt
             exit 0
           fi
+          # "<walk>,<walk>,...:crossval": each walk against a reference made of the others (nothing written);
+          # "<walk>,<walk>,...:rebuild" (":rebuild:dry"): the map's reference made again from these walks, every point counted
+          if [[ "$WALK" == *:crossval || "$WALK" == *:rebuild ]]; then
+            HOW="${WALK##*:}"; dirs=""
+            for W in $(echo "${WALK%:*}" | tr ',' ' '); do node scan/tools/twin-r2.mjs get "$W" "w-$W" > /dev/null; dirs="$dirs w-$W"; done
+            node scan/tools/reference-build.mjs "$HOW" $dirs | tee reference.txt
+            exit 0
+          fi
           # "<walk>:restore" (or ":restore:dry"): what the map's reference and its backups hold; the newest backup put back
           if [[ "$WALK" == *:restore ]]; then
             W="${WALK%:restore}"; node scan/tools/twin-r2.mjs get "$W" twin > /dev/null
