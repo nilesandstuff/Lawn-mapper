@@ -4960,3 +4960,21 @@ HARD, the drift (runs 588 and 593; the 21:48 walk, 1,261 ft, R3 marked three tim
   - matching only the last 197 ft or 98 ft walked is WORSE: used 3 and 2 times of 25 (too little standing to tell
     places apart). Not built.
 
+  - run 595, the core session's first fix, MEASURED AS NOTHING: the turn bounded to 15 degrees of the last used fit
+    gave the same refusals to the digit. The rival is a near turn about the corner, not a far one. Taken out.
+  - run 596, the rule changed (walkref.js: with a corner as the pin, the lead asked is 15% of the best, not ten
+    points flat): used 23 times of 25 to the walk's end, the other corners under the used fits 12 in in the middle,
+    24 in at worst, 1 and 14 in at the end (the live walk: 3 ft 11 in). Built into the page.
+HARD, the width by the share of paved points across (run 597; a 12 ft drive in the simulation reads 12 ft 2 in):
+  on the pooled walks at 1 ft squares two pieces read 11 ft 2 in (over 9 ft) and 11 ft 4 in (over 6 ft), the tape
+  11 ft 8 in; other pieces 3 ft 7 in and 6 ft 9 in; at 2 ft squares it reads nonsense (1 ft 4 in over 36 ft).
+
+SPECULATION:
+  - that 15% is the right lead: it is set on ONE walk. It leaves the two-alike rule and the 1.5 m bound on the
+    corner in place; a wrong turn about a rightly marked corner is what it could let through.
+  - that the 11 ft pieces are the drive: not known which piece is which, and the runs are short (6-9 ft).
+  - a rigid fit of the whole walk cannot follow the phone's slide WITHIN a walk; the 12-24 in left is probably that.
+  - why the paving stays in 27 pieces: not found. The label, the 2-to-1 rule at edges, and the two walks' 10%
+    disagreement are all candidates; none measured.
+NOT DONE: the map's reference is still the 22:04 walk alone (putting the backup back, or building both walks into
+one, is the owner's to say); walks are pooled for the ground but not yet into the fused file by themselves.
