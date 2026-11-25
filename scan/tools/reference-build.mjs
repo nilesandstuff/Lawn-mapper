@@ -507,7 +507,11 @@ function buildFrom(walks, log) {
     if (!w.cornersOk) {
       const f = shapeFix(ref, w.pts);
       if (!f.ok) { log(`    NOT ADDED: its whole-walk match failed (${f.why}).`); continue; }
-      T0 = f.T; log(`    its whole-walk match: landed ${f.landed}, next best ${f.second}.`);
+      T0 = f.T;
+      // its corners under that match: the shape's own word on which of them was marked wrong
+      const P0 = { ...(ref.P || AS_IS), s: 1 }, last = new Map(); for (const m of w.marks) if (m?.ar && m?.map && m.kind === 'ref') last.set(m.id, m);
+      const e = [...last.values()].map((m) => { const q = place(P0, ...place(f.T, ...m.ar)); return `${m.id} ${(Math.hypot(q[0] - m.map[0], q[1] - m.map[1]) * 39.37).toFixed(0)} in`; });
+      log(`    its whole-walk match: landed ${f.landed}, next best ${f.second}; its corners under it (the latest mark of each): ${e.join(', ')}.`);
     }
     const placed = placeOnShape(ref, w.pts, w.cornersOk ? w.marks : [], w.jumps, { log, T0 });
     const m = addPlaced(ref, placed, w.at);
