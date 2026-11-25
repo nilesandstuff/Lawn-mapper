@@ -451,7 +451,7 @@ async function restore(dir) {
   for (const o of olds.slice(0, 6)) {
     const b = await readObject(BUCKET, o.key).catch(() => null);
     if (!first) first = b;
-    say(`backup, replaced ${new Date(Number(o.key.slice(pre.length, -4))).toISOString().slice(0, 16)}`, b ? decodeRef(b) : null, b || []);
+    say(`backup, saved ${new Date(Number(o.key.slice(pre.length, -4))).toISOString().slice(0, 16)}`, b ? decodeRef(b) : null, b || []);
   }
   if (!first || !decodeRef(first)) { console.log('No backup to put back.'); return; }
   if (process.env.DRY) { console.log('A dry run: nothing written.'); return; }
