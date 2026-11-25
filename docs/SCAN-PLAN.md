@@ -4993,3 +4993,18 @@ a frame of its own. The study's own doing, most likely; not looked into.
 SPECULATION: labels could still help where no corner is marked and the rival is across the yard (the wrong placements
 of runs 490-493). Not measured. The kinds are kept in the study's code path (walkref.js ref.standK) and used by
 nothing on the page.
+
+THE REFERENCE PUT BACK AND MADE OF THREE WALKS (runs 600-602; the owner, 2026-11-25: the reference is "the accumulation
+of every walk without the uncertain parts").
+HARD: the map had 15 backups (twin.js names each by when it was SAVED). The one saved 2026-11-24 21:59 held two walks:
+the walk the reference was made afresh from on 2026-11-22, and the 21:48 walk (16,820 standing, 17,847 ground points,
+its place read twice). The 22:04 walk had replaced it with itself alone (10,978 / 12,059). Run 601 put the two-walk
+one back (the single-walk one is a backup). Run 602 added the 22:04 walk (reference-build.mjs keep, MAP_FROM): its 3
+corners agree within 8 in; matched to the saved shape (landed 0.446, next best 0.327) but the match NOT used, because
+the phone's tracking jumped 7.0 ft at 848 ft walked, so its corners placed it; 15,000 points seen after the jump with
+no corner sighted after it were left out; 3,700 points added, none corrected. NOW: 18,459 standing and 18,687 ground
+points from 3 walks.
+NOT YET what the owner asked for: a point is kept on one walk's word; nothing counts how many walks agree on it; a
+walk placed by its corners only FILLS what the shape lacks (3,700 of about 89,000 points seen), it does not confirm
+or correct what is there. The reference made afresh on 22 Nov held 36,434 standing points and the two-walk one
+16,820: what the second walk's merge dropped has not been looked into.
