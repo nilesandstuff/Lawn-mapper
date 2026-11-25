@@ -5008,3 +5008,41 @@ NOT YET what the owner asked for: a point is kept on one walk's word; nothing co
 walk placed by its corners only FILLS what the shape lacks (3,700 of about 89,000 points seen), it does not confirm
 or correct what is there. The reference made afresh on 22 Nov held 36,434 standing points and the two-walk one
 16,820: what the second walk's merge dropped has not been looked into.
+
+
+## 71. The reference as every walk, counted, and a check that does not mark its own work (2026-11-25)
+
+The owner, 2026-11-25: the reference is to be "the accumulation of every walk without the uncertain parts", and "keep
+building mechanisms to add to the reference walk, verify it, and get better shape fixes".
+
+BUILT:
+  - walkref.js file version 3: each point keeps how many walks put a point within 30 cm of it, and how many looked
+    there and saw nothing. Versions 1 and 2 read as every point on one walk's word. trustedRef: only the points two
+    walks or more vouch for.
+  - refkeep.js mergeCounted, in place of mergeRef in updateRef: a point another walk confirms is counted, not
+    replaced; a new point is added on its own walk's word; a point missed twice, more often than seen, is dropped.
+    (mergeRef let one walk replace everything in each square metre it saw: 36,434 standing points became 16,820.)
+  - refkeep.js placeOnShape: a walk put on the shape 60 m of walking at a time, every 15 m, each stretch held within
+    1 m and 2 degrees of where the walk's corners put it (or the stretch before it) and moved by the shapes alone
+    inside that. addPlaced adds it counted. The page does this at a walk's end, in a worker, when the map has a
+    reference; it falls back to the whole-walk way when too little matches. NOT DEPLOYED until the check below says so.
+  - reference-build.mjs crossval: each walk against a reference made from the OTHERS, the page's live match replayed
+    on it every 49 ft, judged by its own corners, which took no part; against every point and against only the points
+    two walks vouch for. rebuild: the map's reference made again from its walks, counted.
+  - a replay is not added to the reference, nor its things (it would vouch for its own walk a second time).
+  - the only walk with a full recording on the owner's lot is the walk of 2026-11-20 (761 MB), which is in the
+    reference: replayed, it would be matched to itself. Not a test of anything.
+
+HARD, run 604 (the first crossval, the walks of 2026-11-20, 2026-11-24 21:48 and 22:04): the stretch placement FAILED on
+the real walks as first built. Of 19-26 stretches a walk, 2-5 matched; the rest refused by the whole-walk gates ("only
+18% of the walk's points land", "another place fits nearly as well"); most of each walk was left out. Two causes found:
+  - a stretch sees much the reference never saw, so less of it lands than of a whole walk; and inside a 1 m bound the
+    lead rule's rivals are not there. Now held stretches are searched a degree at a time within 2 degrees, need 12%
+    landed (5% of the standing things), and no lead.
+  - reference-build.mjs cut walks at the track's "jumps" (jumpsOf). The page never does (L.jumps is never set), and on
+    the walk of 2026-11-20 they are the page's stalls (section 59). Cut there, that walk kept 11,146 standing points
+    of the 36,434 `fresh` kept. Now not used unless JUMPS=1, and the walk's start is cut as `fresh` cuts it.
+ALSO HARD: in that run the walk of 2026-11-20, left out, was "used" 14 times in a row with its other corners 308 in
+out. Its record holds a corner mark about 20 ft from its corner (section 57); the judge counted it. Now only the
+corners that agree with each other (goodPart) place, pin or judge a walk. Whether the live page's pin can be that
+wrong mark: it can (the latest marked corner) -- NOT yet changed on the page.
