@@ -30,6 +30,12 @@ def main():
     keys = []
     for n in sorted(x for x in os.listdir(d) if re.fullmatch(r"keys-\d+\.json", x)):
         keys += json.load(open(os.path.join(d, n)))
+    # THE PICTURES' POSES THE RIGHT WAY ROUND (2026-11-25): the app keeps ARCore's VIEW matrix (session to camera), the
+    # web page kept camera to session; segment_study.pose_keys tells which by the track. This tool read every app walk's
+    # pictures inside out until today, so what it said of pictures before then is void.
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import segment_study as SS
+    print("  The pictures' poses: " + SS.pose_keys(keys, SS.read_track(d)) + ".")
     recs, labs = [], []
     for n in sorted(x for x in os.listdir(d) if re.fullmatch(r"cloud-\d+\.bin", x)):
         a = np.fromfile(os.path.join(d, n), dtype="<f4"); a = a[: len(a) // 6 * 6].reshape(-1, 6)
@@ -62,7 +68,7 @@ def main():
         sel = order[a_:b_]; sel = sel[labs[sel] > 0]
         if not len(sel):
             continue
-        V = np.asarray(k["view"], np.float64).reshape(4, 4).T; Pm = np.asarray(k["proj"], np.float64).reshape(4, 4).T
+        V = k["c2w"]; Pm = np.asarray(k["proj"], np.float64).reshape(4, 4).T
         cam = P4[sel] @ np.linalg.inv(V).T; clip = cam @ Pm.T
         w = np.where(np.abs(clip[:, 3]) < 1e-9, 1e-9, clip[:, 3])
         u, v = (clip[:, 0] / w + 1) / 2, (1 - clip[:, 1] / w) / 2
@@ -123,7 +129,7 @@ def more(d, keys, recs, labs, order, T, P4, WAYS):
         if len(m) < 20:
             continue
         used += 1
-        V = np.asarray(k["view"], np.float64).reshape(4, 4).T; Pi = np.linalg.inv(np.asarray(k["proj"], np.float64).reshape(4, 4).T)
+        V = k["c2w"]; Pi = np.linalg.inv(np.asarray(k["proj"], np.float64).reshape(4, 4).T)
         jj, ii = np.divmod(m, nx); u0, v0 = (ii + 0.5) / nx, (jj + 0.5) / ny
         for wi, (u, v) in enumerate(ways_uv(u0, v0)):
             x, y = 2 * u - 1, 1 - 2 * v
@@ -155,7 +161,7 @@ def more(d, keys, recs, labs, order, T, P4, WAYS):
             sel = order[a_:b_]; sel = sel[labs[sel] > 0]
             if not len(sel):
                 continue
-            V = np.asarray(k["view"], np.float64).reshape(4, 4).T; Pm = np.asarray(k["proj"], np.float64).reshape(4, 4).T
+            V = k["c2w"]; Pm = np.asarray(k["proj"], np.float64).reshape(4, 4).T
             cam = P4[sel] @ np.linalg.inv(V).T; clip = cam @ Pm.T
             w = np.where(np.abs(clip[:, 3]) < 1e-9, 1e-9, clip[:, 3]); u, v = (clip[:, 0] / w + 1) / 2, (1 - clip[:, 1] / w) / 2
             inn = (-cam[:, 2] > 0.3) & (u > 0.02) & (u < 0.98) & (v > 0.02) & (v < 0.98)

@@ -120,6 +120,11 @@ def cast_pictures(d, cut, gtree, gmed):
     keys = []
     for n in sorted(x for x in os.listdir(d) if re.fullmatch(r"keys-\d+\.json", x)):
         keys += json.load(open(os.path.join(d, n)))
+    # THE PICTURES' POSES THE RIGHT WAY ROUND (2026-11-25): the app keeps ARCore's VIEW matrix (session to camera), the
+    # web page kept camera to session; segment_study.pose_keys tells which by the track. This tool read every app walk's
+    # pictures inside out until today, so what it said of pictures before then is void.
+    import segment_study as SS
+    SS.pose_keys(keys, SS.read_track(d))
     X, Z, Lb, used = [], [], [], 0
     for k in keys:
         if k.get("t", 0) < cut:
@@ -138,7 +143,7 @@ def cast_pictures(d, cut, gtree, gmed):
         m = (dist > 0.4) & (dist <= CAST_MAX_M) & (conf >= CAST_CONF) & (lab < 12) & sure
         if not m.any():
             continue
-        V = np.asarray(k["view"], np.float64).reshape(4, 4).T
+        V = k["c2w"]
         Pi = np.linalg.inv(np.asarray(k["proj"], np.float64).reshape(4, 4).T)
         jj, ii = np.divmod(np.flatnonzero(m), nx)
         u, v = 2 * (ii + 0.5) / nx - 1, 1 - 2 * (jj + 0.5) / ny

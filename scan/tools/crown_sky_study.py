@@ -246,6 +246,11 @@ def main():
         stand = np.where(np.isfinite(stand), stand, 0.0)
     except Exception:
         stand = np.zeros(G["w"] * G["h"])
+    # THE PICTURES' POSES THE RIGHT WAY ROUND (2026-11-25): the app keeps ARCore's VIEW matrix (session to camera);
+    # this study read it as camera to session until today, so SCAN-PLAN 67-69's picture results are void (its
+    # "geometry check" passed only because a camera read inside out still looks mostly down at low points).
+    import segment_study as SS
+    print("  The pictures' poses: " + SS.pose_keys(keys, SS.read_track(d)) + ".")
     ctl_rgb = []   # the mean colour of each control patch in each view: blue sky, white sky, or not sky at all
     for k in keys:
         try:
@@ -253,7 +258,7 @@ def main():
         except Exception:
             continue
         H_, W_ = img.shape[:2]
-        V = np.asarray(k["view"], np.float64).reshape(4, 4).T  # camera -> session
+        V = k["c2w"]
         Pm = np.asarray(k["proj"], np.float64).reshape(4, 4).T
         cam = P4 @ np.linalg.inv(V).T
         zc = -cam[:, 2]
@@ -364,12 +369,12 @@ def main():
         # BELOW THE CAMERA (run 567: points 1-6 ft up landed on sky 11.3% as kept, 3-7% turned or flipped; but the phone
         # was held 0.85 m up, so a wall's top or a shrub over it can stand against the sky). A point lower than the
         # camera is seen below the horizon, where no sky is: none should land on sky the right way round.
-        camY = np.asarray(k["view"], np.float64)[13]
+        camY = k["c2w"][1, 3]
         sel0 = sel0[y_[ok][sel0] < camY - 0.2]
         sel = sel0[stand_pt[sel0]]
         if len(sel) < 20:
             continue
-        V = np.asarray(k["view"], np.float64).reshape(4, 4).T
+        V = k["c2w"]
         Pm = np.asarray(k["proj"], np.float64).reshape(4, 4).T
         sky = sky_bright(img)
         if sky.mean() < 0.005:
