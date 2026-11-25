@@ -67,3 +67,7 @@ Geospatial API at the next build.
 
 Local build (the session's own check): Android SDK 35, Gradle 8.14, JDK 17+:
 `gradle -p android assembleRelease -PscanUrl=https://scan.example.com`.
+
+Bridge 8 (2026-11-25): the app keeps and sends a walk's parts itself (Parts.kt, PartsService.kt): `keepPart(path,
+type, base64)` and `partsStatus()`. Before it the page sent them and the app only kept the page awake (bridge 6),
+which did not keep it sending with the app in the background.

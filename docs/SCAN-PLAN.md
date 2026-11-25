@@ -4566,6 +4566,21 @@ labels when the walk kept them (`kinds: 'phone'` in the record), the vote only w
 finds fences and the built things: ARCore has no label for a fence. TO TEST at the owner's next property (a fence,
 a move about 2026-12-01): pictures again there, for the fence.
 
+## 68. The app sends a walk's parts itself (bridge 8, 2026-11-25)
+
+The core session's fix of 66 was aimed at the wrong case, as its own review found: after a walk parts ARE waiting, so
+the keep-awake service was on. The owner (2026-11-25): the notification shows "but the numbers don't move. The full
+recordings have historically sent fine in the background, so yea it sounds like doing the walk upload data the same
+way would be good. Build it." So a page kept awake in the background does not keep sending (why is not known; the
+recordings, sent by the app's own thread, do). BUILT: android Parts.kt + PartsService (bridge 8): the page hands each
+part to the app as it is made (Bridge.keepPart: the part's route on the scan site, its type, its bytes); the app
+keeps it in its own storage and sends it from a foreground service with the page's sign-in cookie, four at a time,
+deleting each once the site has it; what cannot go waits for the app's next open. The page (app.js handPart,
+uploadsNow) hands over when the app can and sends by itself otherwise (a browser, an older app). NEEDS THE APP
+UPDATE the page offers. Not yet seen on a walk.
+ALSO (the owner, 2026-11-25): "I shouldn't erase based on the photo, that tells us nothing." The eraser stays; what
+it is to be used against is open until the two walks of 2026-11-24 are folded in.
+
 ## 67. Does sending during a walk make it stutter? (2026-11-24)
 
 The owner: "There were still performance issues during the walk... I'm wonder if the continuous upload during the

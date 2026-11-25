@@ -35,6 +35,8 @@ import org.json.JSONObject
 class MainActivity : Activity() {
     lateinit var engine: ArEngine
     lateinit var recorder: Recorder
+    /** Bridge 8: a walk's parts the app holds and sends (Parts.kt). */
+    val parts: Parts by lazy { Parts.of(this, BuildConfig.SCAN_URL.trimEnd('/')) }
     private var recordingWalk: String? = null
     private var replayingWalk: String? = null
     private lateinit var gl: GLSurfaceView
@@ -109,6 +111,8 @@ class MainActivity : Activity() {
         engine.onPlaybackEnd = { status -> event("{\"type\":\"playbackEnd\",\"status\":${quote(status)}}") }
         // a recording an earlier walk could not send (no signal, the app closed): sent now
         web.postDelayed({ recorder.sendAll() }, 5000)
+        // bridge 8: a walk's parts the app holds (Parts.kt); what an earlier visit could not send goes now
+        web.postDelayed({ parts.kick() }, 3000)
         // what only the dev build has (the USB thermal camera; src/dev/README.md); nothing in the store build
         try { Extras.install(this, web, base); Extras.intent(this, intent) } catch (e: Exception) { android.util.Log.w("LawnAR", "extras: ${e.message}") }
     }

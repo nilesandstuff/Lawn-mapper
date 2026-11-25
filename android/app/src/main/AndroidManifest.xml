@@ -47,7 +47,7 @@
             </intent-filter>
         </activity>
 
-        <!-- bridge 6: keeps the page sending a walk's parts with the screen off (PartsService) -->
+        <!-- bridge 8: sends a walk's parts in the background (PartsService, Parts.kt) -->
         <service
             android:name=".PartsService"
             android:exported="false"

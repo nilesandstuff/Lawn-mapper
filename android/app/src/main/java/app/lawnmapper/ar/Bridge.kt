@@ -99,9 +99,20 @@ class Bridge(private val a: MainActivity) {
      */
     @JavascriptInterface
     fun partsPending(n: Int, bytes: Double) {
-        a.partsLeft = maxOf(0, n)
-        PartsService.update(a.applicationContext, maxOf(0, n), bytes / 1e6)
+        a.partsLeft = maxOf(0, n)   // the page is left unpaused while it holds parts of its own (bridge 8 sends for it)
     }
+
+    /**
+     * Bridge 8: one of a walk's parts handed to the app to keep and send (Parts.kt): the scan site's own route for it
+     * (path with its query), its content type, and its bytes as base64. True once it is kept on the phone; from then
+     * the app sends it, in the background too.
+     */
+    @JavascriptInterface
+    fun keepPart(path: String, type: String, b64: String): Boolean = a.parts.keep(path, type, b64)
+
+    /** Bridge 8: { pending, bytes, sent, sentBytes, dropped, sending, lastError, off } of the parts the app holds. */
+    @JavascriptInterface
+    fun partsStatus(): String = a.parts.status()
 
     /** Bridge 3: recordings on the phone not yet sent to the site: [{ walk, bytes }]. */
     @JavascriptInterface

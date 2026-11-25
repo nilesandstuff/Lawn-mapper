@@ -90,7 +90,7 @@ function perfOf(wp) {
   const c = navigator.connection || {};
   const device = { cores: navigator.hardwareConcurrency ?? null, memoryGb: navigator.deviceMemory ?? null, net: c.effectiveType ?? null, downMbps: c.downlink ?? null,
     heapMb: performance.memory ? Math.round(performance.memory.usedJSHeapSize / 1e6) : null };
-  return { ...(wp || pagePerf).summary({ device, resources: res, uploadsHeld: !!st.holdLast }), stagesS: pagePerf.summary().stagesS };
+  return { ...(wp || pagePerf).summary({ device, resources: res, uploadsHeld: !!st.holdLast, uploadsByApp: !!nativeParts() }), stagesS: pagePerf.summary().stagesS };
 }
 // the photo frame and the AR frame are both "frame": keep the AR one apart
 st.ar = null;
@@ -2067,9 +2067,34 @@ const r2 = (v) => (v == null ? null : +Number(v).toFixed(2)), r3 = (v) => (v == 
 /* THE OUTBOX (scan/lib/outbox.js, 2026-11-07): every part of a walk is kept on the phone first and leaves only when
    the site has it; a failed part waits and goes again, and parts left by a walk closed early go up the next time the
    page opens. Walk summaries the site did not take are posted again then too. */
+/* THE APP SENDS (bridge 8, android Parts.kt; the owner, 2026-11-25: after a walk, with the app left, the notification
+   showed "but the numbers don't move. The full recordings have historically sent fine in the background, so yea it
+   sounds like doing the walk upload data the same way would be good. Build it."). In an app that can, each part is
+   handed to the app as soon as it is made (its route on this site, its type, its bytes) and the app keeps and sends
+   it, in the background too; the outbox here is then only the few parts not yet handed over. In a browser, or an
+   older app, the page sends as before. */
+const nativeParts = () => { const N = window.LawnARNative; return N && typeof N.keepPart === 'function' && typeof N.partsStatus === 'function' ? N : null; };
+const partUrl = (p) => { const ref = /^ref:/.test(p.name) ? p.name.slice(4) : null; return ref != null ? `/api/scan/reference?map=${encodeURIComponent(ref)}&walk=${encodeURIComponent(p.walk)}` : `/api/scan/twin?walk=${encodeURIComponent(p.walk)}&part=${encodeURIComponent(p.name)}`; };
+async function handPart(p) {
+  const N = nativeParts(); if (!N) return sendPart(p);
+  const u8 = new Uint8Array(await new Response(p.body).arrayBuffer());
+  let bin = '';
+  for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return N.keepPart(partUrl(p), p.type || 'application/octet-stream', btoa(bin)) ? 'ok' : 'retry';
+}
+/** The upload's state for the page: the outbox's own, with what the app holds added when the app sends. */
+function uploadsNow() {
+  const u = st.upStatus, N = nativeParts();
+  if (!N) return u;
+  let n = null;
+  try { n = JSON.parse(N.partsStatus()); } catch { n = null; }
+  if (!n) return u;
+  const a = u || { pending: 0, bytes: 0 };
+  return { ...a, pending: (a.pending || 0) + n.pending, bytes: (a.bytes || 0) + n.bytes, sending: !!(a.sending || n.sending), sent: n.sent, sentBytes: n.sentBytes, dropped: (a.dropped || 0) + n.dropped, lastError: n.lastError || a.lastError || null, off: a.off || n.off || null, byApp: true };
+}
 async function startOutbox() {
   const store = (await idbStore().catch(() => null)) || memoryStore();
-  st.outbox = newOutbox({ store, send: sendPart, onChange: (u) => { st.upStatus = u; tellApp(u); uploadSettled(u); if (st.twinUp) { st.twinUp.off = u.off; st.twinUp.sent = u.sent; st.twinUp.failed = u.dropped; } renderUploads(); } });
+  st.outbox = newOutbox({ store, send: handPart, onChange: (u) => { st.upStatus = u; tellApp(u); uploadSettled(u); if (st.twinUp) { st.twinUp.off = u.off; st.twinUp.sent = u.sent; st.twinUp.failed = u.dropped; } renderUploads(); } });
   await st.outbox.refresh();
   st.outbox.kick();
   for (const w of kept().filter((x) => x.saved === false)) post(w);
@@ -2080,7 +2105,7 @@ async function startOutbox() {
     at once when they begin or end, every few seconds between. */
 function tellApp(u) {
   const N = window.LawnARNative;
-  if (!N || typeof N.partsPending !== 'function') return;
+  if (!N || typeof N.partsPending !== 'function' || nativeParts()) return;   // an app that sends for itself needs no telling
   /* KEPT ON FROM THE WALK'S START TO THE LAST PART GONE (2026-11-24; the owner: "The background upload doesn't appear
      to be working"; two walks that evening stopped sending part way, one with 247 of its 491 pictures up). The page
      said "none left" whenever it caught up during a walk, and the app stopped its keep-running service; asked to start
@@ -2705,7 +2730,7 @@ function renderUploads() {
   const rows = [];
   let left = 0, trouble = false;
   // 1. the walk's points, track and pictures
-  const u = st.upStatus;
+  const u = uploadsNow();
   if (u) {
     if (u.off) { rows.push(['Walk data (points, pictures)', `off: ${u.off}; ${u.pending} parts kept on this phone`]); trouble = true; }
     else if (u.pending) { left += u.bytes || 0; rows.push(['Walk data (points, pictures)', `${mb(u.bytes || 0)} left in ${u.pending} part${u.pending === 1 ? '' : 's'}${u.sending ? ', sending' : `, waiting to try again${u.lastError ? ` (${u.lastError})` : ''}`}`]); if (!u.sending) trouble = true; }
@@ -2733,7 +2758,8 @@ function renderUploads() {
   }
   if (!rows.length) { el.textContent = ''; el.className = 'dim'; return; }
   el.className = left ? 'uploads busy' : 'uploads';
-  const head = left ? `Uploading: ${mb(left)} still to send. Keep the app open${trouble ? ' (something is waiting to try again)' : ''}.` : 'Uploads: everything is on the site.';
+  const away = u?.byApp ? 'It carries on with the app in the background or the screen off (a notification shows it)' : 'Keep the app open';
+  const head = left ? `Uploading: ${mb(left)} still to send. ${away}${trouble ? ' (something is waiting to try again)' : ''}.` : 'Uploads: everything is on the site.';
   el.innerHTML = `<strong>${esc(head)}</strong>${rows.map(([k, v]) => `<br><span>${esc(k)}:</span> ${esc(v)}`).join('')}`;
   // while walking, the HUD's own line (app.js hud) says the walk data only; this box is the page's
 }
