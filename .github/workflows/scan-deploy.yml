@@ -836,6 +836,16 @@ jobs:
             REF_SCALE="${{ inputs.calib }}" node scan/tools/reference-build.mjs against $dirs | tee reference.txt
             exit 0
           fi
+          # "<walk>:restore" (or ":restore:dry"): what the map's reference and its backups hold; the newest backup put back
+          if [[ "$WALK" == *:restore ]]; then
+            W="${WALK%:restore}"; node scan/tools/twin-r2.mjs get "$W" twin > /dev/null
+            node scan/tools/reference-build.mjs restore twin | tee reference.txt
+            exit 0
+          fi
+          # "<walk>:on:<other walk>": keep a walk that names no map into the reference of the other walk's map
+          if [[ "$WALK" == *:on:* ]]; then
+            O="${WALK##*:on:}"; WALK="${WALK%%:on:*}"; node scan/tools/twin-r2.mjs get "$O" other > /dev/null; export MAP_FROM=other
+          fi
           # "<walk>:fresh" (or ":fresh:dry"): the map's reference made afresh from this walk alone, if it has earned it
           HOW=keep; if [[ "$WALK" == *:fresh ]]; then HOW=fresh; WALK="${WALK%:fresh}"; fi
           node scan/tools/twin-r2.mjs get "$WALK" twin | tee reference.txt

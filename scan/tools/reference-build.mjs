@@ -16,7 +16,7 @@ import { keepPlan, placeWalk, matchUsable, updateRef, AS_IS, closingOf, CLOSE_M 
 import { readTrack } from '../lib/twin.js';
 import { checkMarks } from '../lib/postfix.js';
 import { walkPrior } from '../lib/walkfix.js';
-import { writeObject, readObject, BUCKET } from './twin-r2.mjs';
+import { writeObject, readObject, BUCKET, API, account, list } from './twin-r2.mjs';
 
 const FT = 3.28084;
 const DROP = new Set([2, 10, 11]);   // label + 1: sky, vehicle, person
@@ -161,6 +161,8 @@ async function fresh(dir) {
    to the map's reference, correcting it where this walk saw the yard. Counts and distances only. */
 async function keep(dir) {
   const meta = readJson(dir, 'meta.json') || {}, live = readJson(dir, 'live.json') || {};
+  // a walk begun before the page had its map (2026-11-24) names none: MAP_FROM is the twin of a walk on the same map
+  if (!meta.map && process.env.MAP_FROM) { meta.map = (readJson(process.env.MAP_FROM, 'meta.json') || {}).map; if (meta.map) console.log('The walk names no map: its map taken from the other walk given.'); }
   if (!meta.map) throw new Error('the walk has no map');
   const jumps = jumpsOf(dir);
   console.log(`The walk's marks: ${(live.marks || []).length}; the phone's tracking jumped ${jumps.length} time${jumps.length === 1 ? '' : 's'}${jumps.length ? ` (${jumps.map((j) => `${(j.m * FT).toFixed(1)} ft at ${Math.round(j.odo * FT)} ft walked`).join(', ')})` : ''}.`);
@@ -429,8 +431,37 @@ async function labels(dirs) {
   }
 }
 
+/* THE REFERENCE A WALK REPLACED, PUT BACK (2026-11-25). The owner's walk of 2026-11-24 22:04 began before the page had
+   its map and at its end replaced the map's reference as though "fresh" had been chosen. The owner: the reference is
+   "the accumulation of every walk". This says what the map's reference and its backups hold (when saved, how many
+   walks, when each walk's reading of its place was taken), and unless DRY puts the NEWEST backup back as the
+   reference, the one it displaces kept as a backup in its turn. Walks are then added with `keep`. Times and counts. */
+async function restore(dir) {
+  const meta = readJson(dir, 'meta.json') || {};
+  if (!meta.map) throw new Error('the walk has no map');
+  const token = process.env.CLOUDFLARE_API_TOKEN, base = `${API}/accounts/${await account(token)}/r2/buckets/${BUCKET}`;
+  const pre = `refs/backup/${meta.map}-`;
+  const olds = (await list(base, token, pre)).filter((o) => o.key.startsWith(pre) && /^\d+\.bin$/.test(o.key.slice(pre.length))).sort((a, b) => Number(b.key.slice(pre.length, -4)) - Number(a.key.slice(pre.length, -4)));
+  const say = (name, r, bytes) => console.log(`  ${name}: ${r ? `${r.stand.length / 3} standing and ${r.ground.length / 3} ground points, ${(bytes.length / 1e6).toFixed(1)} MB, from ${r.walks} walk${r.walks === 1 ? '' : 's'}; made ${new Date(r.at || 0).toISOString().slice(0, 16)}; its place read ${r.seen.length} time${r.seen.length === 1 ? '' : 's'}${r.seen.length ? ` (${r.seen.map((o) => new Date(o.at || 0).toISOString().slice(5, 16)).join(', ')})` : ''}` : 'could not be read'}`);
+  const key = `refs/${meta.map}.bin`;
+  const nowBytes = await readObject(BUCKET, key).catch(() => null);
+  console.log(`THE MAP'S REFERENCE AND ITS BACKUPS (${olds.length} backups; times UTC):`);
+  say('the reference now', nowBytes ? decodeRef(nowBytes) : null, nowBytes || []);
+  let first = null;
+  for (const o of olds.slice(0, 6)) {
+    const b = await readObject(BUCKET, o.key).catch(() => null);
+    if (!first) first = b;
+    say(`backup, replaced ${new Date(Number(o.key.slice(pre.length, -4))).toISOString().slice(0, 16)}`, b ? decodeRef(b) : null, b || []);
+  }
+  if (!first || !decodeRef(first)) { console.log('No backup to put back.'); return; }
+  if (process.env.DRY) { console.log('A dry run: nothing written.'); return; }
+  if (nowBytes) await writeObject(BUCKET, `refs/backup/${meta.map}-${Date.now()}.bin`, nowBytes, 'application/octet-stream');
+  await writeObject(BUCKET, key, first, 'application/octet-stream', { walk: 'restored' });
+  console.log('The newest backup is the reference again; the one it displaced is kept as a backup.');
+}
+
 const [cmd, ...rest] = process.argv.slice(2);
 if (process.argv[1]?.endsWith('reference-build.mjs')) {
-  (cmd === 'build' ? build(rest[0] || 'twin') : cmd === 'keep' ? keep(rest[0] || 'twin') : cmd === 'fresh' ? fresh(rest[0] || 'twin') : cmd === 'labels' ? labels(rest) : cmd === 'against' ? against(rest) : cmd === 'check' ? Promise.resolve(check(rest)) : Promise.reject(new Error('build <dir> or check <dir> <dir>...')))
+  (cmd === 'build' ? build(rest[0] || 'twin') : cmd === 'keep' ? keep(rest[0] || 'twin') : cmd === 'fresh' ? fresh(rest[0] || 'twin') : cmd === 'restore' ? restore(rest[0] || 'twin') : cmd === 'labels' ? labels(rest) : cmd === 'against' ? against(rest) : cmd === 'check' ? Promise.resolve(check(rest)) : Promise.reject(new Error('build <dir> or check <dir> <dir>...')))
     .catch((e) => { console.log(`Reference: ${e.message}`); process.exit(1); });
 }
