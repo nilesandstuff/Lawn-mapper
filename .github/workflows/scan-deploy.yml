@@ -576,8 +576,8 @@ jobs:
           WALK: ${{ inputs.walk }}
         run: |
           set -o pipefail
-          pip install --quiet numpy
-          node scan/tools/twin-r2.mjs parts "$WALK" twin 'cloud-*' 'labels-*' 'keys-*' 'key-*.sem' meta.json | tee semcheck.txt
+          pip install --quiet numpy scipy pillow
+          node scan/tools/twin-r2.mjs parts "$WALK" twin 'cloud-*' 'labels-*' 'keys-*' 'key-*.sem' 'key-*.rdepth' 'key-*.jpg' meta.json | tee semcheck.txt
           python scan/tools/sem_check.py twin | tee -a semcheck.txt
 
       - name: A walk's skyline against the lidar
