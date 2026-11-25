@@ -463,10 +463,27 @@ async function restore(dir) {
 
 /* ------------------------------------------------------------------ the reference as every walk, counted */
 /** A walk's twin, read for the reference: its points, corners, jumps, map. */
+/* (2026-11-25, run 604) THE TRACK'S "JUMPS" ARE NOT USED: the page never cuts a walk at them (L.jumps is never set), and
+   on the walk of 2026-11-20 the steps jumpsOf finds were the page's stalls, which taking back made worse (section 59);
+   cut at them, two thirds of that walk had no corner of its own and was left out. JUMPS=1 uses them. The walk's
+   start is cut as `fresh` cuts it (start.json, view.json). Only the corners that agree with each other (goodPart)
+   place, pin or judge a walk: the walk of 2026-11-20 holds a mark 20 ft from its corner. */
 function walkOf(d, mapFallback) {
   const meta = readJson(d, 'meta.json') || {}, live = readJson(d, 'live.json') || {};
-  const marks = live.marks || [];
-  return { d, id: String(meta.walk || d.replace(/^.*w-/, '')), map: meta.map || mapFallback || null, marks, jumps: jumpsOf(d).map((j) => j.odo), pts: twinPoints(d), at: Number(meta.walk) || Date.now() };
+  const jumps = process.env.JUMPS ? jumpsOf(d).map((j) => j.odo) : [];
+  const g = keepPlan(live.marks || [], jumps).g, left = new Set(g?.ok ? g.left : []);
+  const marks = (live.marks || []).filter((m) => !left.has(m.id));
+  const cutS = Math.max(0, ...['start.json', 'view.json'].map((f) => Number(readJson(d, f)?.startCutS) || 0));
+  let cutOdo = 0;
+  if (cutS > 0) for (const f of readdirSync(d).filter((x) => /^track-\d{4}\.bin$/.test(x)).sort()) {
+    const b = readFileSync(join(d, f));
+    for (const r of readTrack(b.buffer.slice(b.byteOffset, b.byteOffset + Math.floor(b.byteLength / 4) * 4))) if (r.t <= cutS && Number.isFinite(r.odo)) cutOdo = Math.max(cutOdo, r.odo);
+  }
+  const all = twinPoints(d), keep = (p) => (p[3] || 0) >= cutOdo;
+  const pts = { stand: all.stand.filter(keep), ground: all.ground.filter(keep) };
+  const id = String(meta.walk || d.replace(/^.*w-/, ''));
+  console.log(`  (walk ${id}: ${(live.marks || []).length} corner marks, ${left.size} left out as disagreeing${g?.ok ? '' : ` (${g?.why || 'none agree'})`}; ${cutOdo ? `its start cut at ${Math.round(cutOdo * FT)} ft walked` : 'no start cut'}${process.env.JUMPS ? `; ${jumps.length} jumps used` : ''})`);
+  return { d, id, map: meta.map || mapFallback || null, marks, jumps, pts, at: Number(meta.walk) || Date.now() };
 }
 
 /* THE REFERENCE MADE FROM WALKS, IN THE ORDER GIVEN (2026-11-25): the first placed by its own corners (it must have three

@@ -420,7 +420,7 @@ export function updateRef(old, part, { C = null, F = null, w = 1, at = Date.now(
    within that; each point placed by the stretch nearest it in its walk. A stretch after a jump with no corner of its
    own is matched with nothing to hold it but the lead rule.
    -> { stand, ground: [[x, y, z]] in the shape's frame, windows: [...], readings: P readings, left } */
-export const WIN_M = 30, STEP_M = 15;
+export const WIN_M = 30, STEP_M = 15, HELD_GATE = 0.12, HELD_STAND_GATE = 0.05;
 export function placeOnShape(ref, pts, marks, jumps, { log = () => {} } = {}) {
   const P = ref.P || AS_IS, toShape = invert({ ...P, s: 1 });
   const J = [...jumps].sort((a, b) => a - b), segOf = (o) => { let k = 0; while (k < J.length && J[k] <= o) k++; return k; };
@@ -442,7 +442,12 @@ export function placeOnShape(ref, pts, marks, jumps, { log = () => {} } = {}) {
     else if (last && last.k === w.k) { prior = { T: last.T, searchM: 1.0, searchDeg: 5 }; how = 'the stretch before'; }
     else how = 'nothing (after a jump, no corner)';
     if (prior) prior.T = { theta: prior.T.theta, tx: prior.T.tx, ty: prior.T.ty };
-    const f = shapeFix(ref, w.part, prior ? { prior } : {});
+    /* HELD, THE TESTS ARE THE BOUND'S (run 604: held within a metre of its corners, 14 stretches of 19 were refused by
+       the whole-walk gates, "only 18% land", "another place fits nearly as well"). A stretch sees much the reference
+       never saw, so less of it lands; and inside a 1 m, 2 degree bound the rival places the lead rule guards against
+       are not there. So held: turns a degree apart, within 2 degrees; a lower landed share; no lead asked. */
+    const held = prior ? { prior: { ...prior, searchDeg: 2 }, step: 1, lead: 0, gate: HELD_GATE, standGate: HELD_STAND_GATE } : {};
+    const f = shapeFix(ref, w.part, held);
     w.how = how; w.f = f;
     if (f.ok) { w.T = f.T; last = w; }
     // a corner marked in this stretch, under its fit: how far from its place (judged in the map's frame)
