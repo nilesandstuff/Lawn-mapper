@@ -157,6 +157,16 @@ async function main() {
       // off unless ticked (the owner, 2026-11-15: "Make the replay recording off by default"; 135 MB for a minute)
       st.recordOff = true;
       $('#record-arcore').addEventListener('change', (e) => { st.recordOff = !e.target.checked; });
+      /* A WALK KEPT OUT OF THE REFERENCE, TO TEST ON (the owner, 2026-11-25: "I'd probably need a new checkbox ... that
+         allows me to make the recording without saving that walk to the reference"). A normal walk in every way, the
+         live fix included, but not added to the map's reference at its end, so a replay of it later is matched to a
+         reference that never saw it. Its things are kept as usual. It can be added afterwards (workflow S, task
+         reference, the walk's id). Ticking it ticks the recording too. */
+      const hold = document.createElement('label'); hold.className = 'dim'; hold.style.display = 'block'; hold.style.margin = '8px 0';
+      hold.innerHTML = '<input type="checkbox" id="ref-hold"> Keep this walk out of the map\'s reference, to replay later as a test (records it too; a normal walk otherwise)';
+      box.append(hold);
+      st.refHold = false;
+      $('#ref-hold').addEventListener('change', (e) => { st.refHold = e.target.checked; if (st.refHold) { const r = $('#record-arcore'); if (r && !r.checked) { r.checked = true; st.recordOff = false; } } });
       const fr = document.createElement('label'); fr.className = 'dim'; fr.style.display = 'block'; fr.style.margin = '8px 0';
       fr.innerHTML = '<input type="checkbox" id="full-res"> Full-resolution camera (1920x1080, pictures kept 1080 wide; the recording is about 2 GB for 8 minutes)';
       box.append(fr);
@@ -985,6 +995,7 @@ async function startAR(engine, { anyway = false } = {}) {
   const overlay = $('#overlay');
   pagePerf.stage('AR asked'); st.wperf = newPerf(); st.wperfAsked = performance.now(); st.wperfShapes = false;
   st.walk = newWalk({ engine, phone: navigator.userAgent });
+  st.walk.refHold = !!st.refHold;   // the box at the start: kept out of the reference (keepReference)
   /* SENT AFTER THE WALK, NOT DURING IT, when asked (2026-11-24; the owner: "I'm wonder if the continuous upload during
      the walks is part of the problem with stuttering and jumps"): parts are still kept on the phone as they come, and
      go when the walk ends. The walk's summary says which way it was made and how its frames went while parts were
@@ -1444,7 +1455,7 @@ function frameWork(f) {
         lap('twin: a picture\'s three depth grids');
       }
     }
-    if (flushDue(st.twin, now)) sendTwin(flush(st.twin, now, liveOf(L, w, { recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null, prev: prevKept() })));
+    if (flushDue(st.twin, now)) sendTwin(flush(st.twin, now, liveOf(L, w, { recordOnly: !!st.recordOnly, heldOut: !!st.walk?.refHold, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null, prev: prevKept() })));
   }
   lap('twin: track, and every 15 s what piled up made ready to send');
   // PLACED BY THE MAP'S EARLIER WALK (walkref.js, SCAN-H32): every PREV_EVERY, this walk's points so far against it
@@ -2039,7 +2050,7 @@ function finish() {
   const crumbs = st.crumbs?.list.length && st.tracker?.anchorAt ? crumbMoves(st.crumbs, (h) => st.tracker.anchorAt(h)) : null;
   const refs = st.points.filter((p) => p.kind === 'ref').map((p) => ({ name: p.name, marks: L ? L.marks.filter((m) => m.id === p.id).length : 0, leftOutM: L ? r3(leftOut(L.marks.filter((m) => m.kind === 'ref'), p.id)) : null }));
   const s = summary(w, {
-    page: 'yard AR test v2', pointKinds: st.points.map((p) => `${p.name}:${p.roof ? 'roof' : p.kind}`).join(' '), roofSights: w.roofSights || null, recordOnly: !!st.recordOnly, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3), weak: +(st.depthFill.weak / Math.max(1, st.depthFill.cells)).toFixed(3), minConf: st.depthFill.minConf } : null, rawAsked: !!st.rawDepth, geo: geoSummary(), depthSpikes: st.spikes ? { ...st.spikes, share: +(st.spikes.flagged / Math.max(1, st.spikes.cells)).toFixed(4), recordOnly: true } : null, walkFix: st.walkStats ? { ...st.walkStats, share: L?.walk?.ok ? +L.walk.share.toFixed(3) : null, margin: L?.walk?.ok ? +L.walk.margin.toFixed(3) : null, walkedM: L?.walk?.ok ? Math.round(L.walk.walkedM) : null } : null, semantics: st.caps?.native ? { on: !!st.tracker?.semantics, dims: st.semDims || null, ...(semSummary(st.sem) || {}) } : null, crumbs: crumbs ? { n: crumbs.n, held: crumbs.held, lost: crumbs.lost, refused: crumbs.refused, medianM: crumbs.medianM, maxM: crumbs.maxM, maxLevelM: crumbs.maxLevelM, worstOdo: crumbs.worstOdo } : null, app: st.caps?.native ? { app: st.caps.native.app, bridge: st.caps.native.bridge, device: st.caps.native.device, camera: st.started?.camera ?? null, image: st.started?.image ?? null, modes: st.started?.modes ?? null, streetscape: st.started?.streetscape ?? null, streetError: st.started?.streetError ?? null, recording: st.started?.recording ?? null, recordError: st.started?.recordError ?? null, geoDepthPoints: st.geoDepthN || 0, grabW: st.grabW || null } : null, replayOf: st.replayOf || null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
+    page: 'yard AR test v2', pointKinds: st.points.map((p) => `${p.name}:${p.roof ? 'roof' : p.kind}`).join(' '), roofSights: w.roofSights || null, recordOnly: !!st.recordOnly, heldOut: !!w.refHold, features: w.features || null, depthType: w.depthType || null, anchors: st.anchors ? anchorsKept(st.anchors) : null, depthFill: st.depthFill ? { frames: st.depthFill.frames, holes: +(st.depthFill.zero / Math.max(1, st.depthFill.cells)).toFixed(3), past8m: +(st.depthFill.far / Math.max(1, st.depthFill.cells)).toFixed(3), weak: +(st.depthFill.weak / Math.max(1, st.depthFill.cells)).toFixed(3), minConf: st.depthFill.minConf } : null, rawAsked: !!st.rawDepth, geo: geoSummary(), depthSpikes: st.spikes ? { ...st.spikes, share: +(st.spikes.flagged / Math.max(1, st.spikes.cells)).toFixed(4), recordOnly: true } : null, walkFix: st.walkStats ? { ...st.walkStats, share: L?.walk?.ok ? +L.walk.share.toFixed(3) : null, margin: L?.walk?.ok ? +L.walk.margin.toFixed(3) : null, walkedM: L?.walk?.ok ? Math.round(L.walk.walkedM) : null } : null, semantics: st.caps?.native ? { on: !!st.tracker?.semantics, dims: st.semDims || null, ...(semSummary(st.sem) || {}) } : null, crumbs: crumbs ? { n: crumbs.n, held: crumbs.held, lost: crumbs.lost, refused: crumbs.refused, medianM: crumbs.medianM, maxM: crumbs.maxM, maxLevelM: crumbs.maxLevelM, worstOdo: crumbs.worstOdo } : null, app: st.caps?.native ? { app: st.caps.native.app, bridge: st.caps.native.bridge, device: st.caps.native.device, camera: st.started?.camera ?? null, image: st.started?.image ?? null, modes: st.started?.modes ?? null, streetscape: st.started?.streetscape ?? null, streetError: st.started?.streetError ?? null, recording: st.started?.recording ?? null, recordError: st.started?.recordError ?? null, geoDepthPoints: st.geoDepthN || 0, grabW: st.grabW || null } : null, replayOf: st.replayOf || null, failed: w.failed || null, errors: st.errors.map((e) => e.what).slice(-30),
     references: refs, checks: (w.checks || []).map((c) => ({ ...c, errorM: r3(c.errorM), errorFixM: r3(c.errorFixM), errorRefsM: r3(c.errorRefsM), walkedSinceFixM: r2(c.walkedSinceFixM), aimM: r2(c.aimM), walkedM: r2(c.walkedM) })),
     pinsNear: w.pins.map((p) => ({ name: p.name, nearest: p.nearest ? { name: p.nearest.name, m: r2(p.nearest.m), byRefsM: r2(p.nearest.byRefsM) } : null })),
     fix: L ? summaryOf(L) : null, surfaceSeen: st.surfCount || null, lidar: st.lid.ready ? { points: st.lid.ready.points, solid: st.lid.ready.solid, shift: st.lid.ready.shift, rule: st.lid.ready.rule || null, structures: st.lid.ready.structures || null, tallCells: st.lid.overlay ? st.lid.overlay.tall.length / 5 : null } : st.lid.error ? { error: st.lid.error } : null,
@@ -2071,7 +2082,7 @@ function finish() {
   } else if (L && !s.failed) {
     const say = (text) => { const all = kept(), mine = all.find((x) => x.id === s.id); if (mine) { mine.reference = text; keep(all); renderResults(s.id); if (text && !/^Saving/.test(text)) post(mine); } };   // posted again with the verdict, so the walks log says why (the owner, 2026-11-15)
     say('Saving this walk as the map\'s reference…');
-    keepReference(L, String(w.startedAt)).then(async (text0) => { const placed = await keepThings(L, w).catch((e) => `The things placed were NOT kept: ${e.message}.`); const text = [text0, placed].filter(Boolean).join(' '); say(text || ''); if (text) { log(text); flash(/^Saved/.test(text) ? 'Saved as this map\'s reference' : /^Kept on the phone/.test(text) ? 'Kept as this map\'s reference: it goes up when there is signal' : /^The reference already/.test(text) ? 'The reference already had all of this walk' : 'Not saved as the reference: see the walk\'s card'); } askReference(); })
+    keepReference(L, String(w.startedAt), w).then(async (text0) => { const placed = await keepThings(L, w).catch((e) => `The things placed were NOT kept: ${e.message}.`); const text = [text0, placed].filter(Boolean).join(' '); say(text || ''); if (text) { log(text); flash(/^Saved/.test(text) ? 'Saved as this map\'s reference' : /^Kept on the phone/.test(text) ? 'Kept as this map\'s reference: it goes up when there is signal' : /^The reference already/.test(text) ? 'The reference already had all of this walk' : 'Not saved as the reference: see the walk\'s card'); } askReference(); })
       .catch((e) => say(`NOT saved as the reference: ${e.message}`));
   }
 }
@@ -2547,10 +2558,13 @@ function drawRefChoice() {
  * put on the map by them and sent to the site, which keeps the one it replaces as a backup. Tried three times.
  * Returns what happened, in words, for the walk's card.
  */
-async function keepReference(L, walkId) {
+async function keepReference(L, walkId, w = null) {
+  // w: the walk just ended (st.walk is cleared before this runs)
+  const wk = w || st.walk;
   const map = st.map;
   if (!map) return null;
   if (st.recordOnly) return 'Not saved as the reference: a testing-only walk (the box on the start page).';
+  if (wk?.refHold) return 'Kept out of the map\'s reference, as asked at the start (a walk to replay as a test). It can be added later: workflow S, task reference, this walk\'s id.';
   /* KEEP WHAT IS GOOD, AND BUILD ON IT (lib/refkeep.js; the owner, 2026-11-15: "This will literally never work if an
      entire walk has to be pixel perfect every time. Keep what is good... Future walks should build upon that
      reference so they get better each time and uncertainty gets corrected"). The part of the walk its agreeing roof
@@ -2577,7 +2591,9 @@ async function keepReference(L, walkId) {
      within 7 in at its start, 6 ft 11 in out at the same corner 930 ft later, and it corrected 45,000 points of the
      reference). Where the walk gives a reading of its own closing (a plain pin on a marked corner late in the walk, or
      a corner marked again) and it is over CLOSE_M, the walk is not put into the reference. */
-  const closing = closingOf(L?.marks || [], st.walk?.pins || []);
+  // (2026-11-25: st.walk is cleared before this runs, so the walk's own pins were never read here: a walk's closing
+  // by a plain pin on its first corner was not seen at its end)
+  const closing = closingOf(L?.marks || [], wk?.pins || []);
   if (closing && closing.m > CLOSE_M) return `NOT saved as the reference: the walk did not come back to itself (${ftIn(closing.m)} out at ${closing.by}, after ${Math.round(closing.walkedM * FT)} ft of walking). The walk itself is kept.`;
   const rawStand = [...(st.prevStand?.values() || [])], rawGround = [...(st.prevGround?.values() || [])];
   if (rawStand.length < REF_MIN_STAND) return `NOT saved as the reference: too little of the yard's standing things was seen (${rawStand.length} points of ${REF_MIN_STAND}).`;
