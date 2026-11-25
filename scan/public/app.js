@@ -245,7 +245,7 @@ async function openMap(id, how) {
   /* A WALK ALREADY UNDER WAY WITH NO MAP TAKES THIS ONE (2026-11-25: the owner's second walk of 2026-11-24 was begun
      seconds before the page had found its map; its record named no map, so the earlier walk never placed it and no
      tool could tell where it belonged, though its corners were marked on this map's roofs). */
-  if (st.twin && !st.twin.map) { st.twin.map = id; st.twin.metaCamera = false; log('the walk under way had no map: it is now this map\'s'); }
+  if (st.twin && !st.twin.map) { st.twin.map = id; st.twin.metaCamera = false; st.lateMap = true; log('the walk under way had no map: it is now this map\'s'); }
   try { const u = new URL(location.href); u.searchParams.set('map', id); history.replaceState(null, '', u); } catch { /* the address bar can wait */ }
   const back = $('#back');
   if (back) back.href = `${(back.getAttribute('href') || '').split('?')[0]}?map=${encodeURIComponent(id)}`;
@@ -1461,7 +1461,12 @@ function frameWork(f) {
     // right answer out (run 491); loose, it only forbids the far side of the yard
     const pr = walkPrior(st.gpsTrail, st.geoTrail);
     // (the phone's own heading was tried with the corner, run 503: no fix came earlier for it, so it is not used)
-    const prior = cornerMark ? { pin: { ar: cornerMark.ar, map: cornerMark.map }, searchM: 1.5 }
+    /* ONCE A FIX HAS BEEN USED, THE WALK IS NOT TURNED ANOTHER WAY (2026-11-25, run 593 and the one after): with a corner
+       as the pin every turn was searched, and from 440 ft on some other turn landed within 10 points of the right
+       one, so every later match was refused and the page drew by the fit of 459 ft for the walk's last 800 ft.
+       Bounded to 15 degrees of the last used fit, the far turns are not candidates. */
+    const turn = L.prev?.ok && Number.isFinite(L.prev.T?.theta) ? { theta: L.prev.T.theta, searchDeg: 15 } : null;
+    const prior = cornerMark ? { pin: { ar: cornerMark.ar, map: cornerMark.map }, searchM: 1.5, ...(turn || {}) }
       : pr ? { T: { theta: pr.T.theta, tx: pr.T.tx, ty: pr.T.ty }, searchM: Math.max(15, 2 * pr.searchM), searchDeg: Math.max(25, 2 * pr.searchDeg) } : null;
     st.ref.worker.postMessage({ fix: { id, stand: [...st.prevStand.values()], ground: [...st.prevGround.values()], prior } });
   }
@@ -2512,6 +2517,10 @@ async function askReference() {
     const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(map)}&meta=1`, { credentials: 'same-origin' });
     if (r.ok) { const j = await r.json(); if (st.map === map) st.refMeta = j; }
   } catch { /* offline: as if none; the walk still works */ }
+  /* THE MAP CAME AFTER THE WALK BEGAN (2026-11-25): that walk never chose "fresh", so the saved walk places it from
+     here on, and at its end it is added to the reference. (The owner's second walk of 2026-11-24 began mapless, and at
+     its end REPLACED the map's reference as though "fresh" had been chosen; the one it replaced is in the backups.) */
+  if (st.lateMap && st.map === map) { st.lateMap = false; if (st.refMeta && st.twin) { st.refUse = true; loadReference(); log('earlier walk: the map came after the walk began; the saved walk is used from here'); } }
   drawRefChoice();
 }
 function drawRefChoice() {
@@ -2578,7 +2587,8 @@ async function keepReference(L, walkId) {
   const C = F ? (plan.ok && plan.g?.ok ? plan.C : null) : REF_AS_IS;
   // the map's earlier reference, to build on (none, or "Fresh" chosen at the start: this walk makes it)
   let old = null;
-  if (st.refUse || !st.refMeta) { try { const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' }); if (r.ok) old = decodeRef(new Uint8Array(await r.arrayBuffer())); } catch { /* none read */ } }
+  // (read whenever "fresh" was not chosen: a walk whose map came late has st.refUse false and chose nothing)
+  if (st.refUse || !st.refMeta || refChoice() === 'saved') { try { const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' }); if (r.ok) old = decodeRef(new Uint8Array(await r.arrayBuffer())); } catch { /* none read */ } }
   const u = updateRef(old, part, { C, F, w: plan.agree ? plan.g.n : 1, phone: plan.agree && plan.g.T?.s && plan.g.T.s !== 1 ? plan.g.T.s : null });
   if (!u.ref) return `NOT saved as the reference: ${u.why}.`;
   if (u.how === 'shape only' && !u.added) return 'The reference already has everything this walk saw: nothing to add.';

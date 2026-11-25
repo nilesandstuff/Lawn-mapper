@@ -300,7 +300,30 @@ async function against(dirs) {
       const th = Math.atan2(g.reduce((a, r) => a + Math.sin(r.theta), 0), g.reduce((a, r) => a + Math.cos(r.theta), 0));
       return { theta: th, searchDeg: Math.max(15, 2 * Math.max(...g.map((r) => r.yawAcc))) };
     };
-    for (const withPin of [false, true, 'heading']) {
+    /* THE PAGE'S MATCH WITH THE TURN BOUNDED BY THE LAST USED FIT (2026-11-25): the latest corner as the pin, every
+       turn until a fix is used (two alike), then only turns within 15 degrees of it. Judged by ALL the other corners
+       marked so far. Run 593: with every turn searched, the match was refused from 443 ft to the end. */
+    {
+      console.log('   THE LATEST CORNER AS A PIN; ONCE A FIX IS USED, TURNS WITHIN 15 DEGREES OF IT ONLY; judged by the other corners marked so far:');
+      let before = null, used = 0, asked = 0, lastT = null; const errsUsed = [];
+      for (let upTo = 30; ; upTo += 15) {
+        const last = upTo >= total, lim = last ? total : upTo;
+        const pinM = refs.filter((m) => m.odo <= lim).pop();
+        if (!pinM) { if (last) break; continue; }
+        const part = { stand: pts.stand.filter((p) => (p[3] || 0) <= lim), ground: pts.ground.filter((p) => (p[3] || 0) <= lim) };
+        const f = shapeFix(ref, part, { prior: { pin: { ar: pinM.ar, map: pinM.map }, searchM: 1.5, ...(lastT ? { theta: lastT.theta, searchDeg: 15 } : {}) } });
+        asked++;
+        const judges = refs.filter((m) => m.id !== pinM.id && m.odo <= lim);
+        const e = f.T ? judges.map((m) => { const p = onMap(f.T, m.ar); return Math.hypot(p[0] - m.map[0], p[1] - m.map[1]) * 39.37; }) : [];
+        const confirmed = f.ok && before && sameFix(before, f.T, mid);
+        if (confirmed) { used++; lastT = f.T; errsUsed.push(...e); }
+        console.log(`    at ${Math.round(lim * FT)} ft: ${f.ok ? (confirmed ? 'USED' : 'a match, waiting') : f.T ? `refused (${f.why || ''})` : 'nothing'}${f.landed != null ? `, landed ${f.landed}, next best ${f.second ?? '-'}` : ''}${e.length ? `; the other corners ${e.map((x) => `${x.toFixed(0)} in`).join(', ')}` : ''}`);
+        before = f.ok ? f.T : null;
+        if (last) break;
+      }
+      console.log(`    -> asked ${asked}, used ${used}; the other corners under the USED ones: ${errsUsed.length ? `middle ${med(errsUsed).toFixed(0)} in, worst ${Math.max(...errsUsed).toFixed(0)} in (${errsUsed.length})` : 'none to judge'}.`);
+    }
+    if (process.env.REF_FULL) for (const withPin of [false, true, 'heading']) {
       console.log(`   ${withPin === 'heading' ? 'WITH ONE CORNER AND THE PHONE\'S OWN HEADING (Street View\'s), from 49 ft to 394 ft:' : withPin ? 'WITH ONE CORNER (the latest marked so far) as a pin, from 49 ft to 394 ft:' : 'WITHOUT a corner, from 197 ft:'}`);
       let before = null, used = 0, usedBad = 0, firstUsed = null;
       for (let upTo = withPin ? 15 : 60; ; upTo += 15) {
@@ -332,7 +355,7 @@ async function against(dirs) {
        end, with the latest corner as the pin as the page has it: on everything so far, and on only the last WIN m
        walked. THE JUDGE is the corner marks made in the last 60 m (the pin's own mark left out): where the phone
        was just then, which is what a live fix is for. */
-    for (const WIN of [0, 60, 30]) {
+    if (process.env.REF_FULL) for (const WIN of [0, 60, 30]) {
       console.log(`   ${WIN ? `ONLY THE LAST ${Math.round(WIN * FT)} ft WALKED` : 'EVERYTHING SO FAR'}, the latest corner as a pin, to the walk's end; judged by the corners marked in the last 197 ft:`);
       let before = null, used = 0, asked = 0; const errs = [], errsUsed = [];
       for (let upTo = 30; ; upTo += 15) {
