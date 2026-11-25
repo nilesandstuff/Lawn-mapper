@@ -5061,3 +5061,16 @@ HARD, run 605 (the stretches held with the bound's own tests, no jumps, the star
     readings of where the shape is (page and tools).
 SPECULATION: the reference on the map today has the walk of 2026-11-20 as its base and so sits where those corners put
 it. The 21:48 walk (3 corners within 9 in, closed within 1 ft) as the base is likely the better one. Being checked.
+
+HARD, runs 606-607 (the 21:48 walk first, then 22:04, then 2026-11-20 held by its whole-walk match):
+  - EACH CLEAN WALK AGAINST A REFERENCE OF THE OTHER (the first honest cross-check of the live match on the owner's
+    lot): the 21:48 walk against the 22:04 walk's: used 23 of 25, its other corners 11 in in the middle, 33 in at worst;
+    the 22:04 walk against the 21:48 walk's: used 13 of 18, 9 in, 16 in at worst.
+  - the walk of 2026-11-20 matches neither walk alone (23-24% landed, 30% wanted) but does match the two together:
+    landed 0.382, next best 0.271; 20 of 22 stretches matched by it.
+  - rebuilt in that order (dry): 30,004 standing points (24,381 on one walk's word, 5,349 on two, 274 on three),
+    18,474 ground; the 22:04 walk confirmed 6,929 and added 18,573; the 2026-11-20 walk confirmed 5,531, added 8,641
+    and took away 2,784 that both later walks had looked at and not seen. Its corners gave no readings of where the
+    shape is. Being written as the map's reference (run 608), the one it replaces a backup.
+SPECULATION: that the 2,784 taken away were not there (things moved, or noise) rather than seen a little off by
+walks placed a little wrong. Not measured.
