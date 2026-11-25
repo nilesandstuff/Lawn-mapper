@@ -421,7 +421,10 @@ export function updateRef(old, part, { C = null, F = null, w = 1, at = Date.now(
    own is matched with nothing to hold it but the lead rule.
    -> { stand, ground: [[x, y, z]] in the shape's frame, windows: [...], readings: P readings, left } */
 export const WIN_M = 30, STEP_M = 15, HELD_GATE = 0.12, HELD_STAND_GATE = 0.05;
-export function placeOnShape(ref, pts, marks, jumps, { log = () => {} } = {}) {
+/* `T0` (2026-11-25, run 605): a walk whose corners cannot be trusted (two pairs agree, which is wrong cannot be told) is
+   held by its whole-walk match to the shape instead, every stretch within 1.5 m and 2 degrees of it, and its corners
+   give no readings of where the shape is. */
+export function placeOnShape(ref, pts, marks, jumps, { log = () => {}, T0 = null } = {}) {
   const P = ref.P || AS_IS, toShape = invert({ ...P, s: 1 });
   const J = [...jumps].sort((a, b) => a - b), segOf = (o) => { let k = 0; while (k < J.length && J[k] <= o) k++; return k; };
   const corners = (marks || []).filter((m) => m?.ar && m?.map && m.kind === 'ref' && Number.isFinite(m.odo));
@@ -436,9 +439,10 @@ export function placeOnShape(ref, pts, marks, jumps, { log = () => {} } = {}) {
   let last = null;
   for (const w of wins) {
     const own = corners.filter((m) => segOf(m.odo) === w.k);
-    const Cw = fitAt(own, w.c);
+    const Cw = T0 ? null : fitAt(own, w.c);
     let prior = null, how;
-    if (Cw) { prior = { T: compose(toShape, Cw), searchM: 1.0, searchDeg: 5 }; how = 'its corners'; }
+    if (T0) { prior = { T: T0, searchM: 1.5, searchDeg: 5 }; how = 'the whole walk\'s match'; }
+    else if (Cw) { prior = { T: compose(toShape, Cw), searchM: 1.0, searchDeg: 5 }; how = 'its corners'; }
     else if (last && last.k === w.k) { prior = { T: last.T, searchM: 1.0, searchDeg: 5 }; how = 'the stretch before'; }
     else how = 'nothing (after a jump, no corner)';
     if (prior) prior.T = { theta: prior.T.theta, tx: prior.T.tx, ty: prior.T.ty };
@@ -467,7 +471,7 @@ export function placeOnShape(ref, pts, marks, jumps, { log = () => {} } = {}) {
     return { out, left };
   };
   const S = put(pts.stand), G = put(pts.ground);
-  log(`    stretches of ${Math.round(WIN_M * 2 * 3.281)} ft every ${Math.round(STEP_M * 3.281)} ft: ${wins.length}; matched ${ok.length} (held by its corners ${ok.filter((w) => w.how === 'its corners').length}, by the stretch before ${ok.filter((w) => w.how === 'the stretch before').length}, by nothing ${ok.filter((w) => /^nothing/.test(w.how)).length}); not matched ${wins.length - ok.length}${wins.length - ok.length ? ` (${[...new Set(wins.filter((w) => !w.T).map((w) => (w.f.why || 'too little').replace(/\(.*\)/, '').trim()))].slice(0, 3).join('; ')})` : ''}.`);
+  log(`    stretches of ${Math.round(WIN_M * 2 * 3.281)} ft every ${Math.round(STEP_M * 3.281)} ft: ${wins.length}; matched ${ok.length} (held by its corners ${ok.filter((w) => w.how === 'its corners').length}, by the whole walk's match ${ok.filter((w) => /whole/.test(w.how)).length}, by the stretch before ${ok.filter((w) => w.how === 'the stretch before').length}, by nothing ${ok.filter((w) => /^nothing/.test(w.how)).length}); not matched ${wins.length - ok.length}${wins.length - ok.length ? ` (${[...new Set(wins.filter((w) => !w.T).map((w) => (w.f.why || 'too little').replace(/\(.*\)/, '').trim()))].slice(0, 3).join('; ')})` : ''}.`);
   const errs = ok.flatMap((w) => w.err);
   if (errs.length) log(`    the walk's corners under the stretch they were marked in: ${errs.map((e) => `${e.toFixed(0)} in`).join(', ')}.`);
   log(`    points placed: ${S.out.length} standing, ${G.out.length} ground; left out ${S.left + G.left} (no matched stretch in their part of the walk).`);

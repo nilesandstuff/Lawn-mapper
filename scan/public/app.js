@@ -2612,7 +2612,9 @@ async function keepReference(L, walkId, w = null) {
      (addPlaced): it confirms what the reference already had, adds what it lacked, and marks what it looked at and did
      not see. Only when too little of it matches does it go in the older way, whole (updateRef). */
   if (old && oldBytes && old.stand.length) {
-    const placed = await placeInWorker(oldBytes, rawStand, rawGround, L?.marks || [], jumps).catch(() => null);
+    // corners that cannot be trusted hold nothing: the walk's live match (F) holds it instead (run 605)
+    const trustCorners = !!plan.g?.ok;
+    const placed = trustCorners || F ? await placeInWorker(oldBytes, rawStand, rawGround, trustCorners ? L?.marks || [] : [], jumps, trustCorners ? null : F).catch(() => null) : null;
     if (placed && !placed.error && placed.stand.length >= REF_MIN_STAND) {
       const a = addPlaced(old, placed);
       const bytes2 = encodeRef(a.ref), c = countsOf(a.ref);
@@ -2653,14 +2655,14 @@ async function sendReference(map, walkId, bytes, hadOld, what, closing) {
 
 /** The walk put on the saved shape a stretch at a time (refkeep.js placeOnShape) in a worker of its own, so the page's
  *  thread is never held. -> { stand, ground, readings, windows, matched, byCorners } or { error } */
-function placeInWorker(refBytes, stand, ground, marks, jumps, timeoutMs = 180000) {
+function placeInWorker(refBytes, stand, ground, marks, jumps, T0 = null, timeoutMs = 180000) {
   return new Promise((ok, no) => {
     const w = new Worker('/ref-worker.js', { type: 'module' }), id = `k${Date.now()}`;
     const done = (v, e) => { clearTimeout(t); w.terminate(); if (e) no(e); else ok(v); };
     const t = setTimeout(() => done(null, new Error('the stretch-by-stretch match took too long')), timeoutMs);
     w.onmessage = ({ data }) => {
       if (data.error) done(null, new Error(data.error));
-      if (data.ready) w.postMessage({ place: { id, stand, ground, marks: (marks || []).map((m) => ({ id: m.id, kind: m.kind, ar: m.ar, map: m.map, odo: m.odo })), jumps } });
+      if (data.ready) w.postMessage({ place: { id, stand, ground, marks: (marks || []).map((m) => ({ id: m.id, kind: m.kind, ar: m.ar, map: m.map, odo: m.odo })), jumps, T0 } });
       if (data.placed && data.id === id) done(data.placed);
     };
     w.onerror = (e) => done(null, new Error(e.message || 'the worker failed'));

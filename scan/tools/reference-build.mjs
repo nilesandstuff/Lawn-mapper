@@ -483,7 +483,7 @@ function walkOf(d, mapFallback) {
   const pts = { stand: all.stand.filter(keep), ground: all.ground.filter(keep) };
   const id = String(meta.walk || d.replace(/^.*w-/, ''));
   console.log(`  (walk ${id}: ${(live.marks || []).length} corner marks, ${left.size} left out as disagreeing${g?.ok ? '' : ` (${g?.why || 'none agree'})`}; ${cutOdo ? `its start cut at ${Math.round(cutOdo * FT)} ft walked` : 'no start cut'}${process.env.JUMPS ? `; ${jumps.length} jumps used` : ''})`);
-  return { d, id, map: meta.map || mapFallback || null, marks, jumps, pts, at: Number(meta.walk) || Date.now() };
+  return { d, id, map: meta.map || mapFallback || null, marks, jumps, pts, at: Number(meta.walk) || Date.now(), cornersOk: !!g?.ok };
 }
 
 /* THE REFERENCE MADE FROM WALKS, IN THE ORDER GIVEN (2026-11-25): the first placed by its own corners (it must have three
@@ -492,6 +492,7 @@ function walkOf(d, mapFallback) {
    -> the reference */
 function buildFrom(walks, log) {
   const [w0, ...rest] = walks;
+  if (!w0.cornersOk) throw new Error(`walk ${w0.id} cannot be first: its corners cannot be trusted (put a walk whose corners agree first)`);
   const plan = keepPlan(w0.marks, w0.jumps);
   if (!plan.ok) throw new Error(`walk ${w0.id}: its corners do not place it (${plan.why})`);
   const ps = placeWalk(w0.pts.stand, plan.use, plan.C, w0.jumps), pg = placeWalk(w0.pts.ground, plan.use, plan.C, w0.jumps);
@@ -501,8 +502,14 @@ function buildFrom(walks, log) {
   const say = (r) => { const c = countsOf(r); return `${r.stand.length / 3} standing (${c.stand[0]} on one walk's word, ${c.stand[1]} on two, ${c.stand[2]} on three or more), ${r.ground.length / 3} ground`; };
   log(`  walk ${w0.id} first, by its ${new Set(plan.use.map((m) => m.id)).size} corners${plan.agree ? ` (agreeing within ${(plan.g.worstM * 39.37).toFixed(0)} in)` : ', NOT all agreeing'}${ps.left + pg.left ? `; ${ps.left + pg.left} points after a jump left out` : ''}: ${say(ref)}.`);
   for (const w of rest) {
-    log(`  walk ${w.id} on the shape so far:`);
-    const placed = placeOnShape(ref, w.pts, w.marks, w.jumps, { log });
+    log(`  walk ${w.id} on the shape so far${w.cornersOk ? '' : ' (its corners cannot be trusted: held by its whole-walk match instead)'}:`);
+    let T0 = null;
+    if (!w.cornersOk) {
+      const f = shapeFix(ref, w.pts);
+      if (!f.ok) { log(`    NOT ADDED: its whole-walk match failed (${f.why}).`); continue; }
+      T0 = f.T; log(`    its whole-walk match: landed ${f.landed}, next best ${f.second}.`);
+    }
+    const placed = placeOnShape(ref, w.pts, w.cornersOk ? w.marks : [], w.jumps, { log, T0 });
     const m = addPlaced(ref, placed, w.at);
     ref = m.ref;
     log(`    confirmed ${m.confirmed}, added ${m.added}, dropped ${m.dropped} (missed twice and more than seen); its corners gave ${placed.readings.length} readings of where the shape is, which moved it ${(m.movedM * 39.37).toFixed(0)} in. Now ${say(ref)}.`);
@@ -544,6 +551,7 @@ async function crossval(dirs) {
   console.log(`EACH WALK AGAINST A REFERENCE MADE OF THE OTHERS (${walks.length} walks; the live match every 49 ft, the latest corner a pin, judged by the walk's other corners):`);
   for (let i = 0; i < walks.length; i++) {
     const others = walks.filter((_, j) => j !== i);
+    if (!walks[i].cornersOk) { console.log(` WALK ${walks[i].id}: its corners cannot be trusted, so they cannot judge it: not left out.`); continue; }
     console.log(` WALK ${walks[i].id} LEFT OUT; the reference from ${others.map((w) => w.id).join(' then ')}:`);
     let ref;
     try { ref = buildFrom(others, (t) => console.log(t)); } catch (e) { console.log(`  could not be made: ${e.message}`); continue; }
