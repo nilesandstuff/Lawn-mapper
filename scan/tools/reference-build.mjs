@@ -300,18 +300,19 @@ async function against(dirs) {
       const th = Math.atan2(g.reduce((a, r) => a + Math.sin(r.theta), 0), g.reduce((a, r) => a + Math.cos(r.theta), 0));
       return { theta: th, searchDeg: Math.max(15, 2 * Math.max(...g.map((r) => r.yawAcc))) };
     };
-    /* THE PAGE'S MATCH WITH THE TURN BOUNDED BY THE LAST USED FIT (2026-11-25): the latest corner as the pin, every
-       turn until a fix is used (two alike), then only turns within 15 degrees of it. Judged by ALL the other corners
-       marked so far. Run 593: with every turn searched, the match was refused from 443 ft to the end. */
+    /* THE PAGE'S MATCH AS IT IS NOW, TO THE WALK'S END (2026-11-25): the latest corner as the pin; judged by ALL the
+       other corners marked so far. Run 593: refused from 443 ft to the end though the corners sat 1-24 in out. Run
+       595: bounding the turn to 15 degrees of the last used fit changed NOTHING (the same refusals to the digit), so
+       the rival is a near turn, not a far one. walkref.js now asks a smaller lead of a pinned match. */
     {
-      console.log('   THE LATEST CORNER AS A PIN; ONCE A FIX IS USED, TURNS WITHIN 15 DEGREES OF IT ONLY; judged by the other corners marked so far:');
+      console.log('   THE LATEST CORNER AS A PIN, AS THE PAGE ASKS IT, TO THE END; judged by the other corners marked so far:');
       let before = null, used = 0, asked = 0, lastT = null; const errsUsed = [];
       for (let upTo = 30; ; upTo += 15) {
         const last = upTo >= total, lim = last ? total : upTo;
         const pinM = refs.filter((m) => m.odo <= lim).pop();
         if (!pinM) { if (last) break; continue; }
         const part = { stand: pts.stand.filter((p) => (p[3] || 0) <= lim), ground: pts.ground.filter((p) => (p[3] || 0) <= lim) };
-        const f = shapeFix(ref, part, { prior: { pin: { ar: pinM.ar, map: pinM.map }, searchM: 1.5, ...(lastT ? { theta: lastT.theta, searchDeg: 15 } : {}) } });
+        const f = shapeFix(ref, part, { prior: { pin: { ar: pinM.ar, map: pinM.map }, searchM: 1.5 } });
         asked++;
         const judges = refs.filter((m) => m.id !== pinM.id && m.odo <= lim);
         const e = f.T ? judges.map((m) => { const p = onMap(f.T, m.ar); return Math.hypot(p[0] - m.map[0], p[1] - m.map[1]) * 39.37; }) : [];

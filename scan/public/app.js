@@ -1461,12 +1461,7 @@ function frameWork(f) {
     // right answer out (run 491); loose, it only forbids the far side of the yard
     const pr = walkPrior(st.gpsTrail, st.geoTrail);
     // (the phone's own heading was tried with the corner, run 503: no fix came earlier for it, so it is not used)
-    /* ONCE A FIX HAS BEEN USED, THE WALK IS NOT TURNED ANOTHER WAY (2026-11-25, run 593 and the one after): with a corner
-       as the pin every turn was searched, and from 440 ft on some other turn landed within 10 points of the right
-       one, so every later match was refused and the page drew by the fit of 459 ft for the walk's last 800 ft.
-       Bounded to 15 degrees of the last used fit, the far turns are not candidates. */
-    const turn = L.prev?.ok && Number.isFinite(L.prev.T?.theta) ? { theta: L.prev.T.theta, searchDeg: 15 } : null;
-    const prior = cornerMark ? { pin: { ar: cornerMark.ar, map: cornerMark.map }, searchM: 1.5, ...(turn || {}) }
+    const prior = cornerMark ? { pin: { ar: cornerMark.ar, map: cornerMark.map }, searchM: 1.5 }
       : pr ? { T: { theta: pr.T.theta, tx: pr.T.tx, ty: pr.T.ty }, searchM: Math.max(15, 2 * pr.searchM), searchDeg: Math.max(25, 2 * pr.searchDeg) } : null;
     st.ref.worker.postMessage({ fix: { id, stand: [...st.prevStand.values()], ground: [...st.prevGround.values()], prior } });
   }

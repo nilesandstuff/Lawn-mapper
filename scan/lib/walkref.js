@@ -423,6 +423,12 @@ export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, marg
   const out = { T: K === 1 ? best.T : { theta: best.T.theta, tx: best.T.tx, ty: best.T.ty, s: K }, tz: best.tz, landed: +best.landed.toFixed(3), standLanded: +best.standLanded.toFixed(3), second: other ? +other.landed.toFixed(3) : null, stand: stand.length, ms: Date.now() - t0 };
   if (best.landed < gate) return { ...out, ok: false, why: `only ${Math.round(best.landed * 100)}% of the walk's points land on the earlier walk's (${Math.round(gate * 100)}% wanted)` };
   if (best.standLanded < standGate) return { ...out, ok: false, why: `the ground lines up but only ${Math.round(best.standLanded * 100)}% of the walls, fences and shrubs do (${Math.round(standGate * 100)}% wanted)` };
-  if (other && best.landed - other.landed < lead) return { ...out, ok: false, why: `another place fits nearly as well (${Math.round(best.landed * 100)}% against ${Math.round(other.landed * 100)}%): walk on` };
+  /* WITH A CORNER AS THE PIN THE LEAD ASKED IS 15% OF THE BEST, NOT TEN POINTS FLAT (2026-11-25, runs 593 and 595, one
+     walk of 1,259 ft): as a walk grows past what the reference holds the best falls (61% to 35%) and its rivals with
+     it, so ten points flat refused every match from 443 ft to the end (35% against 26%) while the walk's other
+     corners sat 1-24 in from their places under those very fits. The rival there is the same place turned a little
+     about the corner. Without a pin a rival can be across the yard, and the flat ten points stand. */
+  const need = pin ? Math.min(lead, 0.15 * best.landed) : lead;
+  if (other && best.landed - other.landed < need) return { ...out, ok: false, why: `another place fits nearly as well (${Math.round(best.landed * 100)}% against ${Math.round(other.landed * 100)}%): walk on` };
   return { ...out, ok: true, why: null };
 }
