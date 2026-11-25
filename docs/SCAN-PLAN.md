@@ -5091,3 +5091,26 @@ when the corners agree), a replay never added, the walk's own pins read at its e
 NOT YET: the live fix matches against every point, not only the vouched-for ones (too few yet: no fix came from
 3,923 alone); the plants layer, the ground colours and the 3D view still come from walks one by one, not from this
 record; the fused file is not fed from it.
+
+
+## 72. The stutter: the camera picture's hand-over, and Unity / Cesium looked at (2026-11-25)
+
+The owner: "Have we addressed the performance issues yet? And please look into cesium and unity xr/ar".
+HARD (the walks' own stopwatch, read again): nothing built since section 67 has been measured on a walk. The walk of
+2026-11-24 21:48: 10.2 frames a second, 646 stalls over 250 ms; "camera picture read, ground colour" 41% of the page's
+frame work, 24.3 ms a frame over 6,782 frames. HARD (the code): that picture is read about once a second, not every
+frame, so each read is about a quarter of a second, one stall each; the app hands it over as ONE string through the
+synchronous bridge (Bridge.kt grab: 1.2 MB of RGBA and the JPEG, both base64), which the page parsed as JSON and
+unpacked whole on its own thread, to look at about 1,000 of its 300,000 pixels.
+BUILT (page only, no new app): track.js pictureOf cuts the string by position and unpacks only the pixels asked for;
+the walk's log and summary say how long the app's call and the unpacking took (s.grab); the second and third depth
+grids of each kept picture wait for turns of their own (they held the page 124 ms a picture together).
+SPECULATION: that this removes most of those stalls. The app's call itself still carries the whole string across;
+how long THAT takes is not known until a walk says (s.grab.callMs). If it is the larger part, the app must hand over
+a small picture instead (a new app version).
+UNITY AND CESIUM (a subagent's reading of the vendors' pages, 2026-11-25; its own marks of what it could not verify
+kept in the session, not re-checked here): Unity's AR Foundation gives raw depth; Scene Semantics, Geospatial and
+recording need Google's ARCore Extensions on top. It would end the stutter only by removing the bridge, which drawing
+natively in the present app does too; a rewrite of the page's logic in C# is months. Its one strong case is one
+codebase for iPhone and Android. Cesium streams very large georeferenced scenes; it has no AR tracking and is not a
+speed tool for a yard that fits in one draw call. NOTHING HERE IS MEASURED by this project.

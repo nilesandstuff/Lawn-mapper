@@ -1402,9 +1402,11 @@ function frameWork(f) {
   if (f.grab && f.pose && f.tracking === 'normal' && (keyNow || f.t - (st.colourAt || 0) > COLOUR_EVERY)) {
     st.colourAt = f.t;
     grabbed = f.grab();
+    // how long the app's own call took, and the page's unpacking after it (track.js pictureOf): said at the walk's end
+    if (grabbed?.ms) { const G = (st.grabMs ||= { n: 0, call: 0, rest: 0, worst: 0 }); G.n++; G.call += grabbed.ms.call; G.rest += grabbed.ms.rest; G.worst = Math.max(G.worst, grabbed.ms.call + grabbed.ms.rest); }
     /* ANCHOR NUDGES (scan/lib/anchors.js): does this picture show a roofline against the sky, or pavement? After
        30 m without one, a hint to look at it; the after-the-walk placement lives on both (SCAN-H19) */
-    if (grabbed?.pixels && st.anchors) {
+    if (grabbed && st.anchors) {
       // bridge 2: ARCore's own labels when the app sends them (semantics.js), else the page's colour test
       const pitch = pitchOf(f.pose.quaternion);
       const fresh = st.lastSem && f.t - st.lastSem.t < 1500;
@@ -1419,16 +1421,17 @@ function frameWork(f) {
          in the summary; nudge() is still called so the counts of what WOULD have been asked are kept. */
       void n;
     }
-    if (grabbed?.pixels && f.depth) {
-      const pts = [], { w: gw, h: gh, pixels } = grabbed;
+    if (grabbed && f.depth) {
+      // one pixel at a time (grabbed.rgb): the picture is not unpacked whole for a thousand looks at it
+      const pts = [], { w: gw, h: gh } = grabbed, rgb = grabbed.rgb || ((k) => { const px = grabbed.pixels; return [px[k * 4], px[k * 4 + 1], px[k * 4 + 2]]; });
       for (let i = 0; i < 24; i++) for (let j = 0; j < 40; j++) {
         const x = (i + 0.5) / 24, y = (j + 0.5) / 40, p = f.depth.at(x, y);
         if (!p || Math.hypot(p.x - f.pose.position.x, p.y - f.pose.position.y, p.z - f.pose.position.z) > LIVE_RANGE) continue;
         const l = f.depth.label && st.semDims ? f.depth.label(x, y) : null;
         if (l && !keepPoint(l, f.depth.labelConf(x, y))) continue;
         if (l) p.label = l;
-        const k = (Math.min(gh - 1, Math.floor(y * gh)) * gw + Math.min(gw - 1, Math.floor(x * gw))) * 4;
-        const surf = surfaceOf(pixels[k], pixels[k + 1], pixels[k + 2]);
+        const c = rgb(Math.min(gh - 1, Math.floor(y * gh)) * gw + Math.min(gw - 1, Math.floor(x * gw)));
+        const surf = surfaceOf(c[0], c[1], c[2]);
         p.surf = surf || 'other'; pts.push(p); if (surf) st.surfCount[surf]++;
       }
       if (pts.length) addDepth(L, pts, odo, f.pose.position);
@@ -1448,10 +1451,10 @@ function frameWork(f) {
         lap('twin: track, a picture');
         const dep = keyDepth(f, name);
         if (dep) sendTwin([dep]);
-        const rdep = keyRaw(f, name);
-        if (rdep) sendTwin(rdep.sem ? [rdep, rdep.sem] : [rdep]);
-        const sdep = keySmooth(f, name);
-        if (sdep) sendTwin([sdep]);
+        /* THE OTHER TWO GRIDS IN TURNS OF THEIR OWN (2026-11-25): the three together held the page 124 ms a picture
+           (worst 376) on the walk of 2026-11-24 21:48; each now waits for the frame to be drawn first. */
+        setTimeout(() => { try { const rdep = keyRaw(f, name); if (rdep) sendTwin(rdep.sem ? [rdep, rdep.sem] : [rdep]); } catch (e) { log(`twin raw depth: ${e.message}`); } }, 0);
+        setTimeout(() => { try { const sdep = keySmooth(f, name); if (sdep) sendTwin([sdep]); } catch (e) { log(`twin smooth depth: ${e.message}`); } }, 30);
         lap('twin: a picture\'s three depth grids');
       }
     }
@@ -2063,6 +2066,7 @@ function finish() {
     sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id, crumbs: crumbs ? crumbs.list : null, walk: L?.walk?.ok ? { T: L.walk.T, share: L.walk.share, margin: L.walk.margin, walkedM: L.walk.walkedM, from: L.walk.from } : null, recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null, prev: prevKept() })));
     s.twin = { ...st.twin.counts, camera: st.twin.camera, off: st.twinUp.off };
   }
+  if (st.grabMs?.n) { const G = st.grabMs; log(`camera picture: read ${G.n} times, the app's call ${(G.call / G.n).toFixed(0)} ms a time, the page's unpacking ${(G.rest / G.n).toFixed(0)} ms, worst ${G.worst.toFixed(0)} ms`); s.grab = { n: G.n, callMs: +(G.call / G.n).toFixed(1), restMs: +(G.rest / G.n).toFixed(1), worstMs: Math.round(G.worst) }; st.grabMs = null; }
   st.twin = null;
   st.tracker = null; st.walk = null; st.L = null; st.ar = null; st.drawer = null;
   if (st.holdUploads) { st.holdUploads = false; st.outbox?.hold?.(false); }

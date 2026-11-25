@@ -409,6 +409,48 @@ export const NATIVE_DEPTH = { kind: 'raw', minConf: 0.2, nx: 48, ny: 84 };
 
 const b64bytes = (s) => { const bin = atob(s); const u = new Uint8ClampedArray(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; };
 
+/* THE APP'S PICTURE, WITHOUT UNPACKING ALL OF IT (2026-11-25). The app hands the picture over as one string: its size,
+   its view, 1.2 MB of RGBA as base64 and the JPEG as base64. The page parsed the whole string as JSON and unpacked
+   every byte of the RGBA, on its own thread, about once a second: "camera picture read, ground colour" was 41% of the
+   page's frame work on the walk of 2026-11-24 21:48, 24 ms a frame over 6,782 frames, which is about a quarter of a
+   second each time the picture was read, and the walk counted 646 stalls over a quarter of a second. But the page
+   only ever looks at about a thousand of the picture's 300,000 pixels (the ground's colour under a 24 x 40 grid). So:
+   the string is cut by position, not parsed; `rgb(i)` unpacks the one pixel asked for from its own four letters of
+   base64; `pixels` unpacks the lot only if something asks for it. -> as before, plus rgb and ms (the app's call, the rest). */
+const B64 = (() => { const t = new Uint8Array(128); 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'.split('').forEach((c, i) => { t[c.charCodeAt(0)] = i; }); return t; })();
+export function pictureOf(str) {
+  if (!str || str === 'null') return null;
+  const i = str.indexOf(',"rgba":"'), j = i < 0 ? -1 : str.indexOf('","jpeg":"', i);
+  if (i < 0 || j < 0) { // not the shape expected: the old way
+    let g; try { g = JSON.parse(str); } catch { return null; }
+    if (!g) return null;
+    const px = b64bytes(g.rgba);
+    return { w: g.w, h: g.h, pixels: px, rgb: (k) => [px[k * 4], px[k * 4 + 1], px[k * 4 + 2]], blob: Promise.resolve(new Blob([b64bytes(g.jpeg)], { type: 'image/jpeg' })), proj: g.proj, view: g.view };
+  }
+  let head; try { head = JSON.parse(`${str.slice(0, i)}}`); } catch { return null; }
+  const r0 = i + 9, jpeg = str.slice(j + 10, str.length - 2);
+  let all = null;
+  const at = (b) => { // the byte at offset b of the RGBA, from the four letters that hold it
+    const q = r0 + Math.floor(b / 3) * 4, c0 = B64[str.charCodeAt(q)], c1 = B64[str.charCodeAt(q + 1)], c2 = B64[str.charCodeAt(q + 2)], c3 = B64[str.charCodeAt(q + 3)];
+    const m = b % 3;
+    return m === 0 ? ((c0 << 2) | (c1 >> 4)) & 255 : m === 1 ? ((c1 << 4) | (c2 >> 2)) & 255 : ((c2 << 6) | c3) & 255;
+  };
+  return {
+    w: head.w, h: head.h, proj: head.proj, view: head.view,
+    rgb: (k) => [at(k * 4), at(k * 4 + 1), at(k * 4 + 2)],
+    get pixels() { if (!all) all = b64bytes(str.slice(r0, j)); return all; },
+    blob: Promise.resolve(new Blob([b64bytes(jpeg)], { type: 'image/jpeg' })),
+  };
+}
+function grabNative(N) {
+  const t0 = performance.now();
+  let str; try { str = N.grab(); } catch { return null; }
+  const t1 = performance.now();
+  const g = pictureOf(str);
+  if (g) g.ms = { call: t1 - t0, rest: performance.now() - t1 };
+  return g;
+}
+
 /** A depth grid from the app (DepthSnapshot.gridJson) as the page's depth: at(x, y) a world point or null, m(x, y) metres. */
 /* far (2026-11-08): 8 m dropped every true reading of a wall 30 ft off and kept only the ones that erred short (the
    owner's west wall: almost no points on it, and the few there phantoms; almost none on the roof). The owner: "Save
@@ -511,13 +553,7 @@ async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativ
       geo: fr.geo || null,
       sem: fr.sem || null, // bridge 2: the share of the picture under each label
       events: fr.events || null, // bridge 3: on a replay, what the page did at this frame of the recorded walk
-      grab: () => {
-        let g;
-        try { g = JSON.parse(N.grab()); } catch { return null; }
-        if (!g) return null;
-        const jpeg = new Blob([b64bytes(g.jpeg)], { type: 'image/jpeg' });
-        return { w: g.w, h: g.h, pixels: b64bytes(g.rgba), blob: Promise.resolve(jpeg), proj: g.proj, view: g.view };
-      },
+      grab: () => grabNative(N),
     });
   };
   N.start(JSON.stringify(opt));

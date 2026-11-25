@@ -62,3 +62,17 @@ console.log('track: ok');
   assert.equal(occFromBridge('', 51), null); assert.equal(occFromBridge('3,3,1,AAAA', 51), null, 'a picture of the wrong size is refused');
   console.log('track (occlusion picture): ok');
 }
+
+// THE APP'S PICTURE WITHOUT UNPACKING ALL OF IT (2026-11-25): one pixel read from its own letters of base64 is the
+// pixel the whole unpacking gives, at every offset's remainder
+{ const { pictureOf } = await import('../lib/track.js');
+  const w = 7, h = 5, raw = new Uint8Array(w * h * 4); for (let i = 0; i < raw.length; i++) raw[i] = (i * 37 + 11) & 255;
+  const b64 = (u) => Buffer.from(u).toString('base64');
+  const str = `{"w":${w},"h":${h},"t":1.5,"view":[1,0,0,0],"proj":[2,0,0,0],"rgba":"${b64(raw)}","jpeg":"${b64(Uint8Array.from([255, 216, 1, 2, 3]))}"}`;
+  const g = pictureOf(str);
+  assert.equal(g.w, w); assert.equal(g.h, h); assert.deepEqual(g.proj, [2, 0, 0, 0]);
+  for (let k = 0; k < w * h; k++) assert.deepEqual(g.rgb(k), [raw[k * 4], raw[k * 4 + 1], raw[k * 4 + 2]], `pixel ${k}`);
+  assert.deepEqual([...g.pixels], [...raw], 'and the whole, when asked for');
+  const jb = new Uint8Array(await (await g.blob).arrayBuffer()); assert.deepEqual([...jb], [255, 216, 1, 2, 3]);
+  assert.equal(pictureOf('null'), null); assert.equal(pictureOf(''), null); }
+console.log('track (the app\'s picture, a pixel at a time): ok');
