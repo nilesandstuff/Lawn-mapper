@@ -388,10 +388,20 @@ export function shapeFix(ref, walk, { cell = SEARCH_CELL, step = TURN_STEP, marg
      0.23-0.30 where the study read 0.22-0.46 for the same placements. */
   const all = [...thinTo(stand, 20000), ...thinTo(ground, 10000)];
   const ns = Math.min(stand.length, 20000);
+  /* THE PHONE'S OWN LABELS AS A SECOND WITNESS (2026-11-25, a STUDY until measured; the owner: "the reference can also
+     use the arcore scene semantics as another signal to match for a fix"). When the reference keeps a kind for each
+     standing point (ref.standK) and the walk's standing points carry one (p[4]; 0 = not known), a standing point has
+     landed only when the reference's point it lands on is of the same kind, or either is not known. */
+  const kinds = ref.standK && ref.standK.length === ref.stand.length / 3 ? ref.standK : null;
   const landedOf = (T, tz) => {
     let n = 0, nst = 0;
     const h = H(LAND_M);
-    all.forEach((p, i) => { const [e, nn] = place(T, p[0], p[1]); if (h.nearest(e, nn, p[2] + tz, LAND_M) >= 0) { n++; if (i < ns) nst++; } });
+    all.forEach((p, i) => {
+      const [e, nn] = place(T, p[0], p[1]); const j = h.nearest(e, nn, p[2] + tz, LAND_M);
+      if (j < 0) return;
+      if (kinds && i < ns && p[4] && j < ref.stand.length && kinds[j / 3] && kinds[j / 3] !== p[4]) return;
+      n++; if (i < ns) nst++;
+    });
     return { all: n / all.length, stand: ns ? nst / ns : 0 };
   };
   const results = [];

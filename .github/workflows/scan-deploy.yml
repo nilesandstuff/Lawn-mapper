@@ -809,11 +809,12 @@ jobs:
         run: |
           set -o pipefail
           dirs=""
-          for W in $(echo "$WALKS" | tr ',' ' '); do
+          for W in $(echo "${WALKS%%:*}" | tr ',' ' '); do
             node scan/tools/twin-r2.mjs get "$W" "w-$W" > /dev/null
             dirs="$dirs w-$W"
           done
-          node scan/tools/reference-build.mjs check $dirs | tee walkfix.txt
+          # "walk,walk:labels": do the phone's labels help the fix? The first walk made a reference here, the second matched
+          case "$WALKS" in *:labels) node scan/tools/reference-build.mjs labels $dirs | tee walkfix.txt ;; *) node scan/tools/reference-build.mjs check $dirs | tee walkfix.txt ;; esac
 
       # THE MAP'S REFERENCE WALK (scan/tools/reference-build.mjs; SCAN-H32): a walk placed by its marks becomes the one
       # that places later walks on its map by their shape, live on the page. The walk input: one walk.

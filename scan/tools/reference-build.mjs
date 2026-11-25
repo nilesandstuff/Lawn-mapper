@@ -21,6 +21,9 @@ import { writeObject, readObject, BUCKET } from './twin-r2.mjs';
 const FT = 3.28084;
 const DROP = new Set([2, 10, 11]);   // label + 1: sky, vehicle, person
 
+// label + 1 -> a kind for the label study: building 1, tree 2, structure or object 3; anything else not known
+const KIND = { 3: 1, 4: 2, 8: 3, 9: 3 };
+
 /** A twin's points as the page keeps them: { stand, ground } [[u, v, y]] in its session. */
 export function twinPoints(dir) {
   const stand = [], ground = [];
@@ -40,7 +43,7 @@ export function twinPoints(dir) {
       const h = y - g;
       const odo = a[i * 6 + 1];   // m walked when the point was seen (refkeep.js partOf)
       if (Math.abs(h) < 0.15) ground.push([x, -z, y, odo]);
-      else if (h >= STAND[0] && h <= STAND[1]) stand.push([x, -z, y, odo]);
+      else if (h >= STAND[0] && h <= STAND[1]) stand.push([x, -z, y, odo, KIND[l] || 0]);
     }
   }
   return { stand, ground };
@@ -381,8 +384,53 @@ async function against(dirs) {
   }
 }
 
+/* DO THE PHONE'S LABELS HELP THE SHAPE FIX? (2026-11-25; the owner: "the reference can also use the arcore scene
+   semantics as another signal to match for a fix"). The first walk given is made a reference here, by its own roof
+   corners, each standing point keeping its kind (building, tree, structure). The second is matched to it every 15 m
+   as the page does (the latest corner a pin), twice: by shape alone, and with a standing point landing only on its
+   own kind. Judged by the second walk's other corners. Nothing is kept. */
+async function labels(dirs) {
+  const [rd, wd] = dirs;
+  const rl = readJson(rd, 'live.json') || {}, g0 = keepPlan(rl.marks || [], []).g;
+  if (!g0.ok || !g0.T) throw new Error('the first walk\'s corners do not place it');
+  const rp = twinPoints(rd);
+  const seen = new Map();
+  for (const p of rp.stand) { const k = `${Math.floor(p[0] / 0.2)},${Math.floor(p[1] / 0.2)},${Math.floor(p[2] / 0.2)}`; if (!seen.has(k)) seen.set(k, p); }
+  const sp = [...seen.values()], stand = new Float32Array(sp.length * 3), standK = new Uint8Array(sp.length);
+  sp.forEach((p, i) => { const [e, n] = place(g0.T, p[0], p[1]); stand[i * 3] = e; stand[i * 3 + 1] = n; stand[i * 3 + 2] = p[2]; standK[i] = p[4] || 0; });
+  const plain = buildRef({ stand: [], ground: rp.ground }, g0.T);
+  const ref = { stand, ground: plain.ground };
+  const share = (k) => Math.round((100 * standK.filter((x) => x === k).length) / Math.max(1, standK.length));
+  console.log(`DO THE PHONE'S LABELS HELP THE SHAPE FIX? The reference made here from the first walk: ${sp.length} standing points (building ${share(1)}%, tree ${share(2)}%, structure ${share(3)}%, not known ${share(0)}%), ${ref.ground.length / 3} ground.`);
+  const live = readJson(wd, 'live.json') || {}, pts = twinPoints(wd);
+  const refs = (live.marks || []).filter((m) => m?.ar && m?.map && m.kind === 'ref').sort((a, b) => a.odo - b.odo);
+  const total = Math.max(0, ...pts.stand.map((p) => p[3] || 0));
+  const mid = (() => { let x = 0, y = 0; for (const p of pts.stand) { x += p[0]; y += p[1]; } return pts.stand.length ? [x / pts.stand.length, y / pts.stand.length] : [0, 0]; })();
+  for (const withK of [false, true]) {
+    console.log(`   ${withK ? 'A STANDING POINT LANDS ONLY ON ITS OWN KIND' : 'BY SHAPE ALONE'} (the latest corner a pin); judged by the other corners marked so far:`);
+    const R = withK ? { ...ref, standK } : ref;
+    let before = null, used = 0, asked = 0; const errsUsed = [], leads = [];
+    for (let upTo = 30; ; upTo += 15) {
+      const last = upTo >= total, lim = last ? total : upTo;
+      const pinM = refs.filter((m) => m.odo <= lim).pop();
+      if (!pinM) { if (last) break; continue; }
+      const part = { stand: pts.stand.filter((p) => (p[3] || 0) <= lim), ground: pts.ground.filter((p) => (p[3] || 0) <= lim) };
+      const f = shapeFix(R, part, { prior: { pin: { ar: pinM.ar, map: pinM.map }, searchM: 1.5 } });
+      asked++;
+      const e = f.T ? refs.filter((m) => m.id !== pinM.id && m.odo <= lim).map((m) => { const p = place(f.T, ...m.ar); return Math.hypot(p[0] - m.map[0], p[1] - m.map[1]) * 39.37; }) : [];
+      const confirmed = f.ok && before && sameFix(before, f.T, mid);
+      if (confirmed) { used++; errsUsed.push(...e); }
+      if (f.landed != null && f.second != null) leads.push(f.second / f.landed);
+      console.log(`    at ${Math.round(lim * FT)} ft: ${f.ok ? (confirmed ? 'USED' : 'a match, waiting') : f.T ? `refused (${f.why || ''})` : 'nothing'}${f.landed != null ? `, landed ${f.landed}, next best ${f.second ?? '-'}` : ''}${e.length ? `; the other corners ${e.map((x) => `${x.toFixed(0)} in`).join(', ')}` : ''}`);
+      before = f.ok ? f.T : null;
+      if (last) break;
+    }
+    console.log(`    -> asked ${asked}, used ${used}; the next best as a share of the best, middle ${leads.length ? med(leads).toFixed(2) : '-'}; the other corners under the USED ones: ${errsUsed.length ? `middle ${med(errsUsed).toFixed(0)} in, worst ${Math.max(...errsUsed).toFixed(0)} in (${errsUsed.length})` : 'none to judge'}.`);
+  }
+}
+
 const [cmd, ...rest] = process.argv.slice(2);
 if (process.argv[1]?.endsWith('reference-build.mjs')) {
-  (cmd === 'build' ? build(rest[0] || 'twin') : cmd === 'keep' ? keep(rest[0] || 'twin') : cmd === 'fresh' ? fresh(rest[0] || 'twin') : cmd === 'against' ? against(rest) : cmd === 'check' ? Promise.resolve(check(rest)) : Promise.reject(new Error('build <dir> or check <dir> <dir>...')))
+  (cmd === 'build' ? build(rest[0] || 'twin') : cmd === 'keep' ? keep(rest[0] || 'twin') : cmd === 'fresh' ? fresh(rest[0] || 'twin') : cmd === 'labels' ? labels(rest) : cmd === 'against' ? against(rest) : cmd === 'check' ? Promise.resolve(check(rest)) : Promise.reject(new Error('build <dir> or check <dir> <dir>...')))
     .catch((e) => { console.log(`Reference: ${e.message}`); process.exit(1); });
 }
