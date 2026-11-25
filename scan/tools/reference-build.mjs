@@ -325,6 +325,35 @@ async function against(dirs) {
       }
       console.log(`    -> used ${used} time${used === 1 ? '' : 's'}${used ? `, first at ${Math.round(firstUsed * FT)} ft, ${usedBad} of them with every judging corner over 5 ft out` : ''}.`);
     }
+    /* THE WHOLE WALK, AND ONLY ITS LAST STRETCH (2026-11-25; the owner: "I remarked r3 a handful of times because it
+       drifted several times... the shape fixing to the reference walk should've corrected it"). The page matches ALL
+       the walk's points so far as one rigid shape; after the tracking has slid, the early points and the late ones are
+       no longer one shape, and one placement cannot be right for both. Here the same match every 15 m to the walk's
+       end, with the latest corner as the pin as the page has it: on everything so far, and on only the last WIN m
+       walked. THE JUDGE is the corner marks made in the last 60 m (the pin's own mark left out): where the phone
+       was just then, which is what a live fix is for. */
+    for (const WIN of [0, 60, 30]) {
+      console.log(`   ${WIN ? `ONLY THE LAST ${Math.round(WIN * FT)} ft WALKED` : 'EVERYTHING SO FAR'}, the latest corner as a pin, to the walk's end; judged by the corners marked in the last 197 ft:`);
+      let before = null, used = 0, asked = 0; const errs = [], errsUsed = [];
+      for (let upTo = 30; ; upTo += 15) {
+        const last = upTo >= total, lim = last ? total : upTo;
+        const pinM = refs.filter((m) => m.odo <= lim).pop();
+        if (!pinM) { if (last) break; continue; }
+        const inWin = (p) => (p[3] || 0) <= lim && (!WIN || (p[3] || 0) > lim - WIN);
+        const part = { stand: pts.stand.filter(inWin), ground: pts.ground.filter(inWin) };
+        const f = shapeFix(ref, part, { prior: { pin: { ar: pinM.ar, map: pinM.map }, searchM: 1.5 } });
+        asked++;
+        const judges = refs.filter((m) => m !== pinM && m.odo <= lim && m.odo > lim - 60);
+        const e = f.T ? judges.map((m) => { const p = onMap(f.T, m.ar); return Math.hypot(p[0] - m.map[0], p[1] - m.map[1]) * 39.37; }) : [];
+        const confirmed = f.ok && before && sameFix(before, f.T, mid);
+        if (f.ok) errs.push(...e);
+        if (confirmed) { used++; errsUsed.push(...e); }
+        console.log(`    at ${Math.round(lim * FT)} ft (${part.stand.length} standing points): ${f.ok ? (confirmed ? 'USED' : 'a match, waiting') : f.T ? `refused (${f.why || ''})` : 'nothing'}${f.landed != null ? `, landed ${f.landed}, next best ${f.second ?? '-'}` : ''}${e.length ? `; recent corners ${e.map((x) => `${x.toFixed(0)} in`).join(', ')}` : ''}`);
+        before = f.ok ? f.T : null;
+        if (last) break;
+      }
+      console.log(`    -> asked ${asked}, used ${used}; recent corners under the matches: ${errs.length ? `middle ${med(errs).toFixed(0)} in, worst ${Math.max(...errs).toFixed(0)} in (${errs.length})` : 'none to judge'}; under the USED ones: ${errsUsed.length ? `middle ${med(errsUsed).toFixed(0)} in, worst ${Math.max(...errsUsed).toFixed(0)} in (${errsUsed.length})` : 'none to judge'}.`);
+    }
   }
 }
 
