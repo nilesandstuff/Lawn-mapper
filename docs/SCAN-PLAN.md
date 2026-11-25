@@ -4978,3 +4978,18 @@ SPECULATION:
     disagreement are all candidates; none measured.
 NOT DONE: the map's reference is still the 22:04 walk alone (putting the backup back, or building both walks into
 one, is the owner's to say); walks are pooled for the ground but not yet into the fused file by themselves.
+
+THE PHONE'S LABELS AS A SECOND WITNESS FOR THE SHAPE FIX (run 599; the owner, 2026-11-25: "the reference can also use
+the arcore scene semantics as another signal to match for a fix"). reference-build.mjs labels: the 22:04 walk made a
+reference by its own corners, each standing point keeping its kind (14,893 points: building 37%, tree 52%, structure
+5%, not known 6%); the 21:48 walk matched to it every 49 ft with a corner as the pin, by shape alone and with a
+standing point landing only on its own kind.
+HARD: NO DIFFERENCE. Used 17 of 25 both ways, at the same steps; the next best as a share of the best 0.80 against
+0.79; the other corners the same to the inch. The rival that causes refusals is the same place turned a little about
+the corner, and there a wall still lands on a wall.
+NOT A FINDING: the corners sit 29-70 in out in this study against 1-24 in on the saved reference (run 596). The
+reference made here is in the map's metres and the walk in the phone's (3.2% apart); the saved one keeps its shape in
+a frame of its own. The study's own doing, most likely; not looked into.
+SPECULATION: labels could still help where no corner is marked and the rival is across the yard (the wrong placements
+of runs 490-493). Not measured. The kinds are kept in the study's code path (walkref.js ref.standK) and used by
+nothing on the page.
