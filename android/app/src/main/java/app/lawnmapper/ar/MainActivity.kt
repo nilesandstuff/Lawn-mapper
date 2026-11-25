@@ -169,7 +169,7 @@ class MainActivity : Activity() {
                 return
             }
             engine.options = ArEngine.Options(
-                grabW = o.optInt("grabW", 480).coerceIn(120, 1280), jpegQ = o.optInt("jpegQ", 80).coerceIn(30, 95),
+                grabW = o.optInt("grabW", 480).coerceIn(120, 1280), jpegQ = o.optInt("jpegQ", 80).coerceIn(30, 95), rgbaStep = o.optInt("rgbaStep", 1).coerceIn(1, 16),
                 near = o.optDouble("near", 0.05).toFloat(), far = o.optDouble("far", 300.0).toFloat(),
                 depthEveryMs = o.optLong("depthEveryMs", 200), pictureEveryMs = o.optLong("pictureEveryMs", 700), geoEveryMs = o.optLong("geoEveryMs", 1000),
                 semEveryMs = o.optLong("semEveryMs", 500), anchorsEveryMs = o.optLong("anchorsEveryMs", 1000),

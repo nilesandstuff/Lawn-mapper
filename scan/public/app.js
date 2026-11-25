@@ -1410,7 +1410,7 @@ function frameWork(f) {
       // bridge 2: ARCore's own labels when the app sends them (semantics.js), else the page's colour test
       const pitch = pitchOf(f.pose.quaternion);
       const fresh = st.lastSem && f.t - st.lastSem.t < 1500;
-      const view = (fresh && viewFromSem(st.lastSem.sem, pitch)) || viewOf(grabbed.pixels, grabbed.w, grabbed.h, pitch);
+      const view = (fresh && viewFromSem(st.lastSem.sem, pitch)) || viewOf(grabbed.pixels, grabbed.pw || grabbed.w, grabbed.ph || grabbed.h, pitch);
       noteView(st.anchors, odo, view);
       const now = performance.now() / 1000;
       if (st.nudge && (view[st.nudge.kind] || now > st.nudge.until)) st.nudge = null;

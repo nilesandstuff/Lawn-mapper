@@ -33,7 +33,7 @@ import kotlin.math.roundToInt
 class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
 
     class Options(
-        var grabW: Int = 480, var jpegQ: Int = 80, var near: Float = 0.05f, var far: Float = 300f,
+        var grabW: Int = 480, var jpegQ: Int = 80, var rgbaStep: Int = 1, var near: Float = 0.05f, var far: Float = 300f,
         var depthEveryMs: Long = 200, var pictureEveryMs: Long = 700, var geoEveryMs: Long = 1000,
         var semEveryMs: Long = 500, var anchorsEveryMs: Long = 1000,
     )
@@ -314,7 +314,7 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
         } catch (_: Exception) { return }
         pictureBusy = true
         worker.execute {
-            try { picture = Picture.from(raw, o.jpegQ) } catch (_: Exception) { } finally { pictureBusy = false }
+            try { picture = Picture.from(raw, o.jpegQ, o.rgbaStep) } catch (_: Exception) { } finally { pictureBusy = false }
         }
     }
 

@@ -76,3 +76,10 @@ console.log('track: ok');
   const jb = new Uint8Array(await (await g.blob).arrayBuffer()); assert.deepEqual([...jb], [255, 216, 1, 2, 3]);
   assert.equal(pictureOf('null'), null); assert.equal(pictureOf(''), null); }
 console.log('track (the app\'s picture, a pixel at a time): ok');
+// bridge 9: a small RGBA under a full-size picture: a pixel asked for by its place in the full picture comes from the small one
+{ const { pictureOf } = await import('../lib/track.js');
+  const raw = Uint8Array.from([10, 11, 12, 255, 20, 21, 22, 255, 30, 31, 32, 255, 40, 41, 42, 255]);   // 2 x 2
+  const g = pictureOf(`{"w":8,"h":8,"t":0,"rw":2,"rh":2,"view":[1],"proj":[1],"rgba":"${Buffer.from(raw).toString('base64')}","jpeg":"AA=="}`);
+  assert.deepEqual(g.rgb(0), [10, 11, 12]); assert.deepEqual(g.rgb(7), [20, 21, 22]); assert.deepEqual(g.rgb(7 * 8), [30, 31, 32]); assert.deepEqual(g.rgb(63), [40, 41, 42]);
+  assert.equal(g.pw, 2); assert.equal(g.w, 8); }
+console.log('track (a small picture under a full one): ok');

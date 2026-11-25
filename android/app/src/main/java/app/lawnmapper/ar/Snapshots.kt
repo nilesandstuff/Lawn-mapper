@@ -123,10 +123,14 @@ class RawPicture(
 )
 
 /** The picture as the page wants it: the screen's view of the camera, RGBA rows from the top, and the same as a JPEG. */
-class Picture(val w: Int, val h: Int, val rgba: ByteArray, val jpeg: ByteArray, val view: FloatArray, val proj: FloatArray, val t: Double) {
+/* (bridge 9, 2026-11-25) rw x rh: the size of the RGBA handed over. The page looks at about a thousand of the picture's
+   pixels (the ground's colour), so with rgbaStep over 1 only every step-th pixel of every step-th row is kept: the
+   string handed across the bridge about once a second falls from 1.6 MB to a few tens of KB. w x h stays the JPEG's. */
+class Picture(val w: Int, val h: Int, val rgba: ByteArray, val jpeg: ByteArray, val view: FloatArray, val proj: FloatArray, val t: Double, val rw: Int = w, val rh: Int = h) {
     fun json(): String {
         val sb = StringBuilder(rgba.size * 4 / 3 + jpeg.size * 4 / 3 + 600)
         sb.append("{\"w\":").append(w).append(",\"h\":").append(h).append(",\"t\":").append(t)
+        sb.append(",\"rw\":").append(rw).append(",\"rh\":").append(rh)
         sb.append(",\"view\":").append(arr(view)).append(",\"proj\":").append(arr(proj))
         sb.append(",\"rgba\":\"").append(Base64.encodeToString(rgba, Base64.NO_WRAP)).append('"')
         sb.append(",\"jpeg\":\"").append(Base64.encodeToString(jpeg, Base64.NO_WRAP)).append("\"}")
@@ -137,7 +141,7 @@ class Picture(val w: Int, val h: Int, val rgba: ByteArray, val jpeg: ByteArray, 
         fun arr(a: FloatArray) = a.joinToString(",", "[", "]") { (Math.round(it * 1e6) / 1e6).toString() }
 
         /** YUV (BT.601, full range) sampled through the screen-to-image map, nearest pixel. */
-        fun from(r: RawPicture, quality: Int): Picture {
+        fun from(r: RawPicture, quality: Int, step: Int = 1): Picture {
             val n = r.outW * r.outH
             val rgba = ByteArray(n * 4)
             val argb = IntArray(n)
@@ -161,7 +165,16 @@ class Picture(val w: Int, val h: Int, val rgba: ByteArray, val jpeg: ByteArray, 
             val out = ByteArrayOutputStream()
             bmp.compress(Bitmap.CompressFormat.JPEG, quality, out)
             bmp.recycle()
-            return Picture(r.outW, r.outH, rgba, out.toByteArray(), r.view, r.proj, r.t)
+            if (step <= 1) return Picture(r.outW, r.outH, rgba, out.toByteArray(), r.view, r.proj, r.t)
+            val rw = (r.outW + step - 1) / step
+            val rh = (r.outH + step - 1) / step
+            val small = ByteArray(rw * rh * 4)
+            for (sy in 0 until rh) for (sx in 0 until rw) {
+                val k = (min(r.outH - 1, sy * step + step / 2) * r.outW + min(r.outW - 1, sx * step + step / 2)) * 4
+                val q = (sy * rw + sx) * 4
+                small[q] = rgba[k]; small[q + 1] = rgba[k + 1]; small[q + 2] = rgba[k + 2]; small[q + 3] = rgba[k + 3]
+            }
+            return Picture(r.outW, r.outH, small, out.toByteArray(), r.view, r.proj, r.t, rw, rh)
         }
 
         private fun clamp(x: Float): Int = min(255, max(0, x.roundToInt()))

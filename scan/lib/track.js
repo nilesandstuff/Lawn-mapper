@@ -393,7 +393,8 @@ export function nativeInfo() {
 }
 
 /** What the app is asked for (Bridge.start): the picture's width and quality, how often depth, pictures, Geospatial. */
-export const NATIVE_OPTIONS = { grabW: 480, jpegQ: 80, depthEveryMs: 200, pictureEveryMs: 700, geoEveryMs: 1000, semEveryMs: 500, anchorsEveryMs: 1000, depth: true, geospatial: true, semantics: true, planes: true, streetscape: false };
+// rgbaStep (bridge 9): the app hands over every 8th pixel of every 8th row of the picture's RGBA (pictureOf)
+export const NATIVE_OPTIONS = { grabW: 480, jpegQ: 80, rgbaStep: 8, depthEveryMs: 200, pictureEveryMs: 700, geoEveryMs: 1000, semEveryMs: 500, anchorsEveryMs: 1000, depth: true, geospatial: true, semantics: true, planes: true, streetscape: false };
 /* GEOSPATIAL DEPTH OFF (streetscape: false, 2026-11-20). With it on, ARCore draws Street View's building and
    terrain meshes INTO its depth pictures. Measured on the owner's-lot walk of 2026-11-19 (docs/SCAN-PLAN.md 39): the
    smoothed depth kept beside 587 photos read 125-150 ft nearly everywhere (4% of it within 39 ft), 279,659 of the
@@ -435,9 +436,13 @@ export function pictureOf(str) {
     const m = b % 3;
     return m === 0 ? ((c0 << 2) | (c1 >> 4)) & 255 : m === 1 ? ((c1 << 4) | (c2 >> 2)) & 255 : ((c2 << 6) | c3) & 255;
   };
+  // bridge 9: the RGBA may be smaller than the picture (rw x rh); a pixel asked for by its place in the full picture
+  // is read from the small one
+  const rw = head.rw || head.w, rh = head.rh || head.h, small = rw !== head.w || rh !== head.h;
+  const idx = small ? (k) => Math.min(rh - 1, Math.floor((Math.floor(k / head.w) * rh) / head.h)) * rw + Math.min(rw - 1, Math.floor(((k % head.w) * rw) / head.w)) : (k) => k;
   return {
-    w: head.w, h: head.h, proj: head.proj, view: head.view,
-    rgb: (k) => [at(k * 4), at(k * 4 + 1), at(k * 4 + 2)],
+    w: head.w, h: head.h, pw: rw, ph: rh, proj: head.proj, view: head.view,
+    rgb: (k0) => { const k = idx(k0); return [at(k * 4), at(k * 4 + 1), at(k * 4 + 2)]; },
     get pixels() { if (!all) all = b64bytes(str.slice(r0, j)); return all; },
     blob: Promise.resolve(new Blob([b64bytes(jpeg)], { type: 'image/jpeg' })),
   };
