@@ -5046,3 +5046,18 @@ ALSO HARD: in that run the walk of 2026-11-20, left out, was "used" 14 times in 
 out. Its record holds a corner mark about 20 ft from its corner (section 57); the judge counted it. Now only the
 corners that agree with each other (goodPart) place, pin or judge a walk. Whether the live page's pin can be that
 wrong mark: it can (the latest marked corner) -- NOT yet changed on the page.
+
+HARD, run 605 (the stretches held with the bound's own tests, no jumps, the start cut):
+  - placing now WORKS where a walk is held by its own good corners: of 19, 19 and 26 stretches, 18, 12 and 16 matched;
+    the corners under their stretch 2-64 in, most under 26 in.
+  - THE WALK OF 2026-11-20 CANNOT BE TRUSTED BY ITS CORNERS: goodPart now says of it "two different pairs of them each
+    agree with the map: it cannot be told which corner was marked wrong" (it was `fresh`'s base on 2026-11-22, when
+    that rule did not yet exist). First, it placed the reference by them; as the walk left out, its corners judged a
+    live match 236 in out (9 used): the wrong corner's own distance, about 20 ft.
+  - with it as the base, the other two walks did WORSE than against each other alone: the 21:48 walk used 3 of 25 (53
+    in) against it and the 22:04 walk, where against the 22:04 walk alone it used 23 of 25 (12 in, run 596).
+  - few points are vouched for by two walks: 567-3,923 of 20,000-27,000 standing. Matched against those alone: no fix.
+  - NOW: such a walk is never first and never a judge; it is held by its whole-walk match, and its corners give no
+    readings of where the shape is (page and tools).
+SPECULATION: the reference on the map today has the walk of 2026-11-20 as its base and so sits where those corners put
+it. The 21:48 walk (3 corners within 9 in, closed within 1 ft) as the base is likely the better one. Being checked.
