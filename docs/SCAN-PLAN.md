@@ -5082,3 +5082,12 @@ it was put, and it took away 2,784 points. TAKEN BACK: such a walk is no longer 
 as no witness of absence); a walk on the shape by its match alone, without agreeing corners, never takes points away
 (updateRef); the page adds a walk stretch by stretch only when its corners agree. The map's reference is being made
 again from the two walks of 2026-11-24 alone (run 610); the three-walk one is a backup.
+
+HARD, runs 610-611: the map's reference is now the two walks of 2026-11-24 alone, counted: 27,045 standing points
+(3,923 vouched for by both walks), 24,225 ground; the 22:04 walk matched 18 of 19 stretches, confirmed 6,929 points,
+added 18,573, took none away; its corners moved where the shape sits by 22 in. The three-walk one is a backup. The
+scan site deployed with it (run 611): the "keep this walk out" box, the counted add at a walk's end (stretch by stretch
+when the corners agree), a replay never added, the walk's own pins read at its end.
+NOT YET: the live fix matches against every point, not only the vouched-for ones (too few yet: no fix came from
+3,923 alone); the plants layer, the ground colours and the 3D view still come from walks one by one, not from this
+record; the fused file is not fed from it.
