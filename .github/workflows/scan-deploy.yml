@@ -39,7 +39,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, disagree, segment, view, classes, mend, jumps, corners, trunks, crownsky, surfaces, placed, prunerecordings, name, learn, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks, naip, drive, thermalindex]
+        options: [tests, deploy, walks, twin, disagree, segment, view, classes, mend, jumps, corners, trunks, crownsky, semcheck, surfaces, placed, prunerecordings, name, learn, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks, naip, drive, thermalindex]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -270,7 +270,7 @@ jobs:
       # CAN THE SKYLINE PLACE A WALK (scan/tools/skyline_study.py, SCAN-H11 option 1): the sky in each picture against
       # the shade map's model seen from every placement; scored against the check points. CPU, free.
       - name: Run actions/setup-python@v5 (skyline)
-        if: ${{ inputs.task == 'trunks' || inputs.task == 'crownsky' || inputs.task == 'surfaces' || inputs.task == 'skyline' || inputs.task == 'pavement' || inputs.task == 'place' || inputs.task == 'checks' || inputs.task == 'register' || inputs.task == 'walkfix' || inputs.task == 'segment' || inputs.task == 'view' || inputs.task == 'classes' || inputs.task == 'mend' || inputs.task == 'jumps' || inputs.task == 'name' || inputs.task == 'learn' }}
+        if: ${{ inputs.task == 'trunks' || inputs.task == 'crownsky' || inputs.task == 'semcheck' || inputs.task == 'surfaces' || inputs.task == 'skyline' || inputs.task == 'pavement' || inputs.task == 'place' || inputs.task == 'checks' || inputs.task == 'register' || inputs.task == 'walkfix' || inputs.task == 'segment' || inputs.task == 'view' || inputs.task == 'classes' || inputs.task == 'mend' || inputs.task == 'jumps' || inputs.task == 'name' || inputs.task == 'learn' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -377,6 +377,8 @@ jobs:
             # "<walk>:fused": why is there no fused map? the owner's maps of the walk's place, which holds the walk's plants,
             # which has a fused model, and the fusing run here on the real files (scan/tools/fuse-check.mjs). No ids, no places.
             *:fused) node scan/tools/fuse-check.mjs "${WALK%%:*}" | tee placed.txt ;;
+            # "<walk>:info" or "<walk>:info:<other walk>[,<other>]": what the walk's own record says (walk-info.mjs)
+            *:info*) O="${WALK#*:info}"; O="${O#:}"; node scan/tools/walk-info.mjs "${WALK%%:*}" ${O//,/ } | tee placed.txt; node scan/tools/placed.mjs "${WALK%%:*}" | tee -a placed.txt || true ;;
             # "<walk>:marks" (or ":marks:force"): the marks that walk was made with, kept with its map (marks-restore.mjs)
             *:marks:force) node scan/tools/marks-restore.mjs "${WALK%%:*}" force | tee placed.txt ;;
             *:marks) node scan/tools/marks-restore.mjs "${WALK%%:*}" | tee placed.txt ;;
@@ -551,12 +553,32 @@ jobs:
         run: |
           set -o pipefail
           pip install --quiet numpy scipy
-          node scan/tools/twin-r2.mjs parts "$WALK" twin 'cloud-*' 'labels-*' view-kind.bin view.json start.json live.json meta.json 'track-*' | tee surfaces.txt
-          node scan/tools/walk-fit.mjs twin | tee -a surfaces.txt || true
-          node scan/tools/lawn-prep.mjs twin | tee -a surfaces.txt || true
-          python scan/tools/surfaces.py twin --keep twin/surfaces-map.json | tee -a surfaces.txt
-          node scan/tools/surfaces-keep.mjs "$WALK" twin | tee -a surfaces.txt || true
-          python scan/tools/surfaces.py twin --feet 2 | tee -a surfaces.txt
+          # "<walk>" or "<walk>,<walk>,...": several walks of one lot are pooled, each put on the map by its own corners
+          # (the owner, 2026-11-25: "the walks are cumulative"). The first walk named is the one whose map keeps the result.
+          : > surfaces.txt; DIRS=""; FIRST="${WALK%%,*}"
+          for W in ${WALK//,/ }; do
+            node scan/tools/twin-r2.mjs parts "$W" "twin-$W" 'cloud-*' 'labels-*' view-kind.bin view.json start.json live.json meta.json 'track-*' 'keys-*' 'key-*.sem' 'key-*.rdepth' | tail -2 | tee -a surfaces.txt
+            node scan/tools/walk-fit.mjs "twin-$W" | tee -a surfaces.txt || true
+            DIRS="$DIRS twin-$W"
+          done
+          node scan/tools/lawn-prep.mjs "twin-$FIRST" | tee -a surfaces.txt || true
+          python scan/tools/surfaces.py $DIRS --nocast | tee -a surfaces.txt
+          python scan/tools/surfaces.py $DIRS --keep "twin-$FIRST/surfaces-map.json" | tee -a surfaces.txt
+          node scan/tools/surfaces-keep.mjs "$FIRST" "twin-$FIRST" | tee -a surfaces.txt || true
+          python scan/tools/surfaces.py $DIRS --feet 2 | tee -a surfaces.txt
+
+      # DO THE PHONE'S LABEL PICTURES SIT ON THE CAMERA PICTURES? (scan/tools/sem_check.py, 2026-11-25). Small parts only.
+      - name: A walk's label pictures against its own points
+        if: ${{ inputs.task == 'semcheck' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALK: ${{ inputs.walk }}
+        run: |
+          set -o pipefail
+          pip install --quiet numpy
+          node scan/tools/twin-r2.mjs parts "$WALK" twin 'cloud-*' 'labels-*' 'keys-*' 'key-*.sem' meta.json | tee semcheck.txt
+          python scan/tools/sem_check.py twin | tee -a semcheck.txt
 
       - name: A walk's skyline against the lidar
         if: ${{ inputs.task == 'skyline' }}
@@ -847,7 +869,8 @@ jobs:
             jumps) cat jumps.txt 2>/dev/null || echo "no poses read: see the step above" ;;
             placed) cat placed.txt 2>/dev/null || echo "no pins read: see the step above" ;;
             trunks) cat trunks.txt 2>/dev/null || echo "no trunks looked for: see the step above" ;;
-            surfaces) grep -v ': kept (' surfaces.txt 2>/dev/null | tail -24 || echo "no ground read: see the step above" ;;
+            surfaces) grep -v ': kept (' surfaces.txt 2>/dev/null | cut -c1-900 | tail -45 || echo "no ground read: see the step above" ;;
+            semcheck) cat semcheck.txt 2>/dev/null || echo "no check: see the step above" ;;
             crownsky) grep -v '^Twin read\|: kept (' crownsky.txt 2>/dev/null | tail -20 || echo "no colour study: see the step above" ;;
             corners) cat corners.txt 2>/dev/null || echo "no corners read: see the step above" ;;
             mend) cat mend.txt 2>/dev/null || echo "nothing mended: see the step above" ;;

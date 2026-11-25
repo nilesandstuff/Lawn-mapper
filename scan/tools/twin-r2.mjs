@@ -188,6 +188,8 @@ async function main() {
     const all = [];
     for (const n of names) {
       if (n.endsWith('*')) all.push(...(await list(base, token, `twins/${walk}/${n.slice(0, -1)}`)).map((o) => basename(o.key)));
+      // "key-*.sem": every part beginning and ending so (the pictures' label grids without the pictures)
+      else if (n.includes('*')) { const [pre, suf] = n.split('*'); all.push(...(await list(base, token, `twins/${walk}/${pre}`)).map((o) => basename(o.key)).filter((x) => x.endsWith(suf))); }
       else all.push(n);
     }
     let i = 0;
