@@ -11,8 +11,9 @@
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildRef, encodeRef, decodeRef, shapeFix, fitRigid, place, STAND, sameFix } from '../lib/walkref.js';
-import { keepPlan, placeWalk, matchUsable, updateRef, AS_IS, closingOf, CLOSE_M } from '../lib/refkeep.js';
+import { buildRef, encodeRef, decodeRef, shapeFix, fitRigid, place, STAND, sameFix, trustedRef } from '../lib/walkref.js';
+import { keepPlan, placeWalk, matchUsable, updateRef, AS_IS, closingOf, CLOSE_M, mergeCounted, countsOf, compose, invert, placementOf } from '../lib/refkeep.js';
+import { fitAt } from '../lib/align.js';
 import { readTrack } from '../lib/twin.js';
 import { checkMarks } from '../lib/postfix.js';
 import { walkPrior } from '../lib/walkfix.js';
@@ -460,8 +461,166 @@ async function restore(dir) {
   console.log('The newest backup is the reference again; the one it displaced is kept as a backup.');
 }
 
+/* ------------------------------------------------------------------ the reference as every walk, counted */
+/* A WALK PUT ON THE SHAPE A STRETCH AT A TIME (2026-11-25). The page's match places a walk WHOLE, rigidly, so a walk that
+   slid (the 21:48 walk of 2026-11-24: its corners 6 in to 3 ft 11 in from their places under one fit) or jumped (the
+   22:04 walk: 7 ft at 848 ft walked) went into the reference by its corners, through the reference's own uncertain
+   place, filling gaps and confirming nothing. Here each WIN_M of walking (every STEP_M) is matched to the shape by
+   itself, held near where the walk's corners put it (or the stretch before it did) and moved by the shapes alone
+   within that; each point placed by the stretch nearest it in its walk. A stretch after a jump with no corner of its
+   own is matched with nothing to hold it but the lead rule.
+   -> { stand, ground: [[x, y, z]] in the shape's frame, windows: [...], readings: P readings, left } */
+const WIN_M = 30, STEP_M = 15;
+function placeOnShape(ref, pts, marks, jumps, { log = () => {} } = {}) {
+  const P = ref.P || AS_IS, toShape = invert({ ...P, s: 1 });
+  const J = [...jumps].sort((a, b) => a - b), segOf = (o) => { let k = 0; while (k < J.length && J[k] <= o) k++; return k; };
+  const corners = (marks || []).filter((m) => m?.ar && m?.map && m.kind === 'ref' && Number.isFinite(m.odo));
+  const total = Math.max(0, ...pts.stand.map((p) => p[3] || 0), ...pts.ground.map((p) => p[3] || 0));
+  const wins = [];
+  for (let c = STEP_M; c < total + STEP_M; c += STEP_M) {
+    const k = segOf(Math.min(c, total));
+    const lo = Math.max(c - WIN_M, k ? J[k - 1] : -Infinity), hi = Math.min(c + WIN_M, k < J.length ? J[k] : Infinity);
+    const inW = (p) => (p[3] || 0) >= lo && (p[3] || 0) < hi;
+    wins.push({ c: Math.min(c, total), k, part: { stand: pts.stand.filter(inW), ground: pts.ground.filter(inW) }, T: null });
+  }
+  let last = null;
+  for (const w of wins) {
+    const own = corners.filter((m) => segOf(m.odo) === w.k);
+    const Cw = fitAt(own, w.c);
+    let prior = null, how;
+    if (Cw) { prior = { T: compose(toShape, Cw), searchM: 1.0, searchDeg: 5 }; how = 'its corners'; }
+    else if (last && last.k === w.k) { prior = { T: last.T, searchM: 1.0, searchDeg: 5 }; how = 'the stretch before'; }
+    else how = 'nothing (after a jump, no corner)';
+    if (prior) prior.T = { theta: prior.T.theta, tx: prior.T.tx, ty: prior.T.ty };
+    const f = shapeFix(ref, w.part, prior ? { prior } : {});
+    w.how = how; w.f = f;
+    if (f.ok) { w.T = f.T; last = w; }
+    // a corner marked in this stretch, under its fit: how far from its place (judged in the map's frame)
+    const nearC = corners.filter((m) => Math.abs(m.odo - w.c) <= STEP_M && segOf(m.odo) === w.k);
+    w.err = f.T ? nearC.map((m) => { const q = place({ ...P, s: 1 }, ...place(f.T, ...m.ar)); return Math.hypot(q[0] - m.map[0], q[1] - m.map[1]) * 39.37; }) : [];
+    w.reading = f.ok && Cw && nearC.length ? compose(Cw, invert(f.T)) : null;
+  }
+  const ok = wins.filter((w) => w.T);
+  const put = (list) => {
+    const out = []; let left = 0;
+    for (const p of list) {
+      const k = segOf(p[3] || 0); let best = null, bd = Infinity;
+      for (const w of ok) if (w.k === k) { const d = Math.abs(w.c - (p[3] || 0)); if (d < bd) { bd = d; best = w; } }
+      if (!best || bd > WIN_M) { left++; continue; }
+      const q = place(best.T, p[0], p[1]); out.push([q[0], q[1], p[2] + (best.f.tz || 0)]);
+    }
+    return { out, left };
+  };
+  const S = put(pts.stand), G = put(pts.ground);
+  log(`    stretches of ${Math.round(WIN_M * 2 * FT)} ft every ${Math.round(STEP_M * FT)} ft: ${wins.length}; matched ${ok.length} (held by its corners ${ok.filter((w) => w.how === 'its corners').length}, by the stretch before ${ok.filter((w) => w.how === 'the stretch before').length}, by nothing ${ok.filter((w) => /^nothing/.test(w.how)).length}); not matched ${wins.length - ok.length}${wins.length - ok.length ? ` (${[...new Set(wins.filter((w) => !w.T).map((w) => (w.f.why || 'too little').replace(/\(.*\)/, '').trim()))].slice(0, 3).join('; ')})` : ''}.`);
+  const errs = ok.flatMap((w) => w.err);
+  if (errs.length) log(`    the walk's corners under the stretch they were marked in: ${errs.map((e) => `${e.toFixed(0)} in`).join(', ')}.`);
+  log(`    points placed: ${S.out.length} standing, ${G.out.length} ground; left out ${S.left + G.left} (no matched stretch in their part of the walk).`);
+  return { stand: S.out, ground: G.out, windows: wins, readings: ok.map((w) => w.reading).filter(Boolean), left: S.left + G.left };
+}
+
+/** A walk's twin, read for the reference: its points, corners, jumps, map. */
+function walkOf(d, mapFallback) {
+  const meta = readJson(d, 'meta.json') || {}, live = readJson(d, 'live.json') || {};
+  const marks = live.marks || [];
+  return { d, id: String(meta.walk || d.replace(/^.*w-/, '')), map: meta.map || mapFallback || null, marks, jumps: jumpsOf(d).map((j) => j.odo), pts: twinPoints(d), at: Number(meta.walk) || Date.now() };
+}
+
+/* THE REFERENCE MADE FROM WALKS, IN THE ORDER GIVEN (2026-11-25): the first placed by its own corners (it must have three
+   that agree), each later one put on the shape so far a stretch at a time (placeOnShape), confirming, adding, and
+   marking what it looked at and missed (refkeep.js mergeCounted); its corners give readings of where the shape is.
+   -> the reference */
+function buildFrom(walks, log) {
+  const [w0, ...rest] = walks;
+  const plan = keepPlan(w0.marks, w0.jumps);
+  if (!plan.ok) throw new Error(`walk ${w0.id}: its corners do not place it (${plan.why})`);
+  const ps = placeWalk(w0.pts.stand, plan.use, plan.C, w0.jumps), pg = placeWalk(w0.pts.ground, plan.use, plan.C, w0.jumps);
+  const u = updateRef(null, { stand: ps.pts, ground: pg.pts }, { C: AS_IS, w: plan.g?.n || 1, at: w0.at, phone: plan.g?.T?.s && plan.g.T.s !== 1 ? plan.g.T.s : null });
+  if (!u.ref) throw new Error(`walk ${w0.id}: ${u.why}`);
+  let ref = u.ref;
+  const say = (r) => { const c = countsOf(r); return `${r.stand.length / 3} standing (${c.stand[0]} on one walk's word, ${c.stand[1]} on two, ${c.stand[2]} on three or more), ${r.ground.length / 3} ground`; };
+  log(`  walk ${w0.id} first, by its ${new Set(plan.use.map((m) => m.id)).size} corners${plan.agree ? ` (agreeing within ${(plan.g.worstM * 39.37).toFixed(0)} in)` : ', NOT all agreeing'}${ps.left + pg.left ? `; ${ps.left + pg.left} points after a jump left out` : ''}: ${say(ref)}.`);
+  for (const w of rest) {
+    log(`  walk ${w.id} on the shape so far:`);
+    const placed = placeOnShape(ref, w.pts, w.marks, w.jumps, { log });
+    const m = mergeCounted(ref, { stand: Float32Array.from(placed.stand.flat()), ground: Float32Array.from(placed.ground.flat()), at: w.at }, { looked: true });
+    const seen = [...(ref.seen || [])];
+    for (const r of placed.readings) seen.push({ theta: r.theta, tx: r.tx, ty: r.ty, w: 1, at: w.at });
+    const pivot = ref.pivot || [0, 0];
+    const P = seen.length ? placementOf(seen.slice(-40), pivot) : ref.P;
+    const a = place({ ...ref.P, s: 1 }, ...pivot), b = place(P, ...pivot);
+    ref = { ...m.ref, P: { theta: P.theta, tx: P.tx, ty: P.ty }, seen: seen.slice(-40), pivot, walks: (ref.walks || 1) + 1, phone: ref.phone };
+    log(`    confirmed ${m.confirmed}, added ${m.added}, dropped ${m.dropped} (missed twice and more than seen); its corners gave ${placed.readings.length} readings of where the shape is, which moved it ${(Math.hypot(a[0] - b[0], a[1] - b[1]) * 39.37).toFixed(0)} in. Now ${say(ref)}.`);
+  }
+  return ref;
+}
+
+/* THE PAGE'S LIVE MATCH REPLAYED ON A WALK AGAINST A REFERENCE (every 15 m, the latest corner a pin, two alike), judged
+   by the walk's other corners. -> one line of totals */
+function replayLive(ref, w, label, log) {
+  const refs = w.marks.filter((m) => m?.ar && m?.map && m.kind === 'ref').sort((a, b) => a.odo - b.odo);
+  const total = Math.max(0, ...w.pts.stand.map((p) => p[3] || 0));
+  const mid = (() => { let x = 0, y = 0; for (const p of w.pts.stand) { x += p[0]; y += p[1]; } return w.pts.stand.length ? [x / w.pts.stand.length, y / w.pts.stand.length] : [0, 0]; })();
+  const P = ref.P || AS_IS, toShape = invert({ ...P, s: 1 });
+  let before = null, used = 0, asked = 0, run = 0, longest = 0; const errs = [];
+  for (let upTo = 30; ; upTo += 15) {
+    const last = upTo >= total, lim = last ? total : upTo;
+    const pinM = refs.filter((m) => m.odo <= lim).pop();
+    if (!pinM) { if (last) break; continue; }
+    const part = { stand: w.pts.stand.filter((p) => (p[3] || 0) <= lim), ground: w.pts.ground.filter((p) => (p[3] || 0) <= lim) };
+    const f = shapeFix(ref, part, { prior: { pin: { ar: pinM.ar, map: place(toShape, ...pinM.map) }, searchM: 1.5 } });
+    asked++;
+    const e = f.T ? refs.filter((m) => m.id !== pinM.id && m.odo <= lim).map((m) => { const q = place({ ...P, s: 1 }, ...place(f.T, ...m.ar)); return Math.hypot(q[0] - m.map[0], q[1] - m.map[1]) * 39.37; }) : [];
+    const confirmed = f.ok && before && sameFix(before, f.T, mid);
+    if (confirmed) { used++; errs.push(...e); run++; longest = Math.max(longest, run); } else run = 0;
+    before = f.ok ? f.T : null;
+    if (last) break;
+  }
+  log(`    ${label}: asked ${asked}, used ${used} (the longest run without a refusal ${longest}); the other corners under the used fits: ${errs.length ? `middle ${med(errs).toFixed(0)} in, worst ${Math.max(...errs).toFixed(0)} in` : 'none to judge'}.`);
+}
+
+/* EACH WALK AGAINST THE OTHERS (2026-11-25; the owner: "keep building mechanisms to add to the reference walk, verify
+   it, and get better shape fixes"). For each walk given: the reference made from the OTHERS (buildFrom, in the order
+   given), and the page's live match replayed on the walk left out, against every point of it and against only the
+   points two walks or more vouch for. The walk left out is judged by its own corners, which took no part. */
+async function crossval(dirs) {
+  const map0 = dirs.map((d) => (readJson(d, 'meta.json') || {}).map).find(Boolean);
+  const walks = dirs.map((d) => walkOf(d, map0));
+  console.log(`EACH WALK AGAINST A REFERENCE MADE OF THE OTHERS (${walks.length} walks; the live match every 49 ft, the latest corner a pin, judged by the walk's other corners):`);
+  for (let i = 0; i < walks.length; i++) {
+    const others = walks.filter((_, j) => j !== i);
+    console.log(` WALK ${walks[i].id} LEFT OUT; the reference from ${others.map((w) => w.id).join(' then ')}:`);
+    let ref;
+    try { ref = buildFrom(others, (t) => console.log(t)); } catch (e) { console.log(`  could not be made: ${e.message}`); continue; }
+    replayLive(ref, walks[i], 'against every point', (t) => console.log(t));
+    const t = trustedRef(ref, 2, 1500);
+    if (t.trusted) replayLive(t, walks[i], `against only the points two walks vouch for (${t.stand.length / 3} standing)`, (x) => console.log(x));
+    else console.log('    too few points two walks vouch for to match against.');
+  }
+}
+
+/* THE MAP'S REFERENCE MADE AGAIN FROM ITS WALKS, COUNTED (buildFrom), written unless DRY; the one it replaces kept as a
+   backup. Every walk on the map should be given, the surest first. */
+async function rebuild(dirs) {
+  const map0 = dirs.map((d) => (readJson(d, 'meta.json') || {}).map).find(Boolean);
+  if (!map0) throw new Error('none of the walks names a map');
+  const walks = dirs.map((d) => walkOf(d, map0));
+  if (walks.some((w) => w.map !== map0)) throw new Error('the walks are not all of one map');
+  console.log(`THE MAP'S REFERENCE MADE AGAIN FROM ${walks.length} WALKS, EVERY POINT COUNTED:`);
+  const ref = buildFrom(walks, (t) => console.log(t));
+  // each walk against the finished reference: how much of it lands on points other walks vouch for
+  const bytes = encodeRef(ref);
+  console.log(`Made: ${(bytes.length / 1e6).toFixed(1)} MB, version 3 (the counts kept).`);
+  if (process.env.DRY) { console.log('A dry run: nothing written.'); return; }
+  const key = `refs/${map0}.bin`;
+  const oldBytes = await readObject(BUCKET, key).catch(() => null);
+  if (oldBytes) await writeObject(BUCKET, `refs/backup/${map0}-${Date.now()}.bin`, oldBytes, 'application/octet-stream');
+  await writeObject(BUCKET, key, bytes, 'application/octet-stream', { walk: walks.map((w) => w.id).join(' ') });
+  console.log(`Kept as the map's reference${oldBytes ? '; the one it replaced is a backup' : ''}.`);
+}
+
 const [cmd, ...rest] = process.argv.slice(2);
 if (process.argv[1]?.endsWith('reference-build.mjs')) {
-  (cmd === 'build' ? build(rest[0] || 'twin') : cmd === 'keep' ? keep(rest[0] || 'twin') : cmd === 'fresh' ? fresh(rest[0] || 'twin') : cmd === 'restore' ? restore(rest[0] || 'twin') : cmd === 'labels' ? labels(rest) : cmd === 'against' ? against(rest) : cmd === 'check' ? Promise.resolve(check(rest)) : Promise.reject(new Error('build <dir> or check <dir> <dir>...')))
+  (cmd === 'build' ? build(rest[0] || 'twin') : cmd === 'keep' ? keep(rest[0] || 'twin') : cmd === 'fresh' ? fresh(rest[0] || 'twin') : cmd === 'crossval' ? crossval(rest) : cmd === 'rebuild' ? rebuild(rest) : cmd === 'restore' ? restore(rest[0] || 'twin') : cmd === 'labels' ? labels(rest) : cmd === 'against' ? against(rest) : cmd === 'check' ? Promise.resolve(check(rest)) : Promise.reject(new Error('build <dir> or check <dir> <dir>...')))
     .catch((e) => { console.log(`Reference: ${e.message}`); process.exit(1); });
 }

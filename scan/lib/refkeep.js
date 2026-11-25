@@ -253,6 +253,90 @@ export function mergeRef(old, add, mode = 'correct') {
   return { ref, replaced: count(old) - count(o), added: count(a), kept: count(o) };
 }
 
+/* ------------------------------------------------- every walk counted (walkref.js, version 3) */
+/* THE ACCUMULATION OF EVERY WALK (2026-11-25; the owner: "I don't want it to be a single walk, rather I want it to be
+   the accumulation of every walk without the uncertain parts", and 2026-11-22: a walk "only overwrites existing
+   reference shapes if there's a high degree of confidence that the new info is actually better"). mergeRef above let
+   a walk placed by its corners take the place of everything in each square metre it saw: the walk of 2026-11-24 21:48
+   took a reference of 36,434 standing points to 16,820. Here no point is replaced by one walk's word:
+     - a new point within LAND_M of a kept one CONFIRMS it (the kept point's count goes up, once a walk); it is not
+       added again;
+     - a new point near none is ADDED, on its own walk's word (count 1);
+     - when `looked` (the walk was placed by the shape itself, so where it looked is known in the shape's frame), a
+       kept point in a cell of LOOK_M where the walk saw things at that height, but not near it, is MISSED once; a
+       point missed twice and more often than it was confirmed is dropped (a thing moved or taken away);
+     - over the limits, the points more walks vouch for are kept first.
+   -> { ref: { stand, ground, standHits, groundHits, standMiss, groundMiss }, added, confirmed, dropped } */
+export const LAND_M = 0.3, LOOK_M = 1;
+export function mergeCounted(old, add, { looked = true } = {}) {
+  const has = old && old.stand.length + old.ground.length > 0;
+  const nS = (a) => a.length / 3;
+  const ones = (n) => new Uint8Array(n).fill(1);
+  if (!has) {
+    const stand = join(add.stand, new Float32Array(0), MAX_STAND), ground = join(add.ground, new Float32Array(0), MAX_GROUND);
+    return { ref: { stand, ground, standHits: ones(nS(stand)), groundHits: ones(nS(ground)), standMiss: new Uint8Array(nS(stand)), groundMiss: new Uint8Array(nS(ground)), at: add.at }, added: nS(stand) + nS(ground), confirmed: 0, dropped: 0 };
+  }
+  const key3 = (x, y, z, c) => `${Math.floor(x / c)},${Math.floor(y / c)},${Math.floor(z / c)}`;
+  const one = (oldA, oldH, oldM, addA, max) => {
+    const n = nS(oldA), hits = Uint8Array.from(oldH || ones(n)), miss = Uint8Array.from(oldM || new Uint8Array(n));
+    const grid = new Map();
+    for (let i = 0; i < n; i++) { const k = key3(oldA[i * 3], oldA[i * 3 + 1], oldA[i * 3 + 2], LAND_M); let l = grid.get(k); if (!l) grid.set(k, (l = [])); l.push(i); }
+    const near = (x, y, z) => {
+      const cx = Math.floor(x / LAND_M), cy = Math.floor(y / LAND_M), cz = Math.floor(z / LAND_M);
+      let best = -1, bd = LAND_M * LAND_M;
+      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let c = -1; c <= 1; c++) {
+        const l = grid.get(`${cx + a},${cy + b},${cz + c}`); if (!l) continue;
+        for (const i of l) { const d = (oldA[i * 3] - x) ** 2 + (oldA[i * 3 + 1] - y) ** 2 + (oldA[i * 3 + 2] - z) ** 2; if (d < bd) { bd = d; best = i; } }
+      }
+      return best;
+    };
+    const touched = new Uint8Array(n), fresh = [], look = new Set();
+    for (let i = 0; i + 2 < addA.length; i += 3) {
+      const x = addA[i], y = addA[i + 1], z = addA[i + 2];
+      look.add(key3(x, y, z, LOOK_M));
+      const j = near(x, y, z);
+      if (j >= 0) touched[j] = 1; else fresh.push(x, y, z);
+    }
+    let confirmed = 0, dropped = 0;
+    const keep = [];
+    for (let i = 0; i < n; i++) {
+      if (touched[i]) { hits[i] = Math.min(255, hits[i] + 1); confirmed++; }
+      else if (looked && look.has(key3(oldA[i * 3], oldA[i * 3 + 1], oldA[i * 3 + 2], LOOK_M))) miss[i] = Math.min(255, miss[i] + 1);
+      if (miss[i] >= 2 && miss[i] > hits[i]) { dropped++; continue; }
+      keep.push(i);
+    }
+    // the new points, one to a VOX cell
+    const nf = join(Float32Array.from(fresh), new Float32Array(0), Infinity);
+    // over the limit: the old points most vouched for first, then the new, each list thinned evenly
+    keep.sort((a, b) => hits[b] - hits[a]);
+    let idx = keep.map((i) => ({ i, h: hits[i] }));
+    const nn = nS(nf);
+    const total = idx.length + nn;
+    let newTake = nn;
+    if (total > max) {
+      const strong = idx.filter((o) => o.h >= 2), weak = idx.filter((o) => o.h < 2);
+      const room = Math.max(0, max - strong.length);
+      const share = weak.length + nn ? room / (weak.length + nn) : 0;
+      const thin = (arr, k) => (arr.length <= k ? arr : arr.filter((_, q) => q % Math.ceil(arr.length / Math.max(1, k)) === 0));
+      idx = [...strong.slice(0, max), ...thin(weak, Math.floor(weak.length * share))];
+      newTake = Math.floor(nn * share);
+    }
+    const step = newTake < nn ? Math.ceil(nn / Math.max(1, newTake)) : 1;
+    const outA = [], outH = [], outM = [];
+    for (const o of idx) { outA.push(oldA[o.i * 3], oldA[o.i * 3 + 1], oldA[o.i * 3 + 2]); outH.push(hits[o.i]); outM.push(miss[o.i]); }
+    let added = 0;
+    for (let q = 0; q < nn; q += step) { outA.push(nf[q * 3], nf[q * 3 + 1], nf[q * 3 + 2]); outH.push(1); outM.push(0); added++; }
+    return { a: Float32Array.from(outA), h: Uint8Array.from(outH), m: Uint8Array.from(outM), added, confirmed, dropped };
+  };
+  const S = one(old.stand, old.standHits, old.standMiss, add.stand, MAX_STAND), G = one(old.ground, old.groundHits, old.groundMiss, add.ground, MAX_GROUND);
+  return { ref: { stand: S.a, ground: G.a, standHits: S.h, groundHits: G.h, standMiss: S.m, groundMiss: G.m, at: add.at }, added: S.added + G.added, confirmed: S.confirmed + G.confirmed, dropped: S.dropped + G.dropped };
+}
+/** How many of the reference's points each count of walks vouches for: -> { stand: [n1, n2, n3+], ground: [...] } */
+export function countsOf(ref) {
+  const tally = (h, n) => { const t = [0, 0, 0]; for (let i = 0; i < n; i++) { const v = h ? h[i] : 1; t[Math.min(2, Math.max(1, v) - 1)]++; } return t; };
+  return { stand: tally(ref.standHits, ref.stand.length / 3), ground: tally(ref.groundHits, ref.ground.length / 3) };
+}
+
 /* ------------------------------------------------- the shape, and where it is (walkref.js, version 2) */
 /* The owner, 2026-11-16: "The shape of a lawn (the mesh) and the literal position of the lawn in the world are 2
    different things. The uncertainty lies in the intersection of those 2. So we should treat them as separate things,
@@ -299,7 +383,8 @@ export function updateRef(old, part, { C = null, F = null, w = 1, at = Date.now(
   if (!has) {
     if (!C) return { ref: null, why: 'the map has no reference yet, and this walk has no two roof corners that agree to make one' };
     // the first: the shape is the walk as its corners put it, and P is "as it is"
-    const ref = { stand: flat(moved(part.stand, C), MAX_STAND), ground: flat(moved(part.ground, C), MAX_GROUND), at, P: { theta: 0, tx: 0, ty: 0 }, seen: [{ theta: 0, tx: 0, ty: 0, w, at }], walks: 1 };
+    const m0 = mergeCounted(null, { stand: flat(moved(part.stand, C), Infinity), ground: flat(moved(part.ground, C), Infinity), at });
+    const ref = { ...m0.ref, at, P: { theta: 0, tx: 0, ty: 0 }, seen: [{ theta: 0, tx: 0, ty: 0, w, at }], walks: 1 };
     ref.pivot = middle(ref);
     ref.phone = phoneOf();
     return { ref, how: 'made', added: (ref.stand.length + ref.ground.length) / 3, replaced: 0, kept: 0, movedM: 0 };
@@ -308,8 +393,11 @@ export function updateRef(old, part, { C = null, F = null, w = 1, at = Date.now(
   // onto the shape: by the match when there is one (it corrects the shape where the walk saw); else through P
   const toShape = F || (C ? compose(invert(old.P), C) : null);
   if (!toShape) return { ref: null, why: 'this walk has neither a match to the saved shape nor two roof corners that agree' };
-  const add = { stand: flat(moved(part.stand, toShape), MAX_STAND), ground: flat(moved(part.ground, toShape), MAX_GROUND), at };
-  const m = mergeRef(old, add, F ? 'correct' : 'extend');
+  const add = { stand: flat(moved(part.stand, toShape), Infinity), ground: flat(moved(part.ground, toShape), Infinity), at };
+  /* COUNTED (2026-11-25): a walk on the shape confirms, adds, and marks what it looked at and did not see; a walk that
+     reached the shape only through P (its corners) confirms and adds, and is no witness of absence. */
+  const m = mergeCounted(old, add, { looked: !!F });
+  m.replaced = m.dropped; m.kept = (m.ref.stand.length + m.ref.ground.length) / 3 - m.added;
   // where the shape is: one more reading when the walk has both its corners and its match
   const seen = [...(old.seen || [])];
   if (!seen.length) seen.push({ ...old.P, w: 1, at: old.at || 0 });   // a version 1 reference: its place as it was, one reading
@@ -321,5 +409,5 @@ export function updateRef(old, part, { C = null, F = null, w = 1, at = Date.now(
     movedM = Math.hypot(a[0] - b[0], a[1] - b[1]);
   }
   const ref = { ...m.ref, P: { theta: P.theta, tx: P.tx, ty: P.ty }, seen: seen.slice(-40).map((o) => ({ theta: o.theta, tx: o.tx, ty: o.ty, w: o.w, at: o.at })), pivot, walks: (old.walks || 1) + 1, phone: phoneOf() };
-  return { ref, how: F && C ? 'shape and place' : F ? 'shape only' : 'filled in through its place', added: m.added, replaced: m.replaced, kept: m.kept, movedM };
+  return { ref, how: F && C ? 'shape and place' : F ? 'shape only' : 'filled in through its place', added: m.added, replaced: m.replaced, kept: m.kept, confirmed: m.confirmed, dropped: m.dropped, movedM };
 }

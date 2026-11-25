@@ -2062,7 +2062,13 @@ function finish() {
   renderResults(s.id); drawMap();
   post(s);
   // kept as its map's reference, by itself (keepReference): said on the walk's card when it is known
-  if (L && !s.failed) {
+  /* A REPLAY IS NOT A NEW WALK (2026-11-25): the reference now counts how many walks vouch for each point (refkeep.js
+     mergeCounted), and a replay of a walk already in it would vouch for that walk's own points a second time. Its
+     things are the recorded walk's own sightings again. Neither is kept; the replay's twin is, to be studied. */
+  if (L && !s.failed && s.replayOf) {
+    const all = kept(), mine = all.find((x) => x.id === s.id);
+    if (mine) { mine.reference = 'A replay: not added to the map\'s reference (it would count the recorded walk twice), nor its things.'; keep(all); renderResults(s.id); post(mine); }
+  } else if (L && !s.failed) {
     const say = (text) => { const all = kept(), mine = all.find((x) => x.id === s.id); if (mine) { mine.reference = text; keep(all); renderResults(s.id); if (text && !/^Saving/.test(text)) post(mine); } };   // posted again with the verdict, so the walks log says why (the owner, 2026-11-15)
     say('Saving this walk as the map\'s reference…');
     keepReference(L, String(w.startedAt)).then(async (text0) => { const placed = await keepThings(L, w).catch((e) => `The things placed were NOT kept: ${e.message}.`); const text = [text0, placed].filter(Boolean).join(' '); say(text || ''); if (text) { log(text); flash(/^Saved/.test(text) ? 'Saved as this map\'s reference' : /^Kept on the phone/.test(text) ? 'Kept as this map\'s reference: it goes up when there is signal' : /^The reference already/.test(text) ? 'The reference already had all of this walk' : 'Not saved as the reference: see the walk\'s card'); } askReference(); })

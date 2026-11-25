@@ -213,3 +213,40 @@ console.log('refkeep (shape and place): ok');
   const again = closingOf([...marks, { id: 'R1', kind: 'ref', ar: [0.3, 0.4], odo: 200 }], []);
   assert.ok(again && Math.abs(again.m - 0.5) < 1e-9 && again.by === 'a corner marked again');
   console.log('refkeep (did the walk come back to itself): ok'); }
+
+// EVERY WALK COUNTED (2026-11-25): a point confirmed by a second walk is not added again and its count goes up; a new
+// point is added on its own walk's word; a point looked at and not seen twice, more often than confirmed, goes
+{ const { mergeCounted, countsOf } = await import('../lib/refkeep.js');
+  const { encodeRef, decodeRef, trustedRef } = await import('../lib/walkref.js');
+  const F = (...p) => Float32Array.from(p.flat());
+  const w1 = { stand: F([0, 0, 1], [5, 0, 1], [10, 0, 1]), ground: F([0, 0, 0]), at: 1 };
+  const a = mergeCounted(null, w1);
+  assert.equal(a.added, 4); assert.deepEqual([...a.ref.standHits], [1, 1, 1]);
+  // walk 2 sees the first two again (within 30 cm), a new thing at 20 m, and looks at 10 m (a point 0.5 m off, same metre cell) without the old one there
+  const w2 = { stand: F([0.1, 0.1, 1.05], [5.2, 0, 1], [20, 0, 1], [10.6, 0.2, 1.4]), ground: F([0.1, 0, 0.02]), at: 2 };
+  const b = mergeCounted(a.ref, w2);
+  assert.equal(b.confirmed, 3, 'two standing and the ground point');
+  assert.equal(b.ref.stand.length / 3, 5, 'three old, two new');
+  const h = [...b.ref.standHits];
+  assert.deepEqual(h.slice(0, 2), [2, 2], 'confirmed first'); assert.equal(b.ref.standMiss[2], 1, 'the point at 10 m missed once');
+  assert.deepEqual(countsOf(b.ref).stand, [3, 2, 0]);
+  // a walk placed only through P is no witness of absence
+  const c0 = mergeCounted(b.ref, { stand: F([10.6, 0.2, 1.4]), ground: F(), at: 3 }, { looked: false });
+  assert.equal(c0.dropped, 0);
+  // looked at again and not seen: missed twice, never confirmed: dropped
+  const c = mergeCounted(b.ref, { stand: F([10.6, 0.2, 1.4]), ground: F(), at: 3 });
+  assert.equal(c.dropped, 1); assert.ok(![...c.ref.stand].some((v, i) => i % 3 === 0 && Math.abs(v - 10) < 1e-6), 'the point at 10 m is gone');
+  // the counts survive the file, and the trusted view keeps only what two walks vouch for
+  const back = decodeRef(encodeRef({ ...c.ref, P: { theta: 0, tx: 0, ty: 0 } }));
+  assert.deepEqual([...back.standHits], [...c.ref.standHits]); assert.deepEqual([...back.groundMiss], [...c.ref.groundMiss]);
+  const t = trustedRef(back, 2, 1);
+  assert.ok(t.trusted); assert.equal(t.stand.length / 3, 3, 'the two seen twice, and the thing at 10.6 m walk 3 saw again');
+  assert.equal(trustedRef(back, 2, 100).trusted, false, 'too few: the whole reference');
+  // a version 2 file reads with no counts: every point on one walk's word
+  const v2 = decodeRef(encodeRef({ stand: w1.stand, ground: w1.ground, at: 1 }));
+  assert.equal(v2.standHits, undefined); assert.equal(trustedRef(v2).trusted, false);
+  // over the limit the points more walks vouch for are kept first
+  const many = []; for (let i = 0; i < 70000; i++) many.push([i * 0.5, 50, 1]);
+  const big = mergeCounted(null, { stand: F(...many), ground: F(), at: 1 });
+  assert.ok(big.ref.stand.length / 3 <= 60000); }
+console.log('refkeep (every walk counted): ok');

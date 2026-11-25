@@ -151,17 +151,38 @@ export function buildRef({ stand, ground }, T, at = Date.now()) {
  * (shapeFix), which never moves the shape on the map; its roof corners give one more reading of P, which never bends
  * the shape. Version 1 files (the points already on the map) read as P = no turn, no shift.
  */
+/* VERSION 3: HOW MANY WALKS VOUCH FOR EACH POINT (2026-11-25; the owner: the reference is "the accumulation of every
+   walk without the uncertain parts"). After the points, one byte a point (standing, then ground): the walks that put a
+   point within LAND_M of it (refkeep.js mergeCounted); then one byte a point: the walks that looked where it is and
+   saw nothing there. A file without them (versions 1 and 2) reads as every point on one walk's word, none missed. */
+export const hitsOf = (ref) => ({ stand: ref.standHits || new Uint8Array(ref.stand.length / 3).fill(1), ground: ref.groundHits || new Uint8Array(ref.ground.length / 3).fill(1) });
+/** The reference with only the points `min` walks or more vouch for, when that leaves `minStand` standing points or
+ *  more; else the reference as it is. -> { ...ref, trusted: true | false } */
+export function trustedRef(ref, min = 2, minStand = 3000) {
+  if (!ref?.standHits) return { ...ref, trusted: false };
+  const pick = (a, h) => { const out = []; for (let i = 0; i < h.length; i++) if (h[i] >= min) out.push(a[i * 3], a[i * 3 + 1], a[i * 3 + 2]); return Float32Array.from(out); };
+  const stand = pick(ref.stand, ref.standHits);
+  if (stand.length / 3 < minStand) return { ...ref, trusted: false };
+  const ground = pick(ref.ground, ref.groundHits);
+  return { ...ref, stand, ground, standHits: null, groundHits: null, standMiss: null, groundMiss: null, trusted: true };
+}
 export function encodeRef(ref) {
   const ns = ref.stand.length / 3, ng = ref.ground.length / 3;
+  const counted = !!(ref.standHits && ref.groundHits && ref.standHits.length === ns && ref.groundHits.length === ng);
   const note = new TextEncoder().encode(JSON.stringify({ P: ref.P || { theta: 0, tx: 0, ty: 0 }, seen: ref.seen || [], pivot: ref.pivot || null, walks: ref.walks || 1, phone: Number.isFinite(ref.phone) ? ref.phone : null }));
   const pad = (4 - (note.length % 4)) % 4, off = 28 + note.length + pad;
-  const buf = new ArrayBuffer(off + (ns + ng) * 12), dv = new DataView(buf);
-  dv.setUint32(0, MAGIC, true); dv.setUint32(4, 2, true); dv.setUint32(8, ns, true); dv.setUint32(12, ng, true);
+  const buf = new ArrayBuffer(off + (ns + ng) * 12 + (counted ? 2 * (ns + ng) : 0)), dv = new DataView(buf);
+  dv.setUint32(0, MAGIC, true); dv.setUint32(4, counted ? 3 : 2, true); dv.setUint32(8, ns, true); dv.setUint32(12, ng, true);
   dv.setFloat64(16, ref.at || 0, true);
   dv.setUint32(24, note.length, true);
   new Uint8Array(buf, 28, note.length).set(note);
-  const f = new Float32Array(buf, off);
+  const f = new Float32Array(buf, off, (ns + ng) * 3);
   f.set(ref.stand, 0); f.set(ref.ground, ns * 3);
+  if (counted) {
+    const c = new Uint8Array(buf, off + (ns + ng) * 12);
+    c.set(ref.standHits, 0); c.set(ref.groundHits, ns);
+    c.set(ref.standMiss || new Uint8Array(ns), ns + ng); c.set(ref.groundMiss || new Uint8Array(ng), 2 * ns + ng);
+  }
   return new Uint8Array(buf);
 }
 export function decodeRef(bytes) {
@@ -180,7 +201,12 @@ export function decodeRef(bytes) {
   }
   if (u.length < off + (ns + ng) * 12) return null;
   const f = new Float32Array(u.buffer, u.byteOffset + off, (ns + ng) * 3);
-  return { stand: f.slice(0, ns * 3), ground: f.slice(ns * 3), at: dv.getFloat64(16, true), P: note.P || { theta: 0, tx: 0, ty: 0 }, seen: note.seen || [], pivot: note.pivot || null, walks: note.walks || 1, phone: Number.isFinite(note.phone) ? note.phone : null };
+  let counts = {};
+  if (ver >= 3 && u.length >= off + (ns + ng) * 14) {
+    const c = u.subarray(off + (ns + ng) * 12, off + (ns + ng) * 14);
+    counts = { standHits: c.slice(0, ns), groundHits: c.slice(ns, ns + ng), standMiss: c.slice(ns + ng, 2 * ns + ng), groundMiss: c.slice(2 * ns + ng) };
+  }
+  return { ...counts, stand: f.slice(0, ns * 3), ground: f.slice(ns * 3), at: dv.getFloat64(16, true), P: note.P || { theta: 0, tx: 0, ty: 0 }, seen: note.seen || [], pivot: note.pivot || null, walks: note.walks || 1, phone: Number.isFinite(note.phone) ? note.phone : null };
 }
 
 /* TWO IN A ROW (2026-11-22, run 493). Even stretched, with a lead and a GPS bound, a short walk was once called PLACED
