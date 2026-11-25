@@ -396,7 +396,9 @@ export function updateRef(old, part, { C = null, F = null, w = 1, at = Date.now(
   const add = { stand: flat(moved(part.stand, toShape), Infinity), ground: flat(moved(part.ground, toShape), Infinity), at };
   /* COUNTED (2026-11-25): a walk on the shape confirms, adds, and marks what it looked at and did not see; a walk that
      reached the shape only through P (its corners) confirms and adds, and is no witness of absence. */
-  const m = mergeCounted(old, add, { looked: !!F });
+  // (run 608) a witness of absence only when its corners agree with the shape's match too: a walk on the shape by its
+  // match alone may be a little wrong, and would take away what it merely saw a little off
+  const m = mergeCounted(old, add, { looked: !!(F && C) });
   m.replaced = m.dropped; m.kept = (m.ref.stand.length + m.ref.ground.length) / 3 - m.added;
   // where the shape is: one more reading when the walk has both its corners and its match
   const seen = [...(old.seen || [])];
@@ -480,8 +482,8 @@ export function placeOnShape(ref, pts, marks, jumps, { log = () => {}, T0 = null
 
 /** A walk placed on the shape (placeOnShape's answer) added to the reference, counted; its readings of where the shape
  *  is moved into P. -> { ref, confirmed, added, dropped, movedM } */
-export function addPlaced(old, placed, at = Date.now()) {
-  const m = mergeCounted(old, { stand: Float32Array.from(placed.stand.flat()), ground: Float32Array.from(placed.ground.flat()), at }, { looked: true });
+export function addPlaced(old, placed, at = Date.now(), { looked = true } = {}) {
+  const m = mergeCounted(old, { stand: Float32Array.from(placed.stand.flat()), ground: Float32Array.from(placed.ground.flat()), at }, { looked });
   const seen = [...(old.seen || [])];
   if (!seen.length) seen.push({ ...(old.P || AS_IS), w: 1, at: old.at || 0 });
   for (const r of placed.readings || []) seen.push({ theta: r.theta, tx: r.tx, ty: r.ty, w: 1, at });

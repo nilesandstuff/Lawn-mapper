@@ -2612,9 +2612,11 @@ async function keepReference(L, walkId, w = null) {
      (addPlaced): it confirms what the reference already had, adds what it lacked, and marks what it looked at and did
      not see. Only when too little of it matches does it go in the older way, whole (updateRef). */
   if (old && oldBytes && old.stand.length) {
-    // corners that cannot be trusted hold nothing: the walk's live match (F) holds it instead (run 605)
-    const trustCorners = !!plan.g?.ok;
-    const placed = trustCorners || F ? await placeInWorker(oldBytes, rawStand, rawGround, trustCorners ? L?.marks || [] : [], jumps, trustCorners ? null : F).catch(() => null) : null;
+        const trustCorners = !!plan.g?.ok;
+    /* (run 608) the walk of 2026-11-20, held by its whole-walk match, had its three corners 71, 100 and 310 in from
+       their places under it: nothing vouched for where it was put, and it took 2,784 points away. A walk whose corners
+       cannot be trusted is not put in a stretch at a time. */
+    const placed = trustCorners ? await placeInWorker(oldBytes, rawStand, rawGround, L?.marks || [], jumps).catch(() => null) : null;
     if (placed && !placed.error && placed.stand.length >= REF_MIN_STAND) {
       const a = addPlaced(old, placed);
       const bytes2 = encodeRef(a.ref), c = countsOf(a.ref);

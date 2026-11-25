@@ -512,9 +512,10 @@ function buildFrom(walks, log) {
       const P0 = { ...(ref.P || AS_IS), s: 1 }, last = new Map(); for (const m of w.marks) if (m?.ar && m?.map && m.kind === 'ref') last.set(m.id, m);
       const e = [...last.values()].map((m) => { const q = place(P0, ...place(f.T, ...m.ar)); return `${m.id} ${(Math.hypot(q[0] - m.map[0], q[1] - m.map[1]) * 39.37).toFixed(0)} in`; });
       log(`    its whole-walk match: landed ${f.landed}, next best ${f.second}; its corners under it (the latest mark of each): ${e.join(', ')}.`);
+      if (!process.env.UNTRUSTED) { log('    NOT ADDED: nothing vouches for where its match puts it (UNTRUSTED=1 adds it, as no witness of absence).'); continue; }
     }
     const placed = placeOnShape(ref, w.pts, w.cornersOk ? w.marks : [], w.jumps, { log, T0 });
-    const m = addPlaced(ref, placed, w.at);
+    const m = addPlaced(ref, placed, w.at, { looked: w.cornersOk });
     ref = m.ref;
     log(`    confirmed ${m.confirmed}, added ${m.added}, dropped ${m.dropped} (missed twice and more than seen); its corners gave ${placed.readings.length} readings of where the shape is, which moved it ${(m.movedM * 39.37).toFixed(0)} in. Now ${say(ref)}.`);
   }
