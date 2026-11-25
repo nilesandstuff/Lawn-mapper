@@ -5074,3 +5074,11 @@ HARD, runs 606-607 (the 21:48 walk first, then 22:04, then 2026-11-20 held by it
     shape is. Being written as the map's reference (run 608), the one it replaces a backup.
 SPECULATION: that the 2,784 taken away were not there (things moved, or noise) rather than seen a little off by
 walks placed a little wrong. Not measured.
+
+HARD, runs 608-609: the three-walk rebuild was WRITTEN (run 608) and the scan site deployed (run 609: live, admin
+only). But under its whole-walk match the walk of 2026-11-20 had its three corners 100, 310 and 71 in from their
+places: if the match were right, the two corners that agree should have landed near theirs. Nothing vouches for where
+it was put, and it took away 2,784 points. TAKEN BACK: such a walk is no longer added (UNTRUSTED=1 adds it, and then
+as no witness of absence); a walk on the shape by its match alone, without agreeing corners, never takes points away
+(updateRef); the page adds a walk stretch by stretch only when its corners agree. The map's reference is being made
+again from the two walks of 2026-11-24 alone (run 610); the three-walk one is a backup.
