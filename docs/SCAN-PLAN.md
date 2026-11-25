@@ -4883,3 +4883,17 @@ mapped by the same account would be lent the walk too, which is harmless in itse
 earth and the fusing keeping only what falls on that map's grid, but untested). The things placed on a walk and the
 reference walk are still tied to the one record; nothing has asked for them elsewhere yet.
 
+
+## 69. The two edge walks of 2026-11-24 folded in (2026-11-25, runs of 00:43-01:03 UTC)
+
+HARD: both walks whole on the site once the app (1.25) sent them (491 of 491 and 332 of 334 pictures). GROUND
+(surfaces.py, the phone's labels): the 21:48 walk 3,070 sq ft of grass and 519 of paving at 1 ft squares, the paving
+in 20 pieces; at 2 ft its largest piece read 9 ft 2 in over a straight 12 ft; the 22:04 walk 10 ft 8 in over 18 ft
+(the owner's tape: 11 ft 8 in). Still pieces, not a drive: NOT better than the walk of 2026-11-20. The 22:04 walk's
+twin names no map (its ground was not kept, no lawn compared) though its reference was saved for one: not looked into.
+The map's kept ground is now the 21:48 walk's (the 20 Nov one a backup): one walk at a time, walks not joined.
+THE PHONE'S OWN SKY, first walk with it (403 pictures): a block's patch is sky in 0.03 of its views where the walk's
+depth says crown and 0.16 where it says air; 2 ft of open sky round it in 20% of views clears 44.6% of air and 18.5% of
+crown. A real difference, too weak to carve by. The plain-sky controls read 0.00 by the phone's sky (0.11 by colour),
+which says the controls or the labels' place on the picture are wrong: NOT known which. Points below the camera on
+sky 0.5% as kept: the pictures' geometry holds on this walk too.
