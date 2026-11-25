@@ -21,7 +21,7 @@
  *
  * Pure; marks are locate.js L.marks ({ id, ar: [u, v], map: [e, n], odo, by }).
  */
-import { fitRigid, fitSimilar, place, VOX, MAX_SCALE } from './walkref.js';
+import { fitRigid, fitSimilar, place, VOX, MAX_SCALE, shapeFix } from './walkref.js';
 import { fitAt } from './align.js';
 
 export const AGREE_M = 0.45;       // 1.5 ft: how well the marks of a kept part agree with the map, at the least
@@ -410,4 +410,74 @@ export function updateRef(old, part, { C = null, F = null, w = 1, at = Date.now(
   }
   const ref = { ...m.ref, P: { theta: P.theta, tx: P.tx, ty: P.ty }, seen: seen.slice(-40).map((o) => ({ theta: o.theta, tx: o.tx, ty: o.ty, w: o.w, at: o.at })), pivot, walks: (old.walks || 1) + 1, phone: phoneOf() };
   return { ref, how: F && C ? 'shape and place' : F ? 'shape only' : 'filled in through its place', added: m.added, replaced: m.replaced, kept: m.kept, confirmed: m.confirmed, dropped: m.dropped, movedM };
+}
+
+/* A WALK PUT ON THE SHAPE A STRETCH AT A TIME (2026-11-25). The page's match places a walk WHOLE, rigidly, so a walk that
+   slid (the 21:48 walk of 2026-11-24: its corners 6 in to 3 ft 11 in from their places under one fit) or jumped (the
+   22:04 walk: 7 ft at 848 ft walked) went into the reference by its corners, through the reference's own uncertain
+   place, filling gaps and confirming nothing. Here each WIN_M of walking (every STEP_M) is matched to the shape by
+   itself, held near where the walk's corners put it (or the stretch before it did) and moved by the shapes alone
+   within that; each point placed by the stretch nearest it in its walk. A stretch after a jump with no corner of its
+   own is matched with nothing to hold it but the lead rule.
+   -> { stand, ground: [[x, y, z]] in the shape's frame, windows: [...], readings: P readings, left } */
+export const WIN_M = 30, STEP_M = 15;
+export function placeOnShape(ref, pts, marks, jumps, { log = () => {} } = {}) {
+  const P = ref.P || AS_IS, toShape = invert({ ...P, s: 1 });
+  const J = [...jumps].sort((a, b) => a - b), segOf = (o) => { let k = 0; while (k < J.length && J[k] <= o) k++; return k; };
+  const corners = (marks || []).filter((m) => m?.ar && m?.map && m.kind === 'ref' && Number.isFinite(m.odo));
+  const total = Math.max(0, ...pts.stand.map((p) => p[3] || 0), ...pts.ground.map((p) => p[3] || 0));
+  const wins = [];
+  for (let c = STEP_M; c < total + STEP_M; c += STEP_M) {
+    const k = segOf(Math.min(c, total));
+    const lo = Math.max(c - WIN_M, k ? J[k - 1] : -Infinity), hi = Math.min(c + WIN_M, k < J.length ? J[k] : Infinity);
+    const inW = (p) => (p[3] || 0) >= lo && (p[3] || 0) < hi;
+    wins.push({ c: Math.min(c, total), k, part: { stand: pts.stand.filter(inW), ground: pts.ground.filter(inW) }, T: null });
+  }
+  let last = null;
+  for (const w of wins) {
+    const own = corners.filter((m) => segOf(m.odo) === w.k);
+    const Cw = fitAt(own, w.c);
+    let prior = null, how;
+    if (Cw) { prior = { T: compose(toShape, Cw), searchM: 1.0, searchDeg: 5 }; how = 'its corners'; }
+    else if (last && last.k === w.k) { prior = { T: last.T, searchM: 1.0, searchDeg: 5 }; how = 'the stretch before'; }
+    else how = 'nothing (after a jump, no corner)';
+    if (prior) prior.T = { theta: prior.T.theta, tx: prior.T.tx, ty: prior.T.ty };
+    const f = shapeFix(ref, w.part, prior ? { prior } : {});
+    w.how = how; w.f = f;
+    if (f.ok) { w.T = f.T; last = w; }
+    // a corner marked in this stretch, under its fit: how far from its place (judged in the map's frame)
+    const nearC = corners.filter((m) => Math.abs(m.odo - w.c) <= STEP_M && segOf(m.odo) === w.k);
+    w.err = f.T ? nearC.map((m) => { const q = place({ ...P, s: 1 }, ...place(f.T, ...m.ar)); return Math.hypot(q[0] - m.map[0], q[1] - m.map[1]) * 39.37; }) : [];
+    w.reading = f.ok && Cw && nearC.length ? compose(Cw, invert(f.T)) : null;
+  }
+  const ok = wins.filter((w) => w.T);
+  const put = (list) => {
+    const out = []; let left = 0;
+    for (const p of list) {
+      const k = segOf(p[3] || 0); let best = null, bd = Infinity;
+      for (const w of ok) if (w.k === k) { const d = Math.abs(w.c - (p[3] || 0)); if (d < bd) { bd = d; best = w; } }
+      if (!best || bd > WIN_M) { left++; continue; }
+      const q = place(best.T, p[0], p[1]); out.push([q[0], q[1], p[2] + (best.f.tz || 0)]);
+    }
+    return { out, left };
+  };
+  const S = put(pts.stand), G = put(pts.ground);
+  log(`    stretches of ${Math.round(WIN_M * 2 * 3.281)} ft every ${Math.round(STEP_M * 3.281)} ft: ${wins.length}; matched ${ok.length} (held by its corners ${ok.filter((w) => w.how === 'its corners').length}, by the stretch before ${ok.filter((w) => w.how === 'the stretch before').length}, by nothing ${ok.filter((w) => /^nothing/.test(w.how)).length}); not matched ${wins.length - ok.length}${wins.length - ok.length ? ` (${[...new Set(wins.filter((w) => !w.T).map((w) => (w.f.why || 'too little').replace(/\(.*\)/, '').trim()))].slice(0, 3).join('; ')})` : ''}.`);
+  const errs = ok.flatMap((w) => w.err);
+  if (errs.length) log(`    the walk's corners under the stretch they were marked in: ${errs.map((e) => `${e.toFixed(0)} in`).join(', ')}.`);
+  log(`    points placed: ${S.out.length} standing, ${G.out.length} ground; left out ${S.left + G.left} (no matched stretch in their part of the walk).`);
+  return { stand: S.out, ground: G.out, windows: wins, readings: ok.map((w) => w.reading).filter(Boolean), left: S.left + G.left };
+}
+
+/** A walk placed on the shape (placeOnShape's answer) added to the reference, counted; its readings of where the shape
+ *  is moved into P. -> { ref, confirmed, added, dropped, movedM } */
+export function addPlaced(old, placed, at = Date.now()) {
+  const m = mergeCounted(old, { stand: Float32Array.from(placed.stand.flat()), ground: Float32Array.from(placed.ground.flat()), at }, { looked: true });
+  const seen = [...(old.seen || [])];
+  if (!seen.length) seen.push({ ...(old.P || AS_IS), w: 1, at: old.at || 0 });
+  for (const r of placed.readings || []) seen.push({ theta: r.theta, tx: r.tx, ty: r.ty, w: 1, at });
+  const pivot = old.pivot || middle(old);
+  const P = placementOf(seen.slice(-40), pivot), a = place({ ...(old.P || AS_IS), s: 1 }, ...pivot), b = place(P, ...pivot);
+  const ref = { ...m.ref, P: { theta: P.theta, tx: P.tx, ty: P.ty }, seen: seen.slice(-40).map((o) => ({ theta: o.theta, tx: o.tx, ty: o.ty, w: o.w, at: o.at })), pivot, walks: (old.walks || 1) + 1, phone: Number.isFinite(old.phone) ? old.phone : null };
+  return { ref, confirmed: m.confirmed, added: m.added, dropped: m.dropped, movedM: Math.hypot(a[0] - b[0], a[1] - b[1]) };
 }

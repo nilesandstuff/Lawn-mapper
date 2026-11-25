@@ -17,7 +17,7 @@ import { levelDist, toLocal, fromLocal } from '/lib/frames.js';
 import { frameFor, bboxOf, toPx, fromPx, ringsOf, toMerc } from '/lib/photo.js';
 import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, fitSource, leftOutOf, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, groundUnder, status as fixStatus, summaryOf } from '/lib/locate.js';
 import { STAND as REF_STAND, MIN_STAND as REF_MIN_STAND, VOX as REF_VOX, referenceFit, buildRef, encodeRef, decodeRef, sameFix } from '/lib/walkref.js';
-import { keepPlan, placeWalk, matchUsable, updateRef, cornersShort, AS_IS as REF_AS_IS , closingOf, CLOSE_M } from '/lib/refkeep.js';
+import { keepPlan, placeWalk, matchUsable, updateRef, cornersShort, AS_IS as REF_AS_IS , closingOf, CLOSE_M, addPlaced, countsOf } from '/lib/refkeep.js';
 import { leftOut, mapToSession } from '/lib/align.js';
 import { newTwin, addPoints, addPose, wantKey, addKey, flush, flushDue, liveOf } from '/lib/twin.js';
 import { newAnchors, viewOf, noteView, nudge, pitchOf, anchorsKept, SHOW_S } from '/lib/anchors.js';
@@ -2587,9 +2587,23 @@ async function keepReference(L, walkId) {
   if (part.stand.length < REF_MIN_STAND) return `NOT saved as the reference: the phone's tracking jumped and no roof corner was sighted after it, so only ${part.stand.length} standing points could be placed (of ${REF_MIN_STAND}). Aim at a roof corner again after the phone loses its place.`;
   const C = F ? (plan.ok && plan.g?.ok ? plan.C : null) : REF_AS_IS;
   // the map's earlier reference, to build on (none, or "Fresh" chosen at the start: this walk makes it)
-  let old = null;
+  let old = null, oldBytes = null;
   // (read whenever "fresh" was not chosen: a walk whose map came late has st.refUse false and chose nothing)
-  if (st.refUse || !st.refMeta || refChoice() === 'saved') { try { const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' }); if (r.ok) old = decodeRef(new Uint8Array(await r.arrayBuffer())); } catch { /* none read */ } }
+  if (st.refUse || !st.refMeta || refChoice() === 'saved') { try { const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' }); if (r.ok) { oldBytes = await r.arrayBuffer(); old = decodeRef(new Uint8Array(oldBytes.slice(0))); } } catch { /* none read */ } }
+  /* EVERY WALK COUNTED, PUT ON THE SHAPE A STRETCH AT A TIME (2026-11-25; the owner: the reference is "the accumulation
+     of every walk without the uncertain parts"). With a saved reference, the walk is matched to its shape a stretch at
+     a time, each held near where its corners put it (refkeep.js placeOnShape, in a worker), and added counted
+     (addPlaced): it confirms what the reference already had, adds what it lacked, and marks what it looked at and did
+     not see. Only when too little of it matches does it go in the older way, whole (updateRef). */
+  if (old && oldBytes && old.stand.length) {
+    const placed = await placeInWorker(oldBytes, rawStand, rawGround, L?.marks || [], jumps).catch(() => null);
+    if (placed && !placed.error && placed.stand.length >= REF_MIN_STAND) {
+      const a = addPlaced(old, placed);
+      const bytes2 = encodeRef(a.ref), c = countsOf(a.ref);
+      const what2 = `matched to the saved shape stretch by stretch (${placed.matched} of ${placed.windows} stretches, ${placed.byCorners} held by its corners): ${a.confirmed.toLocaleString()} points confirmed, ${a.added.toLocaleString()} added, ${a.dropped.toLocaleString()} taken away (looked at twice and not there); now ${c.stand[1] + c.stand[2]} of its ${(a.ref.stand.length / 3).toLocaleString()} standing points vouched for by two walks or more, from ${a.ref.walks} walks; where it sits on the map moved ${(a.movedM * 39.37).toFixed(0)} in`;
+      return sendReference(map, walkId, bytes2, true, what2, closing);
+    }
+  }
   const u = updateRef(old, part, { C, F, w: plan.agree ? plan.g.n : 1, phone: plan.agree && plan.g.T?.s && plan.g.T.s !== 1 ? plan.g.T.s : null });
   if (!u.ref) return `NOT saved as the reference: ${u.why}.`;
   if (u.how === 'shape only' && !u.added) return 'The reference already has everything this walk saw: nothing to add.';
@@ -2603,9 +2617,14 @@ async function keepReference(L, walkId) {
     : u.how === 'shape and place' ? `${corners}. The yard's shape gained ${u.added.toLocaleString()} points (${u.replaced.toLocaleString()} corrected); where it sits on the map moved ${(u.movedM * 39.37).toFixed(0)} in, the middle of ${u.ref.seen.length} walks' corners`
     : u.how === 'shape only' ? `matched to the saved shape, which gained ${u.added.toLocaleString()} points; where it sits on the map is unchanged (${corners})`
     : `${corners}; placed by its corners rather than matched to the saved shape, so it filled in ${u.added.toLocaleString()} points the shape lacked`) + jumpNote;
+  return sendReference(map, walkId, bytes, !!old, what, closing);
+}
+
+/** The reference sent to the site, or kept in the outbox when there is no signal. -> the walk card's words */
+async function sendReference(map, walkId, bytes, hadOld, what, closing) {
   try {
     const r = await fetch(`/api/scan/reference?map=${encodeURIComponent(map)}&walk=${encodeURIComponent(walkId)}`, { method: 'PUT', credentials: 'same-origin', body: bytes, signal: AbortSignal.timeout(SEND_TIMEOUT_MS) });
-    if (r.ok) return `Saved ${old ? 'into' : 'as'} this map's reference (${what}${closing ? `; the walk closed within ${ftIn(closing.m)} at ${closing.by}` : '; the walk gave no reading of its own closing: a plain pin on the first corner at the end would'}). The next walk here builds on it.`;
+    if (r.ok) return `Saved ${hadOld ? 'into' : 'as'} this map's reference (${what}${closing ? `; the walk closed within ${ftIn(closing.m)} at ${closing.by}` : '; the walk gave no reading of its own closing: a plain pin on the first corner at the end would'}). The next walk here builds on it.`;
     // the site refused it (not the signal): say what it said
     if (r.status >= 400 && r.status < 500 && r.status !== 401 && r.status !== 403 && r.status !== 404 && r.status !== 408 && r.status !== 429) { let why = ''; try { why = (await r.json())?.error || ''; } catch { /* none */ } return `NOT saved as the reference: the site refused it (${r.status}${why ? `, ${why}` : ''}). Tell the core session.`; }
   } catch { /* no signal: the outbox has it */ }
@@ -2614,6 +2633,24 @@ async function keepReference(L, walkId) {
      next time the page opens (sendPartNow, a part named "ref:"). */
   if (st.outbox) { try { await st.outbox.add(walkId, `ref:${map}`, 'application/octet-stream', bytes); return `Kept on the phone as this map's reference (${what}); it goes up with the walk's other parts when there is signal.`; } catch { /* the phone's store refused */ } }
   return 'NOT saved as the reference: it could not be sent and the phone could not hold it. Tell the core session.';
+}
+
+/** The walk put on the saved shape a stretch at a time (refkeep.js placeOnShape) in a worker of its own, so the page's
+ *  thread is never held. -> { stand, ground, readings, windows, matched, byCorners } or { error } */
+function placeInWorker(refBytes, stand, ground, marks, jumps, timeoutMs = 180000) {
+  return new Promise((ok, no) => {
+    const w = new Worker('/ref-worker.js', { type: 'module' }), id = `k${Date.now()}`;
+    const done = (v, e) => { clearTimeout(t); w.terminate(); if (e) no(e); else ok(v); };
+    const t = setTimeout(() => done(null, new Error('the stretch-by-stretch match took too long')), timeoutMs);
+    w.onmessage = ({ data }) => {
+      if (data.error) done(null, new Error(data.error));
+      if (data.ready) w.postMessage({ place: { id, stand, ground, marks: (marks || []).map((m) => ({ id: m.id, kind: m.kind, ar: m.ar, map: m.map, odo: m.odo })), jumps } });
+      if (data.placed && data.id === id) done(data.placed);
+    };
+    w.onerror = (e) => done(null, new Error(e.message || 'the worker failed'));
+    const b = refBytes.slice(0);
+    w.postMessage({ ref: b }, [b]);
+  });
 }
 
 /** This walk's standing things and ground, one point to a small cube, for the earlier walk's match. */

@@ -8,7 +8,7 @@
  * Out: { ready: { stand, ground, at } } or { error }; { fix, id } (walkref.js shapeFix's answer)
  */
 import { decodeRef, shapeFix, place } from '/lib/walkref.js';
-import { compose, invert } from '/lib/refkeep.js';
+import { compose, invert, placeOnShape } from '/lib/refkeep.js';
 
 let REF = null;
 
@@ -29,5 +29,15 @@ self.onmessage = ({ data }) => {
     // T stays what the page has always been given, the walk on the MAP; Ts is the walk on the shape.
     if (fix?.T) { fix.Ts = fix.T; fix.T = compose(REF.P, fix.T); }
     self.postMessage({ fix, id: data.fix.id });
+  }
+  /* THE WALK'S END (2026-11-25): the whole walk put on the shape a stretch at a time (refkeep.js placeOnShape), off the
+     page's thread. In: { place: { id, stand, ground: [[u, v, y, odo]], marks, jumps } } Out: { placed, id } */
+  if (data.place) {
+    let placed;
+    try {
+      const r = placeOnShape(REF, { stand: data.place.stand, ground: data.place.ground }, data.place.marks, data.place.jumps || []);
+      placed = { stand: r.stand, ground: r.ground, readings: r.readings, left: r.left, windows: r.windows.length, matched: r.windows.filter((w) => w.T).length, byCorners: r.windows.filter((w) => w.T && w.how === 'its corners').length };
+    } catch (err) { placed = { error: err.message }; }
+    self.postMessage({ placed, id: data.place.id });
   }
 };
