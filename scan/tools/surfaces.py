@@ -105,6 +105,68 @@ def straight_width(cells, pts=None):
     return best[2], (best[1] - best[0]) * CELL, best[1] - best[0]
 
 
+def share_width(cells, pav_pts, gra_pts, reach=4.0, binw=0.1):
+    """The same run of width, from the SHARE of paved points across (2026-11-25). The width above is four times the
+    points' median distance from their middle, right only when they lie evenly across; a picture's cast cells are
+    thick by the walker and thin far off, which pulls it narrow, and it sees only the points on the piece's own
+    squares. Here every paved and grass point within `reach` of the piece's long axis is binned across it, 4 in at a
+    time, nine feet pooled along; the width at a foot is the unbroken run of bins through the paving's middle where
+    paving has half the points or more (3 at the least; one empty bin is not a break).
+    -> (median width m, run length m, cross-sections) or None."""
+    if len(cells) < 30 or len(pav_pts) < 50:
+        return None
+    mu = cells.mean(0)
+    c = cells - mu
+    w, v = np.linalg.eigh(np.cov(c.T))
+    ax = v[:, np.argmax(w)]
+    nrm = np.array([-ax[1], ax[0]])
+    along = c @ ax
+    off0 = np.median(c @ nrm)
+    b0, b1 = int(np.floor(along.min() / CELL)), int(np.floor(along.max() / CELL))
+    nb = int(round(2 * reach / binw))
+    def split(pts):
+        a_, x_ = (pts - mu) @ ax, (pts - mu) @ nrm - off0
+        ok = np.abs(x_) < reach
+        return np.floor(a_[ok] / CELL).astype(int), np.clip(((x_[ok] + reach) / binw).astype(int), 0, nb - 1)
+    pb, px = split(pav_pts)
+    gb, gx = split(gra_pts) if len(gra_pts) else (np.zeros(0, int), np.zeros(0, int))
+    widths = []
+    for b in range(b0, b1 + 1):
+        hp = np.bincount(px[(pb >= b - 4) & (pb <= b + 4)], minlength=nb)
+        hg = np.bincount(gx[(gb >= b - 4) & (gb <= b + 4)], minlength=nb)
+        paved = (hp >= 3) & (hp >= hg)
+        empty = (hp + hg) == 0
+        if not paved.any():
+            widths.append(np.nan)
+            continue
+        # start at the paved bin nearest the piece's own middle, grow both ways over paved bins and single empty ones
+        idx = np.flatnonzero(paved)
+        m = idx[np.argmin(np.abs(idx - nb // 2))]
+        lo = hi = m
+        while lo > 0 and (paved[lo - 1] or (empty[lo - 1] and lo > 1 and paved[lo - 2])):
+            lo -= 1
+        while hi < nb - 1 and (paved[hi + 1] or (empty[hi + 1] and hi < nb - 2 and paved[hi + 2])):
+            hi += 1
+        widths.append(np.nan if lo == 0 or hi == nb - 1 else (hi - lo + 1) * binw)   # ran off the reach: not a width
+    widths = np.array(widths)
+    best = (0, 0, 0)
+    for i in range(len(widths)):
+        if not np.isfinite(widths[i]):
+            continue
+        for j in range(i + 1, len(widths) + 1):
+            seg = widths[i:j]
+            if not np.isfinite(seg).all():
+                break
+            med = np.median(seg)
+            if np.abs(seg - med).max() > 1.25 / FT:
+                break
+            if j - i > best[1] - best[0]:
+                best = (i, j, med)
+    if best[1] - best[0] < 5:
+        return None
+    return best[2], (best[1] - best[0]) * CELL, best[1] - best[0]
+
+
 CAST_MAX_M = 8.0       # m: a picture's depth cell is cast onto the ground only this near (the depth is off 3-6% of the distance)
 CAST_CONF = 0.3        # the least depth confidence for a cast cell
 
@@ -341,8 +403,10 @@ def main():
                 inpiece = near[cj, ci] & pav
                 pts = np.stack([(E[inpiece] / CELL - i0), (N[inpiece] / CELL - j0)], 1) * CELL
                 sw = straight_width(cells + CELL / 2, pts)
+                allp = lambda sel: np.stack([(E[sel] / CELL - i0), (N[sel] / CELL - j0)], 1) * CELL
+                sh = share_width(cells + CELL / 2, allp(pav), allp(gra))
                 ext = cells.max(0) - cells.min(0) + CELL
-                rows.append(f"{int(sizes[k] * SQ):,} sq ft, {ext.max() * FT:.0f} ft long" + (f", its longest straight run of one width {sw[1] * FT:.0f} ft long, {ftin(sw[0])} wide ({sw[2]} cross-sections)" if sw else ", no straight run of one width"))
+                rows.append(f"{int(sizes[k] * SQ):,} sq ft, {ext.max() * FT:.0f} ft long" + (f", its longest straight run of one width {sw[1] * FT:.0f} ft long, {ftin(sw[0])} wide ({sw[2]} cross-sections)" if sw else ", no straight run of one width") + (f"; BY THE SHARE OF PAVED POINTS ACROSS: {ftin(sh[0])} wide over {sh[1] * FT:.0f} ft" if sh else "; by the share across: no straight run"))
             print(f"     The paving's pieces, largest first ({n} in all): " + "; ".join(rows) + ".")
         out[name] = {"paved": int(paved.sum()), "grass": int(grass.sum())}
         if keep and name == "THE PHONE'S OWN LABELS":

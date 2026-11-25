@@ -4670,6 +4670,8 @@ lawn: paving grey, grass pale green (app.js askSurfaces).
 
 ## 64. Can colour say where the lidar's crown is not, where depth cannot reach? (2026-11-24)
 
+**CORRECTION, 2026-11-25 (section 70): every figure in this section that puts a PICTURE into space (the colour and phone-sky shares, the controls, the cast) was made with the app's camera poses read inside out, and is VOID. Section 70 has them redone.**
+
 The owner's idea (CLAUDE.md, "Remember that last sentence"): tree or sky seen from a place, against what the lidar says
 is there, with the lidar giving the distance. scan/tools/crown_sky_study.py (task `crownsky`): every 2 ft x 2 ft x
 half-metre block of the lidar's crown, and of the walk's own crown and air, projected into every picture; the share
@@ -4886,6 +4888,8 @@ reference walk are still tied to the one record; nothing has asked for them else
 
 ## 69. The two edge walks of 2026-11-24 folded in (2026-11-25, runs of 00:43-01:03 UTC)
 
+**CORRECTION, 2026-11-25 (section 70): every figure in this section that puts a PICTURE into space (the colour and phone-sky shares, the controls, the cast) was made with the app's camera poses read inside out, and is VOID. Section 70 has them redone.**
+
 HARD: both walks whole on the site once the app (1.25) sent them (491 of 491 and 332 of 334 pictures). GROUND
 (surfaces.py, the phone's labels): the 21:48 walk 3,070 sq ft of grass and 519 of paving at 1 ft squares, the paving
 in 20 pieces; at 2 ft its largest piece read 9 ft 2 in over a straight 12 ft; the 22:04 walk 10 ft 8 in over 18 ft
@@ -4897,3 +4901,62 @@ depth says crown and 0.16 where it says air; 2 ft of open sky round it in 20% of
 crown. A real difference, too weak to carve by. The plain-sky controls read 0.00 by the phone's sky (0.11 by colour),
 which says the controls or the labels' place on the picture are wrong: NOT known which. Points below the camera on
 sky 0.5% as kept: the pictures' geometry holds on this walk too.
+
+
+## 70. The owner's four points on the walks of 2026-11-24: no map, the drift, the labels, the ground (2026-11-25, runs 585-595)
+
+A MISTAKE OF THE CORE SESSION'S FIRST. The app keeps ARCore's VIEW matrix with each picture (session to camera); the
+web page kept camera to session. segment_study.pose_keys has told the two apart since 2026-11-18. crown_sky_study.py,
+sem_check.py and surfaces.py's cast did not use it and read the app's poses inside out. So: section 64's colour
+study, section 69's phone-sky figures ("too weak to carve by", "controls 0.00"), and runs 587-589's checks are VOID.
+All three tools now use pose_keys and print which reading they took ("the cameras then sit 8 in from the track; the
+other reading: 125 ft").
+
+HARD, the labels (run 590, sem_check.py, the 21:48 walk, 490 pictures):
+  - the label picture sits on the camera picture as kept. The walk's own labelled points land on the same label 88%
+    of the time (upside down 38%, mirrored 78%, turned 49-53%); building 90%, terrain 93%, tree 85%, road 82%.
+  - the depth grid kept with each picture, put into space by the pose, lands within 15 cm of the walk's own points
+    81% of the time as kept (15-68% any other way round).
+  - no clock offset: 88% at 0 s, less either side.
+  - by colour alone (no pose): cells called sky are brighter than the picture's middle 92% as kept, 22% upside down.
+HARD, the sky (run 592, crown_sky_study.py, same walk; only the study's last 20 lines were read):
+  - the plain-sky controls now read sky: the phone's own sky label 0.69 of views (0.52 with 3.9 ft of clear sky
+    asked round the block), relative blue 0.97-0.60, strict blue 0.63-0.43. The "controls read 0" was the pose error.
+  - where the walk's depth says crown, and where it says air beyond depth, the middle block is sky in 0.00 of views
+    by every reading. With the phone's sky and 0.5 ft of clear sky in 0.4 of views: 3 of the lidar's 4,082 crown
+    blocks cleared. Relative blue clears more (162 of 4,082 at 0.5 ft, 26 at 1 ft, 10 at 2 ft), most of it 30 ft up
+    and higher.
+  - NOT understood: on near views (within 12 m) relative blue clears MORE of the blocks depth calls crown (24% at
+    0.8) than of those it calls air (9%). Bare branches with sky between them would do that; so would a fault.
+HARD, the ground with both walks pooled (runs 586 and 591, surfaces.py; each walk by its own corner fit):
+  - the walks' own kept points: both call 817 sq ft in common and agree on 90.6% of it; one's paving squares lie on
+    the other's 79%, within 2 ft 86%.
+  - with the pictures' own depth and labels cast onto the ground (within 26 ft, about 230,000 cells a walk): 602,873
+    ground points against 138,832; grass 6,333 sq ft (4,874 without), paving 1,185 (897); agreement between the
+    walks 90.0% over 1,127 sq ft. Kept with the map (the earlier one a backup).
+  - the drive's width is NOT better: 8 ft 1 in to 8 ft 10 in at 2 ft squares over straight runs of 16-28 ft (the
+    owner's tape 11 ft 8 in); at 1 ft the paving is still 27 pieces. More views did not close the 3 ft.
+HARD, the walk with no map (run 588 and 594, and the code):
+  - the 22:04 walk's meta.json names no map and its live state has no earlier-walk part at all.
+  - the page set a walk's map at Start from st.map; pickMap (GPS, up to 8 s) could still be finding it. Start was
+    not held for it.
+  - the reference of the walk's map was written at 22:12 UTC, eight minutes after that walk began, and is "from 1
+    walk". Map B has no reference and no walks; map C's is of 2026-11-09.
+  - READ FROM THE CODE AND THOSE TIMES, the reference's own walk id not printed: at that walk's end the map was
+    known, the saved reference was not read (the page read it only when "use the saved walk" had been in force at
+    Start, or the map had none), so the walk was saved as "the first for this map" and REPLACED THE MAP'S REFERENCE.
+    The one it replaced is in refs/backup/ (twin.js keeps it on every PUT).
+  - built: Start waits for the map (up to 12 s); a map that arrives after Start is given to the walk under way, the
+    saved walk is read and used from there, and the walk's end reads the saved reference unless "fresh" was chosen.
+HARD, the drift (runs 588 and 593; the 21:48 walk, 1,261 ft, R3 marked three times):
+  - live: 18 matches asked, 5 used, at 189-459 ft; none after. The page drew by the 459 ft fit for the last 800 ft
+    (locate.js fitFor takes the earlier walk's fit before everything else, and it does not age). At the end that fit
+    had the three corners 6 in, 11 in and 3 ft 11 in from their places; the walk's own corners agree within 9 in.
+  - replayed (reference-build.mjs against, every 49 ft): with the corner as a pin and EVERY turn searched, as the
+    page did, refused from 443 ft to the end, each time "another place fits nearly as well" (e.g. 35% against 26%:
+    the rule wants a lead of ten points, and as the walk grows past what the reference holds the best falls from 61%
+    to 35%). The SAME points with no pin and the turn held within GPS's bound: used 22 times of 22 to the end, the
+    corners 1-35 in out, 1 / 14 / 19 in at the end.
+  - matching only the last 197 ft or 98 ft walked is WORSE: used 3 and 2 times of 25 (too little standing to tell
+    places apart). Not built.
+
