@@ -194,8 +194,10 @@ async function main() {
     $('#why').textContent = 'Safari will ask for the camera and the motion sensors; both are needed. The engine downloads about 7 MB the first time.';
   }
   renderResults();
+  st.mapBusy = true;   // startAR waits for this: a walk begun while the map is still opening belongs to no map
   if (st.map) { await loadMap(st.map).then(() => pagePerf.stage('map opened')).catch((e) => { $('#mapnote').textContent = `The map could not be opened (${e.message}): tracking only, no references or lidar.`; }); changeButton(); }
   else await pickMap().catch(() => { $('#mapnote').textContent = 'No map: open this page from the dashboard to use references and the lidar. Tracking still works.'; });
+  st.mapBusy = false;
 }
 
 /* WHICH MAP (scan/lib/maps-pick.js; owner, 2026-11-07): the app cannot be handed a map by the dashboard (that opens
@@ -240,6 +242,10 @@ function drawAdminPick() {
 
 async function openMap(id, how) {
   st.map = id;
+  /* A WALK ALREADY UNDER WAY WITH NO MAP TAKES THIS ONE (2026-11-25: the owner's second walk of 2026-11-24 was begun
+     seconds before the page had found its map; its record named no map, so the earlier walk never placed it and no
+     tool could tell where it belonged, though its corners were marked on this map's roofs). */
+  if (st.twin && !st.twin.map) { st.twin.map = id; st.twin.metaCamera = false; log('the walk under way had no map: it is now this map\'s'); }
   try { const u = new URL(location.href); u.searchParams.set('map', id); history.replaceState(null, '', u); } catch { /* the address bar can wait */ }
   const back = $('#back');
   if (back) back.href = `${(back.getAttribute('href') || '').split('?')[0]}?map=${encodeURIComponent(id)}`;
@@ -957,6 +963,8 @@ function flash(text) { const f = $('#flash'); f.textContent = text; f.classList.
 const log = (what) => { st.errors.push({ t: Date.now(), what }); if (st.errors.length > 80) st.errors.shift(); };
 
 async function startAR(engine, { anyway = false } = {}) {
+  // the map first (see openMap): at most 12 s, then the walk starts as it used to
+  if (st.mapBusy && !st.map) { flash('Finding your map first…'); for (let i = 0; i < 48 && st.mapBusy && !st.map; i++) await new Promise((r) => setTimeout(r, 250)); if (st.map) for (let i = 0; i < 20 && st.mapBusy; i++) await new Promise((r) => setTimeout(r, 250)); }
   /* NO WALK THAT CANNOT BE KEPT (refkeep.js cornersShort; the owner, 2026-11-16): two roof corners, well apart, are
      checked here, before the walk, not found missing after it. A replay, a testing-only walk and the backup mode are
      not held up; "Start anyway" starts it knowing it will not be kept. */
