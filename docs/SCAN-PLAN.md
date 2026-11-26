@@ -5157,3 +5157,10 @@ joinBands). THE 3D VIEW OF EVERY WALK OF A MAP TOGETHER: S3 keeps beside each wa
 (onref.json: the reference's stretches) and the walks of its map (mapwalks.json); "Every point in 3D" then offers
 "Every walk of this map, together", each walk's own points moved onto the map in the page (to look at only; tried in
 a test browser on the simulated walks, not yet on the owner's).
+
+HARD (2026-11-26, 10:50 pm Wed Eastern): S3 had NOT fired on its schedule at 02:23 or 03:23 UTC, though the file is
+on the default branch with `cron: '23 * * * *'`. This repo's other schedules ran on 2026-11-25 about 10 hours late
+(county-search, water-layers) and parcel-mirror about twice a day where four are asked. So GitHub's schedule cannot
+be counted on for "within the hour": a walk will be taken up when it fires, likely within the day. The one way to
+start S3 when a walk ends is a token that may start workflows, held by the scan site (no such secret exists; the
+owner would make one). Offered, not done.
