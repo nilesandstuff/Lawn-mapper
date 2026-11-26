@@ -5138,3 +5138,15 @@ NOT DONE: the air seen open above 8 ft and "empty in any season" are the newest 
 walk at a time; a walk whose corners do not vouch for it gives nothing (by design); a scheduled run has not yet been
 seen to fire; only 260 of 3,073 plant squares are seen by both walks, which fits walks that sit a foot or so apart
 on one-foot squares and is NOT looked into.
+
+WALKS PUT ON THE MAP THROUGH THE REFERENCE (twin-onref.mjs, 2026-11-26): each walk's points, track and pictures' poses
+moved onto the map a stretch at a time through the map's reference (in the runner's folder only), before plants.py and
+surfaces.py; S3 does it for every walk whose corners agree.
+HARD, S3 run 2 (the two walks of 2026-11-24): 19 of 19 and 24 of 26 stretches matched; the reference puts the walks
+15 in and 29 in (middle) from where their own corners' one fit did, 57 in and 97 in at the most.
+  - THE GROUND AGREES BETTER: the same on 93.5% of 1,128 sq ft (90.0% by each walk's own fit); one walk's paving on the
+    other's 86% (77%), within 2 ft 91% (84%).
+  - THE PLANTS DO NOT: 258 squares shared (260 before); the best shift, 2 ft west, shares 277. So the plants' small
+    overlap is NOT the walks sitting apart. SPECULATION: at one foot, two walks see different faces of a shrub or a
+    crown; not looked into.
+  - a scheduled run of S3 had not yet fired at 01:50 UTC (made at 01:32; it runs at 23 past each hour).
