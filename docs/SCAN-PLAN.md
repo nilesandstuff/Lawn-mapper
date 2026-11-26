@@ -5150,3 +5150,10 @@ HARD, S3 run 2 (the two walks of 2026-11-24): 19 of 19 and 24 of 26 stretches ma
     overlap is NOT the walks sitting apart. SPECULATION: at one foot, two walks see different faces of a shrub or a
     crown; not looked into.
   - a scheduled run of S3 had not yet fired at 01:50 UTC (made at 01:32; it runs at 23 past each hour).
+
+ALSO JOINED (2026-11-26): the air seen open above 8 ft (seenHigh) and the air empty in any season (clearHigh): per
+square the longest band any walk claimed, cut so it never passes through a plant kept there (plants-pool.mjs
+joinBands). THE 3D VIEW OF EVERY WALK OF A MAP TOGETHER: S3 keeps beside each walk how it goes onto the map
+(onref.json: the reference's stretches) and the walks of its map (mapwalks.json); "Every point in 3D" then offers
+"Every walk of this map, together", each walk's own points moved onto the map in the page (to look at only; tried in
+a test browser on the simulated walks, not yet on the owner's).
