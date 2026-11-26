@@ -141,6 +141,9 @@ async function main() {
   const mv = moveTwin(dir, at);
   const ss = ok.map((w) => w.T.s ?? 1).sort((a, b) => a - b), sMid = ss[ss.length >> 1] || 1;
   writeFileSync(join(dir, 'fit.json'), JSON.stringify({ ok: true, T: { theta: 0, tx: 0, ty: 0, s: 1 }, n: g.n, worstM: g.worstM, by: 'the reference', castScale: sMid, closing: own.closing || null }));
+  // how each moment of the walk goes onto the map, for the 3D view of every walk of the map (cloud-view.js ?all=1)
+  const r4 = (v) => +(+v).toFixed(5);
+  writeFileSync(join(dir, 'onref.json'), JSON.stringify({ v: 1, by: 'the reference', reachM: 30, windows: ok.map((w) => { const M = compose({ ...(ref.P || {}), s: 1 }, w.T); return { c: +w.c.toFixed(1), M: { theta: r4(M.theta), tx: r4(M.tx), ty: r4(M.ty), s: r4(M.s ?? 1) } }; }), fallback: own.ok ? own.T : null }));
   console.log(`On the reference: ${ok.length} of ${res.windows.length} stretches matched; ${mv.pts.toLocaleString()} points moved onto the map through it${mv.dropped ? `, ${mv.dropped.toLocaleString()} in no stretch and with no fit of its own dropped` : ''}; ${mv.keys} pictures' poses moved (${mv.appWay ? 'session to camera' : 'camera to session'}). Where it puts the walk against its own corners' one fit: ${gaps.length ? `middle ${(gaps[gaps.length >> 1] * 39.37).toFixed(0)} in, the most ${(gaps[gaps.length - 1] * 39.37).toFixed(0)} in` : 'not comparable'}.`);
 }
 

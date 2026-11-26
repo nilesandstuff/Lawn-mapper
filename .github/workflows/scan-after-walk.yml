@@ -81,6 +81,7 @@ jobs:
               # and through the map's reference, a stretch at a time, when the walk's corners agree (twin-onref.mjs): every walk
               # so placed is in the one frame of the shape the walks built, not each in its own corners' fit
               node scan/tools/twin-onref.mjs "$D" | tee -a after.txt || true
+              if [ -f "$D/onref.json" ]; then node scan/tools/twin-r2.mjs put "$W" "$D/onref.json" > /dev/null || true; fi
               python scan/tools/plants.py "$D" "$D/plants.json" 2>&1 | grep -E "ON THE MAP|Nothing kept|neither" | cut -c1-400 | tee -a after.txt || true
               DIRS="$DIRS $D"
             done
@@ -91,6 +92,9 @@ jobs:
             # (the traced lawn is not read here: the comparison with it is the surfaces task's, by hand)
             python scan/tools/surfaces.py $DIRS --keep "m$n-$FIRST/surfaces-map.json" | grep -E "THE GROUND AS|WALK . AGAINST|THE PHONE'S OWN LABELS|Kept for" | cut -c1-500 | tee -a after.txt || true
             node scan/tools/surfaces-keep.mjs "$FIRST" "m$n-$FIRST" | tee -a after.txt || true
+            # each walk names the walks of its map, for the 3D view of them all together
+            node -e "require('fs').writeFileSync('mapwalks.json', JSON.stringify({ v: 1, walks: process.argv[1].split(',') }))" "$LINE"
+            for W in ${LINE//,/ }; do node scan/tools/twin-r2.mjs put "$W" mapwalks.json > /dev/null || true; done
             node scan/tools/after-walk.mjs done "$LINE" "m$n-$FIRST" | tee -a after.txt
             rm -rf m$n-*
           done < after-plan.txt

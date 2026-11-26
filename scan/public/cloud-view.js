@@ -44,6 +44,8 @@ async function main() {
   const names = (j.parts || []).map((p) => p.name).sort();
   if (!names.length) { $('#status').textContent = 'No twin was kept for this walk.'; return; }
   const buf = async (n) => (await part(n)).arrayBuffer();
+  if (new URLSearchParams(location.search).get('all') && names.includes('mapwalks.json')) { await loadAll(); return; }
+  { const al = $('#all-link'); if (al && names.includes('mapwalks.json')) { al.href = `/cloud.html?walk=${encodeURIComponent(walk)}&all=1`; al.hidden = false; } }
   const clouds = [], labs = [];
   const got = { cloud: 0, weak: 0, labels: 0, failed: 0 };
   /* THE PHOTOS' OWN DEPTH, JOINED (scan/tools/dense_prep.py, 2026-11-20; ?dense=1): every depth cell of every photo
@@ -124,6 +126,63 @@ async function main() {
   build();
   const g = count(2), w = count(4), sp = count(1);
   $('#status').textContent = `${N.toLocaleString()} points: every one the walk kept (${g.toLocaleString()} are Google's street shapes, ${w.toLocaleString()} weak depth, ${sp} spikes), ${D.keys.length} photos.${D.rgb ? '' : ' Not yet coloured from the photos: that is made by a run (task view).'}`;
+  note();
+}
+/* EVERY WALK OF THE MAP AT ONCE (2026-11-26; the owner: the 3D view should be "the cumulative collection" of the
+   walks). Each walk's own points, put on the map through the map's reference a stretch at a time as workflow S3 did
+   (onref.json beside each walk, twin-onref.mjs), in the map's metres. To look at only: nothing can be erased here and
+   no photo inspected (each walk's own view does that). */
+async function loadAll() {
+  const W = (await (await part('mapwalks.json')).json().catch(() => null))?.walks || [walk];
+  const tp = (wk, name) => fetch(`/api/scan/twin?walk=${encodeURIComponent(wk)}&part=${encodeURIComponent(name)}`, { credentials: 'same-origin', cache: 'no-store' });
+  const place = (T, u, v) => { const k = T.s ?? 1, c = Math.cos(T.theta) * k, s = Math.sin(T.theta) * k; return [c * u - s * v + T.tx, s * u + c * v + T.ty]; };
+  const parts = [], said = [];
+  for (const wk of W) {
+    $('#status').textContent = `Reading walk ${wk}…`;
+    const j = await (await fetch(`/api/scan/twin?walk=${encodeURIComponent(wk)}`, { credentials: 'same-origin' })).json().catch(() => ({}));
+    const nm = (j.parts || []).map((p) => p.name).sort();
+    const on = nm.includes('onref.json') ? await (await tp(wk, 'onref.json')).json().catch(() => null) : null;
+    if (!on?.windows?.length) { said.push(`walk ${wk} not put on the reference (left out)`); continue; }
+    const at = (odo) => { let b = null, bd = Infinity; for (const w of on.windows) { const d = Math.abs(w.c - odo); if (d < bd) { bd = d; b = w; } } return b && bd <= (on.reachM || 30) ? b.M : on.fallback; };
+    const fs = [], ls = [];
+    for (const n of nm.filter((x) => /^cloud-\d+\.bin$/.test(x))) {
+      const ab = await (await tp(wk, n)).arrayBuffer().catch(() => null); if (!ab || ab.byteLength % 24) continue;
+      const f = new Float32Array(ab), ln = n.replace('cloud-', 'labels-');
+      let u = nm.includes(ln) ? new Uint8Array(await (await tp(wk, ln)).arrayBuffer()) : null;
+      if (u && u.length !== (f.length / 6) * 4) u = null;
+      fs.push(f); ls.push(u || new Uint8Array((f.length / 6) * 4));
+    }
+    let rgb = null;
+    const n0 = fs.reduce((a, f) => a + f.length / 6, 0);
+    if (nm.includes('view-rgb.bin')) { const u = new Uint8Array(await (await tp(wk, 'view-rgb.bin')).arrayBuffer()); if (u.length >= n0 * 4) rgb = u.subarray(0, n0 * 4); }
+    parts.push({ wk, fs, ls, rgb, at, n: n0 });
+  }
+  const N = D.n = parts.reduce((a, p) => a + p.n, 0);
+  D.pos = new Float32Array(N * 3); D.t = new Float32Array(N); D.ground = new Float32Array(N);
+  D.label = new Uint8Array(N); D.lconf = new Uint8Array(N); D.dconf = new Uint8Array(N); D.flags = new Uint8Array(N); D.state = new Float32Array(N);
+  const allRgb = parts.every((p) => p.rgb); if (allRgb) D.rgb = new Uint8Array(N * 4);
+  let k = 0, gone = 0;
+  for (const p of parts) {
+    let i0 = 0;
+    p.fs.forEach((f, ci) => {
+      const L = p.ls[ci];
+      for (let i = 0; i < f.length / 6; i++, k++) {
+        const T = p.at(f[i * 6 + 1]);
+        if (!T) { D.pos[k * 3] = D.pos[k * 3 + 1] = D.pos[k * 3 + 2] = NaN; D.state[k] = 1; gone++; } else {
+          const s = T.s ?? 1, [e, n] = place(T, f[i * 6 + 2], -f[i * 6 + 4]);
+          D.pos[k * 3] = e; D.pos[k * 3 + 1] = f[i * 6 + 3] * s; D.pos[k * 3 + 2] = -n; D.ground[k] = f[i * 6 + 5] * s;
+        }
+        D.t[k] = f[i * 6]; D.label[k] = L[i * 4]; D.lconf[k] = L[i * 4 + 1]; D.dconf[k] = L[i * 4 + 2]; D.flags[k] = L[i * 4 + 3];
+        if (allRgb) D.rgb.set(p.rgb.subarray((i0 + i) * 4, (i0 + i) * 4 + 4), k * 4);
+      }
+      i0 += f.length / 6;
+    });
+  }
+  U.readonly = true; U.read = `${parts.length} walks through the map's reference`;
+  D.layerNote = {};
+  poses();
+  build();
+  $('#status').textContent = `${(N - gone).toLocaleString()} points from ${parts.length} walk${parts.length === 1 ? '' : 's'} of this map, each put on it through the map's reference${said.length ? `; ${said.join('; ')}` : ''}${allRgb ? '' : '; coloured by the phone\'s labels (not every walk has its photos\' colours made)'}. To look at only: open one walk's own view to inspect or erase.`;
   note();
 }
 const count = (bit) => { let c = 0; for (let i = 0; i < D.n; i++) if (D.flags[i] & bit) c++; return c; };
