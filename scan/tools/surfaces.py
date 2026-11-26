@@ -167,11 +167,37 @@ def share_width(cells, pav_pts, gra_pts, reach=4.0, binw=0.1):
     return best[2], (best[1] - best[0]) * CELL, best[1] - best[0]
 
 
+# THE GROUND'S OWN COLOUR (2026-11-26; the owner: "work on the bare ground"). The phone's "terrain" is grass, bare soil,
+# woodchips, moss and fallen leaves alike. The picture's colour at the point tells green from brown: GREEN is turf;
+# BROWN is porous ground or fallen leaves, which colour cannot tell apart, so brown under or near a tree is LEAVES and is
+# not called at all (the owner: "we shouldn't really guess what's under the leaves... We can see what's in between
+# leaves, but only when we can see what's between them": a green square among the leaves is still turf).
+COLOUR_UNKNOWN, COLOUR_GREEN, COLOUR_BROWN, COLOUR_OTHER = 0, 1, 2, 3
+LEAF_REACH_FT = 6      # brown within this of a plant the walks saw (3 ft up or more) is taken for fallen leaves
+PLANT_GROUND_DM = 3    # a plant whose lowest part is this near the ground STANDS on the square: no ground is called there
+
+
+def colour_class(rgb):
+    """(n, 3) uint8 -> class per row: green, brown, other (grey, dark, sky-bright), by hue and saturation."""
+    c = rgb.astype(np.float64) / 255.0
+    mx, mn = c.max(1), c.min(1)
+    v, s = mx, np.where(mx > 0, (mx - mn) / np.maximum(mx, 1e-9), 0)
+    r, g, b = c[:, 0], c[:, 1], c[:, 2]
+    d = np.maximum(mx - mn, 1e-9)
+    h = np.where(mx == r, ((g - b) / d) % 6, np.where(mx == g, (b - r) / d + 2, (r - g) / d + 4)) * 60
+    out = np.full(len(c), COLOUR_OTHER, np.uint8)
+    ok = (v >= 0.10) & (v <= 0.97) & (s >= 0.12)
+    out[ok & (h >= 55) & (h <= 170)] = COLOUR_GREEN
+    out[ok & ((h < 52) | (h >= 340))] = COLOUR_BROWN
+    return out
+
+
+REACH, SMOOTH, COLOUR = 8.0, False, False   # set from the command line in main()
 CAST_MAX_M = 8.0       # m: a picture's depth cell is cast onto the ground only this near (the depth is off 3-6% of the distance)
 CAST_CONF = 0.3        # the least depth confidence for a cast cell
 
 
-def cast_pictures(d, cut, gtree, gmed, scale=1.0):
+def cast_pictures(d, cut, gtree, gmed, scale=1.0, reach=None, smooth=False, colour=False):
     """THE PICTURES' OWN GROUND (2026-11-25; the owner: "look into how we can make better use of it, because I gave
     pretty clear views of the ground"). The walk's kept points are thinned to one a small cube, so a clear view of a
     drive leaves a few points a square foot. Every picture also keeps, on one 72 x 128 grid, the camera's raw depth
@@ -187,7 +213,13 @@ def cast_pictures(d, cut, gtree, gmed, scale=1.0):
     # pictures inside out until today, so what it said of pictures before then is void.
     import segment_study as SS
     SS.pose_keys(keys, SS.read_track(d))
-    X, Z, Lb, used = [], [], [], 0
+    X, Z, Lb, Cc, R, used = [], [], [], [], [], 0
+    reach = CAST_MAX_M if reach is None else reach
+    if colour:
+        try:
+            from PIL import Image
+        except Exception:
+            colour = False
     for k in keys:
         if k.get("t", 0) < cut:
             continue
@@ -202,7 +234,15 @@ def cast_pictures(d, cut, gtree, gmed, scale=1.0):
         conf = r[2 + nx * ny:2 + 2 * nx * ny].astype(np.float64) / 255.0
         lab = b[4:4 + nx * ny].astype(np.int64)
         sure = b[4 + nx * ny:4 + 2 * nx * ny] >= 128 if len(b) >= 4 + 2 * nx * ny else np.ones(nx * ny, bool)
-        m = (dist > 0.4) & (dist <= CAST_MAX_M) & (conf >= CAST_CONF) & (lab < 12) & sure
+        m = (dist > 0.4) & (dist <= reach) & (conf >= CAST_CONF) & (lab < 12) & sure
+        # (--smooth) where the raw depth has nothing, ARCore's smoothed depth (key-NNNN.sdepth, no holes), to the same reach
+        fsd = os.path.join(d, k["name"].replace(".jpg", ".sdepth"))
+        if smooth and os.path.exists(fsd):
+            sd = np.fromfile(fsd, dtype="<u2")
+            if len(sd) >= 2 + nx * ny and int(sd[0]) == nx and int(sd[1]) == ny:
+                sdist = sd[2:2 + nx * ny].astype(np.float64) / 1000.0 * scale
+                hole = ~((dist > 0.4) & (conf >= CAST_CONF)) & (sdist > 0.4) & (sdist <= reach) & (lab < 12) & sure
+                dist = np.where(hole, sdist, dist); m = m | hole
         if not m.any():
             continue
         V = k["c2w"]
@@ -218,10 +258,21 @@ def cast_pictures(d, cut, gtree, gmed, scale=1.0):
         _, near = gtree.query(np.floor(P[:, [0, 2]]))
         g = np.abs(P[:, 1] - gmed[near]) <= GROUND_M
         if g.any():
-            X.append(P[g, 0]); Z.append(P[g, 2]); Lb.append(lab[m][g] + 1); used += 1
+            X.append(P[g, 0]); Z.append(P[g, 2]); Lb.append(lab[m][g] + 1); R.append(dist[m][g]); used += 1
+            cc = np.zeros(int(g.sum()), np.uint8)
+            fj = os.path.join(d, k["name"])
+            if colour and os.path.exists(fj):
+                try:
+                    im = np.asarray(Image.open(fj).convert("RGB"))
+                    Hh, Ww = im.shape[:2]
+                    px = np.clip(((ii[g] + 0.5) / nx * Ww).astype(int), 0, Ww - 1); py = np.clip(((jj[g] + 0.5) / ny * Hh).astype(int), 0, Hh - 1)
+                    cc = colour_class(im[py, px])
+                except Exception:
+                    pass
+            Cc.append(cc)
     if not X:
         return None
-    return np.concatenate(X), np.concatenate(Z), np.concatenate(Lb).astype(np.uint8), used
+    return np.concatenate(X), np.concatenate(Z), np.concatenate(Lb).astype(np.uint8), used, np.concatenate(Cc), np.concatenate(R)
 
 
 def load_walk(d):
@@ -258,6 +309,13 @@ def load_walk(d):
     ok = fin & (np.abs(y_ - g_) <= GROUND_M)
     X, Z, L = x_[ok], z_[ok], lab[ok]
     K = kind[ok] if kind is not None else None
+    C = np.zeros(len(X), np.uint8)
+    rf = os.path.join(d, "view-rgb.bin")
+    if COLOUR and os.path.exists(rf):
+        rgb = np.fromfile(rf, dtype=np.uint8)
+        if len(rgb) >= 4 * len(recs):
+            q = rgb[:4 * len(recs)].reshape(-1, 4)[ok]
+            C = np.where(q[:, 3] > 0, colour_class(q[:, :3]), COLOUR_UNKNOWN).astype(np.uint8)
     note = f"{name}: {int(ok.sum()):,} kept ground points"
     # the pictures' own ground, where the walk kept their label grids
     if fin.sum() > 100:
@@ -266,26 +324,36 @@ def load_walk(d):
         o = np.lexsort((gij[:, 1], gij[:, 0])); gs, gy = gij[o], g_[fin][o]
         brk = np.flatnonzero(np.r_[True, (np.diff(gs, axis=0) != 0).any(1)])
         gmed = np.array([np.median(gy[p:q]) for p, q in zip(brk, np.r_[brk[1:], len(gy)])])
-        cast = cast_pictures(d, cut, cKDTree(gs[brk].astype(np.float64)), gmed, float(fit.get("castScale") or 1.0))
+        cast = cast_pictures(d, cut, cKDTree(gs[brk].astype(np.float64)), gmed, float(fit.get("castScale") or 1.0), REACH, SMOOTH, COLOUR)
         if cast is not None:
-            cx, cz, cl, used = cast
+            cx, cz, cl, used, ccol, crange = cast
             if "--nocast" not in sys.argv:
-                X, Z, L = np.r_[X, cx], np.r_[Z, cz], np.r_[L, cl]
+                X, Z, L, C = np.r_[X, cx], np.r_[Z, cz], np.r_[L, cl], np.r_[C, ccol]
                 if K is not None:
                     K = np.r_[K, np.zeros(len(cx), K.dtype)]
-            note += f" and {len(cx):,} ground cells from {used} pictures' own depth and labels (within {CAST_MAX_M * FT:.0f} ft)" + (" (counted, NOT used)" if "--nocast" in sys.argv else "")
+            note += f" and {len(cx):,} ground cells from {used} pictures' own depth and labels (within {REACH * FT:.0f} ft{', and the smoothed depth where the raw has none' if SMOOTH else ''})" + (" (counted, NOT used)" if "--nocast" in sys.argv else "")
         else:
             note += "; its pictures kept no label grids (a walk from before 2026-11-24)"
     s_, th = float(T.get("s") or 1.0), float(T["theta"])
     cth, sth = np.cos(th) * s_, np.sin(th) * s_
     E = cth * X - sth * (-Z) + T["tx"]
     N = sth * X + cth * (-Z) + T["ty"]
-    return E, N, L, K, note + f"; its {fit.get('n')} corners agree within {(fit.get('worstM') or 0) * 39.37:.0f} in."
+    return E, N, L, K, C, note + f"; its {fit.get('n')} corners agree within {(fit.get('worstM') or 0) * 39.37:.0f} in."
 
 
 def main():
-    global CELL
-    a = [x for x in sys.argv[1:] if x != "--nocast"]
+    global CELL, REACH, SMOOTH, COLOUR
+    a = [x for x in sys.argv[1:] if x not in ("--nocast", "--smooth", "--colour")]
+    SMOOTH, COLOUR = "--smooth" in sys.argv, "--colour" in sys.argv
+    if "--reach" in a:     # metres: how far a picture's depth is cast onto the ground (CAST_MAX_M by default)
+        i = a.index("--reach"); REACH = float(a[i + 1]); a = a[:i] + a[i + 2:]
+    plants = None
+    if "--plants" in a:    # the map's plants as one (plants-pool.mjs): a plant standing on a square takes it from the ground; brown near a plant is leaves
+        i = a.index("--plants"); pf = a[i + 1]; a = a[:i] + a[i + 2:]
+        try:
+            plants = json.load(open(pf))
+        except Exception:
+            plants = None
     keep = None
     if "--keep" in a:      # where to write the phone's squares for the map (surfaces-keep.mjs puts them beside the map)
         i = a.index("--keep"); keep = a[i + 1]; a = a[:i] + a[i + 2:]
@@ -296,20 +364,20 @@ def main():
         return 1
     # SEVERAL WALKS TOGETHER (the owner, 2026-11-25: "that's how this will be intended to function, the walks are
     # cumulative"): each walk's ground put on the map by its OWN corners' fit, then pooled square by square.
-    Es, Ns, Ls, Ks, said, have_vote = [], [], [], [], [], True
+    Es, Ns, Ls, Ks, Cs, said, have_vote = [], [], [], [], [], [], True
     for d in a:
         got = load_walk(d)
         if got is None:
             continue
-        e_, n_, l_, k_, note = got
-        Es.append(e_); Ns.append(n_); Ls.append(l_); said.append(note)
+        e_, n_, l_, k_, c_, note = got
+        Es.append(e_); Ns.append(n_); Ls.append(l_); Cs.append(c_); said.append(note)
         if k_ is None:
             have_vote = False
         Ks.append(k_ if k_ is not None else np.zeros(len(e_), np.uint8))
     if not Es:
         print("\nTHE GROUND AS THE WALKS SAW IT: no walk here could be put on the map.")
         return 0
-    E, N, L = np.concatenate(Es), np.concatenate(Ns), np.concatenate(Ls)
+    E, N, L, Cl = np.concatenate(Es), np.concatenate(Ns), np.concatenate(Ls), np.concatenate(Cs)
     K = np.concatenate(Ks)
     kind = K if (have_vote or any(k.any() for k in Ks)) else None
     d = a[0]
@@ -379,11 +447,43 @@ def main():
     blab, bn = ndimage.label(bare_sq, structure=np.ones((3, 3)))
     bsize = np.bincount(blab.ravel())
     big_bare = bare_sq & (bsize[blab] * (CELL * FT) ** 2 >= BARE_MIN_SQFT)
+    # BY THE GROUND'S OWN COLOUR (--colour): of the phone's terrain, green against brown, square by square
+    terr = np.isin(L, PHONE_GRASS)
+    Gc, Bc = grid(terr & (Cl == COLOUR_GREEN)), grid(terr & (Cl == COLOUR_BROWN))
+    coloured = (Gc + Bc) >= MIN_PTS
+    green_sq = coloured & (Gc >= 2 * Bc)
+    brown_sq = coloured & (Bc >= 2 * Gc)
+    # the plants the walks saw, on the same squares (plants-pool.mjs boxes: [i, j, lo dm, hi dm], foot squares of the map)
+    plant_any = np.zeros((H, W), bool); plant_ground = np.zeros((H, W), bool)
+    if plants and plants.get("boxes"):
+        pc = float(plants.get("cellM") or CELL)
+        for bi, bj, blo, bhi in plants["boxes"]:
+            c_, r_ = int(np.floor((bi + 0.5) * pc / CELL)) - i0, int(np.floor((bj + 0.5) * pc / CELL)) - j0
+            if 0 <= c_ < W and 0 <= r_ < H:
+                plant_any[r_, c_] = True
+                if blo <= PLANT_GROUND_DM:
+                    plant_ground[r_, c_] = True
+    reach_sq = int(round(LEAF_REACH_FT / (CELL * FT)))
+    near_plant = ndimage.binary_dilation(plant_any, structure=np.ones((3, 3)), iterations=max(1, reach_sq)) if plant_any.any() else plant_any
+    leaves = brown_sq & near_plant
+    porous_colour = brown_sq & ~near_plant
+    plab, pn = ndimage.label(porous_colour, structure=np.ones((3, 3)))
+    psize = np.bincount(plab.ravel())
+    big_porous = porous_colour & (psize[plab] * (CELL * FT) ** 2 >= BARE_MIN_SQFT)
+    if COLOUR:
+        print(f"  THE GROUND'S OWN COLOUR: of {int(terr.sum()):,} terrain points {int((terr & (Cl == COLOUR_GREEN)).sum()):,} green, {int((terr & (Cl == COLOUR_BROWN)).sum()):,} brown, {int((terr & (Cl == COLOUR_UNKNOWN)).sum()):,} with no colour; "
+              f"squares green {int(green_sq.sum() * (CELL * FT) ** 2):,} sq ft, brown {int(brown_sq.sum() * (CELL * FT) ** 2):,} (of it within {LEAF_REACH_FT} ft of a plant, so taken for LEAVES and not called: {int(leaves.sum() * (CELL * FT) ** 2):,}; "
+              f"POROUS GROUND away from plants in patches of {BARE_MIN_SQFT} sq ft or more: {int(big_porous.sum() * (CELL * FT) ** 2):,}).")
+    if plants:
+        print(f"  THE PLANTS ON THE SAME SQUARES: {int(plant_any.sum() * (CELL * FT) ** 2):,} sq ft under a plant; {int(plant_ground.sum() * (CELL * FT) ** 2):,} where it stands within {PLANT_GROUND_DM * 4} in of the ground, so no ground is called there.")
     for name, (pav, gra) in ways.items():
         P, G = grid(pav), grid(gra)
         paved = (P >= MIN_PTS) & (P >= 2 * G)
         grass0 = (G >= MIN_PTS) & (G >= 2 * P)
-        grass = grass0 & ~big_bare
+        if COLOUR and name == "THE PHONE'S OWN LABELS":
+            # terrain that is brown is not grass: porous ground away from plants, leaves near them; a square with no colour keeps the label's word
+            grass0 = grass0 & ~(brown_sq & ~((Gc + Bc) < MIN_PTS))
+        grass = grass0 & ~big_bare & ~(big_porous if COLOUR else False) & ~(leaves if COLOUR else False)
         if kind is not None:
             print(f"  {name}: of {int(grass0.sum() * (CELL * FT) ** 2):,} sq ft called grass, {int((grass0 & big_bare).sum() * (CELL * FT) ** 2):,} lie in POROUS GROUND (bare soil, woodchips, moss: the pictures' vote's bare ground) in patches of {BARE_MIN_SQFT} sq ft or more and are NOT counted as grass "
                   f"({int(bare_sq.sum() * (CELL * FT) ** 2):,} sq ft called porous in all, {int(big_bare.sum() * (CELL * FT) ** 2):,} of it in such patches).")
@@ -415,10 +515,14 @@ def main():
             # east and (j0 + r) * cellM north of the map's point
             import base64
             import zlib
+            # ONE KIND A SQUARE (the owner, 2026-11-26: "only 1 type of ground (paving, turf, porous ground) can occupy the
+            # same space vertically. And at ground level, plant has to be mutually exclusive too (but a plant can be ABOVE
+            # other types of ground)"): paving over porous over turf, and a plant standing on the square over all three
             g8 = np.zeros((H, W), np.uint8)
             g8[grass] = 1
-            g8[big_bare & ~paved] = 3
+            g8[(big_bare | (big_porous if COLOUR else False)) & ~paved] = 3
             g8[paved] = 2
+            g8[plant_ground] = 0
             json.dump({"v": 1, "cellM": CELL, "i0": i0, "j0": j0, "w": int(W), "h": int(H), "from": "the walk's ground points by the phone's own labels",
                        "what": "one byte a square, rows south to north: 0 not called, 1 grass, 2 paved, 3 porous ground: bare soil, woodchips, moss (a patch of 4 sq ft or more)", "enc": "zlib+base64",
                        "kinds": base64.b64encode(zlib.compress(g8.tobytes(), 9)).decode()}, open(keep, "w"))

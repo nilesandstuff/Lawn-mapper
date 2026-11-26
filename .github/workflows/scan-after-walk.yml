@@ -66,7 +66,7 @@ jobs:
           SITE: https://${{ vars.CUSTOM_DOMAIN }}
         run: |
           set -o pipefail
-          pip install --quiet numpy scipy
+          pip install --quiet numpy scipy pillow
           : > after.txt
           n=0
           while IFS= read -r LINE; do
@@ -75,7 +75,7 @@ jobs:
             echo "MAP $n: walks ${LINE//,/, }" | tee -a after.txt
             for W in ${LINE//,/ }; do
               D="m$n-$W"
-              node scan/tools/twin-r2.mjs parts "$W" "$D" 'cloud-*' 'labels-*' view-kind.bin view-rgb.bin view.json start.json owner-trunks.json live.json meta.json 'track-*' 'keys-*' 'key-*.sem' 'key-*.rdepth' | tail -1 | tee -a after.txt
+              node scan/tools/twin-r2.mjs parts "$W" "$D" 'cloud-*' 'labels-*' view-kind.bin view-rgb.bin view.json start.json owner-trunks.json live.json meta.json 'track-*' 'keys-*' 'key-*.sem' 'key-*.rdepth' 'key-*.sdepth' 'key-*.jpg' | tail -1 | tee -a after.txt
               # the walk on its map by its own agreeing corners; a walk they do not vouch for gives no plants and no ground
               node scan/tools/walk-fit.mjs "$D" | tee -a after.txt || true
               # and through the map's reference, a stretch at a time, when the walk's corners agree (twin-onref.mjs): every walk
@@ -90,7 +90,14 @@ jobs:
             node scan/tools/plants-keep.mjs "$FIRST" "m$n-$FIRST" | tee -a after.txt || true
             # the ground's colours of every walk as one, kept with the map
             # (the traced lawn is not read here: the comparison with it is the surfaces task's, by hand)
-            python scan/tools/surfaces.py $DIRS --keep "m$n-$FIRST/surfaces-map.json" | grep -E "THE GROUND AS|WALK . AGAINST|THE PHONE'S OWN LABELS|Kept for" | cut -c1-500 | tee -a after.txt || true
+            # turf, paving and porous ground, one kind a square: the ground's own colour tells turf from brown, brown near a
+            # plant is fallen leaves and not called, and a plant standing on a square takes it from the ground (surfaces.py)
+            python scan/tools/surfaces.py $DIRS --colour --plants "m$n-$FIRST/plants-map.json" --keep "m$n-$FIRST/surfaces-map.json" | grep -E "THE GROUND AS|WALK . AGAINST|THE PHONE'S OWN LABELS|OWN COLOUR|PLANTS ON THE SAME|Kept for" | cut -c1-600 | tee -a after.txt || true
+            # HOW MUCH MORE THE PICTURES COULD GIVE (said, not kept): their depth cast farther, and the smoothed depth in the raw one's holes
+            for X in "--reach 12" "--reach 12 --smooth" "--reach 16 --smooth"; do
+              echo "  IF CAST WITH $X:" | tee -a after.txt
+              python scan/tools/surfaces.py $DIRS --colour $X --plants "m$n-$FIRST/plants-map.json" | grep -E "WALK . AGAINST|THE PHONE'S OWN LABELS: [0-9]|OWN COLOUR" | head -3 | cut -c1-500 | tee -a after.txt || true
+            done
             node scan/tools/surfaces-keep.mjs "$FIRST" "m$n-$FIRST" | tee -a after.txt || true
             # each walk names the walks of its map, for the 3D view of them all together
             node -e "require('fs').writeFileSync('mapwalks.json', JSON.stringify({ v: 1, walks: process.argv[1].split(',') }))" "$LINE"
