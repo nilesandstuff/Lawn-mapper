@@ -5299,3 +5299,30 @@ browser's native encoder (scan/public/app.js handPart).
 SPECULATION until a walk measures it: that this was a large part of the late-walk stutter. The next walk's
 performance read (stalls by minute, first half against second) is the test; the camera-picture fix in app 1.26 lands
 at the same time, so the two are told apart by when in the walk the stalls fall, not by their total.
+
+## 77. The phone labeller, taught (S5 run 2, 2026-11-26)
+
+HARD (scan-distill run 2, the two walks of 24 Nov, 816 pictures; taught on 491 of the 21:48 walk's, judged on all
+325 of the 22:04 walk's, which it never saw; the judge is the large labeller, Mask2Former, run on the free CPU):
+
+                         off the shelf (SegFormer-B0, ADE)   taught (same B0, 14 passes)
+  agrees, every pixel        0.791                              0.879
+  agrees on ground kinds     0.746                              0.887
+  recall: turf               0.778                              0.959
+          low plants         0.739                              0.655   (worse)
+          porous             0.347                              0.568
+          paved              0.843                              0.919
+          tree / built / sky 0.842 / 0.913 / 0.905              0.832 / 0.930 / 0.941
+          other              0.263                              0.223
+
+  Files: models/ground-labeller-v1.onnx 15.2 MB, the 8-bit copy 8.0 MB (it worked this time), and its .json. 320 x
+  704 pictures. Training 314 s on Modal's L4; the run about 24 min.
+
+What it is and is not: the taught model copies the large labeller, so it cannot be better than it; it is the large
+labeller's answers at a size a phone can run. The large labeller is the ceiling, and the owner judges the ceiling
+(the erasures). Porous ground is the weak kind (0.57 of what the large labeller calls porous), and the large
+labeller already finds less porous ground than the owner sees (section 74). Low plants went down: only 4% of the
+pixels, too few to be taught from two walks.
+
+MODAL, of the $15: about $0.30 for this run (L4, roughly 20 minutes up). RUNNING TOTAL: about $0.70 (and the at-most
+$0.60 of 2026-11-20).
