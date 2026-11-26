@@ -643,12 +643,16 @@ def main():
             if edits and isinstance(edits.get("erased"), list):
                 f = max(1, int(round(float(edits.get("cellM") or CELL) / CELL)))
                 gone = 0
+                # only where the square is still the kind the owner erased: a square erased as turf that is now called
+                # porous ground is not taken away (the owner erased the turf, not the ground)
+                KV = {"turf": 1, "paving": 2, "porous": 3}
                 for e in edits["erased"]:
                     if len(e) >= 3 and e[0] == "g":
+                        want = KV.get(str(e[3])) if len(e) >= 4 else None
                         for da in range(f):
                             for db in range(f):
                                 c_, r_ = int(e[1]) * f + da - i0, int(e[2]) * f + db - j0
-                                if 0 <= c_ < W and 0 <= r_ < H and g8[r_, c_]:
+                                if 0 <= c_ < W and 0 <= r_ < H and g8[r_, c_] and (want is None or g8[r_, c_] == want):
                                     g8[r_, c_] = 0; gone += 1
                 print(f"     The owner's erasures: {gone:,} ground squares left out.")
             json.dump({"v": 1, "cellM": CELL, "i0": i0, "j0": j0, "w": int(W), "h": int(H), "from": "the walk's ground points by the phone's own labels",

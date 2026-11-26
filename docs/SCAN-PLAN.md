@@ -5237,3 +5237,9 @@ plant is left as leaves only where it does not say porous.
 NAMING (2026-11-26): "S3. After a walk" clashed with the older "S3. Yard AR segments" (scan-segment.yml); the after-walk
 workflow is now named "S4. After a walk" (the same file, scan-after-walk.yml). Where this section and 73-74 say S3 of the
 after-walk runs, it is that workflow.
+HARD, S4 run 12: porous ground by the second labeller 1,124 sq ft in patches of 4 sq ft or more (the colour's 41);
+brown near plants still left as leaves 756 sq ft. Still far under the owner's 5,000-10,000. FOUND: the owner's erasures
+took away any kind on an erased square; a square erased as turf and now called porous lost its porous. NOW only the
+kind erased is taken away. NEXT (free, no GPU): the large panoptic labeller on the two walks' pictures on the CPU runner
+(task classes, classes_cpu.py, 2.1 s a picture); ground_labels.py then takes its class wherever it labelled a picture,
+SegFormer-B0 only where it did not.

@@ -75,7 +75,7 @@ jobs:
             echo "MAP $n: walks ${LINE//,/, }" | tee -a after.txt
             for W in ${LINE//,/ }; do
               D="m$n-$W"
-              node scan/tools/twin-r2.mjs parts "$W" "$D" 'cloud-*' 'labels-*' view-kind.bin view-rgb.bin view.json start.json owner-trunks.json live.json meta.json 'track-*' 'keys-*' 'key-*.sem' 'key-*.rdepth' 'key-*.sdepth' 'key-*.jpg' | tail -1 | tee -a after.txt
+              node scan/tools/twin-r2.mjs parts "$W" "$D" 'cloud-*' 'labels-*' view-kind.bin view-rgb.bin view.json start.json owner-trunks.json live.json meta.json 'track-*' 'keys-*' 'key-*.sem' 'key-*.rdepth' 'key-*.sdepth' 'key-*.jpg' segments-masks.npz | tail -1 | tee -a after.txt
               # the walk on its map by its own agreeing corners; a walk they do not vouch for gives no plants and no ground
               node scan/tools/walk-fit.mjs "$D" | tee -a after.txt || true
               # and through the map's reference, a stretch at a time, when the walk's corners agree (twin-onref.mjs): every walk
