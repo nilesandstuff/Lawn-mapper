@@ -171,7 +171,7 @@ CAST_MAX_M = 8.0       # m: a picture's depth cell is cast onto the ground only 
 CAST_CONF = 0.3        # the least depth confidence for a cast cell
 
 
-def cast_pictures(d, cut, gtree, gmed):
+def cast_pictures(d, cut, gtree, gmed, scale=1.0):
     """THE PICTURES' OWN GROUND (2026-11-25; the owner: "look into how we can make better use of it, because I gave
     pretty clear views of the ground"). The walk's kept points are thinned to one a small cube, so a clear view of a
     drive leaves a few points a square foot. Every picture also keeps, on one 72 x 128 grid, the camera's raw depth
@@ -198,7 +198,7 @@ def cast_pictures(d, cut, gtree, gmed):
         nx, ny = int(r[0]), int(r[1])
         if len(r) < 2 + 2 * nx * ny or len(b) < 4 + nx * ny or (int(b[0]) | (int(b[1]) << 8)) != nx:
             continue
-        dist = r[2:2 + nx * ny].astype(np.float64) / 1000.0
+        dist = r[2:2 + nx * ny].astype(np.float64) / 1000.0 * scale   # the phone's metres to the map's when the twin was moved (twin-onref.mjs)
         conf = r[2 + nx * ny:2 + 2 * nx * ny].astype(np.float64) / 255.0
         lab = b[4:4 + nx * ny].astype(np.int64)
         sure = b[4 + nx * ny:4 + 2 * nx * ny] >= 128 if len(b) >= 4 + 2 * nx * ny else np.ones(nx * ny, bool)
@@ -266,7 +266,7 @@ def load_walk(d):
         o = np.lexsort((gij[:, 1], gij[:, 0])); gs, gy = gij[o], g_[fin][o]
         brk = np.flatnonzero(np.r_[True, (np.diff(gs, axis=0) != 0).any(1)])
         gmed = np.array([np.median(gy[p:q]) for p, q in zip(brk, np.r_[brk[1:], len(gy)])])
-        cast = cast_pictures(d, cut, cKDTree(gs[brk].astype(np.float64)), gmed)
+        cast = cast_pictures(d, cut, cKDTree(gs[brk].astype(np.float64)), gmed, float(fit.get("castScale") or 1.0))
         if cast is not None:
             cx, cz, cl, used = cast
             if "--nocast" not in sys.argv:

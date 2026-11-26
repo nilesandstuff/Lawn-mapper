@@ -78,6 +78,9 @@ jobs:
               node scan/tools/twin-r2.mjs parts "$W" "$D" 'cloud-*' 'labels-*' view-kind.bin view-rgb.bin view.json start.json owner-trunks.json live.json meta.json 'track-*' 'keys-*' 'key-*.sem' 'key-*.rdepth' | tail -1 | tee -a after.txt
               # the walk on its map by its own agreeing corners; a walk they do not vouch for gives no plants and no ground
               node scan/tools/walk-fit.mjs "$D" | tee -a after.txt || true
+              # and through the map's reference, a stretch at a time, when the walk's corners agree (twin-onref.mjs): every walk
+              # so placed is in the one frame of the shape the walks built, not each in its own corners' fit
+              node scan/tools/twin-onref.mjs "$D" | tee -a after.txt || true
               python scan/tools/plants.py "$D" "$D/plants.json" 2>&1 | grep -E "ON THE MAP|Nothing kept|neither" | cut -c1-400 | tee -a after.txt || true
               DIRS="$DIRS $D"
             done

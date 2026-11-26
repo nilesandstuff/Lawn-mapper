@@ -74,7 +74,19 @@ export function poolPlants(docs) {
     doc.seen = { ...use.find((d) => d.seen).seen, i0, j0, w, h, clearTo: deflateSync(Buffer.from(a), { level: 9 }).toString('base64') };
   } else delete doc.seen;
   for (const f of ['seenHigh', 'clearHigh']) { const d = use.find((x) => x[f]); if (d) doc[f] = d[f]; else delete doc[f]; }
-  return { doc, stats: { walks: use.length, boxes: boxes.length, two, one, dropped, each: use.map((d) => d.boxes.length) } };
+  /* ARE THE WALKS IN STEP? (2026-11-26: of 3,073 squares only 260 were seen by both walks of 2026-11-24.) Each later
+     walk's squares shifted against the newest's, a foot at a time up to 6 ft each way: how many they share unshifted
+     and at the best shift. A best shift of a foot or more that shares many more says the walks are put a little apart. */
+  const steps = per.slice(1).map((m) => {
+    const ref = per[0]; let best = { dx: 0, dy: 0, n: -1 }, at0 = 0;
+    for (let dx = -6; dx <= 6; dx++) for (let dy = -6; dy <= 6; dy++) {
+      let n = 0; for (const k of m.keys()) { const [i, j] = k.split(',').map(Number); if (ref.has(`${i + dx},${j + dy}`)) n++; }
+      if (!dx && !dy) at0 = n;
+      if (n > best.n) best = { dx, dy, n };
+    }
+    return { at0, ...best, of: m.size };
+  });
+  return { doc, stats: { walks: use.length, boxes: boxes.length, two, one, dropped, each: use.map((d) => d.boxes.length), steps } };
 }
 
 if (process.argv[1] && process.argv[1].endsWith('plants-pool.mjs')) {
@@ -84,4 +96,5 @@ if (process.argv[1] && process.argv[1].endsWith('plants-pool.mjs')) {
   if (!doc) { console.log(`The walks' plants as one: none of the ${dirs.length} walks has plants on the map (no fit by agreeing corners).`); process.exit(0); }
   writeFileSync(join(out, 'plants-map.json'), JSON.stringify(doc));
   console.log(`THE WALKS' PLANTS AS ONE: ${stats.walks} of ${dirs.length} walks have plants on the map (${stats.each.map((n) => n.toLocaleString()).join(', ')} squares each). Kept ${stats.boxes.toLocaleString()} squares: ${stats.two.toLocaleString()} seen by two walks or more, ${stats.one.toLocaleString()} by one and not gainsaid; LEFT OUT ${stats.dropped.toLocaleString()} that one walk saw where another saw the air open to over their top. The air seen open from the ground: joined; above 8 ft and "empty in any season": the newest walk's only.`);
+  stats.steps.forEach((x, q) => console.log(`  ARE THE WALKS IN STEP? walk ${q + 2}'s ${x.of.toLocaleString()} squares against the newest's: ${x.at0.toLocaleString()} shared as placed; shifted ${x.dx} ft east, ${x.dy} ft north, ${x.n.toLocaleString()} shared.`));
 }
