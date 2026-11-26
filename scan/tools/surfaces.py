@@ -347,6 +347,13 @@ def main():
     SMOOTH, COLOUR = "--smooth" in sys.argv, "--colour" in sys.argv
     if "--reach" in a:     # metres: how far a picture's depth is cast onto the ground (CAST_MAX_M by default)
         i = a.index("--reach"); REACH = float(a[i + 1]); a = a[:i] + a[i + 2:]
+    edits = None
+    if "--edits" in a:     # the owner's erasures (edits/<map>.json): a ground square erased is not called
+        i = a.index("--edits"); ef = a[i + 1]; a = a[:i] + a[i + 2:]
+        try:
+            edits = json.load(open(ef))
+        except Exception:
+            edits = None
     plants = None
     if "--plants" in a:    # the map's plants as one (plants-pool.mjs): a plant standing on a square takes it from the ground; brown near a plant is leaves
         i = a.index("--plants"); pf = a[i + 1]; a = a[:i] + a[i + 2:]
@@ -523,6 +530,18 @@ def main():
             g8[(big_bare | (big_porous if COLOUR else False)) & ~paved] = 3
             g8[paved] = 2
             g8[plant_ground] = 0
+            # THE OWNER'S ERASURES of the ground, at the size they were erased at (edits' cellM)
+            if edits and isinstance(edits.get("erased"), list):
+                f = max(1, int(round(float(edits.get("cellM") or CELL) / CELL)))
+                gone = 0
+                for e in edits["erased"]:
+                    if len(e) >= 3 and e[0] == "g":
+                        for da in range(f):
+                            for db in range(f):
+                                c_, r_ = int(e[1]) * f + da - i0, int(e[2]) * f + db - j0
+                                if 0 <= c_ < W and 0 <= r_ < H and g8[r_, c_]:
+                                    g8[r_, c_] = 0; gone += 1
+                print(f"     The owner's erasures: {gone:,} ground squares left out.")
             json.dump({"v": 1, "cellM": CELL, "i0": i0, "j0": j0, "w": int(W), "h": int(H), "from": "the walk's ground points by the phone's own labels",
                        "what": "one byte a square, rows south to north: 0 not called, 1 grass, 2 paved, 3 porous ground: bare soil, woodchips, moss (a patch of 4 sq ft or more)", "enc": "zlib+base64",
                        "kinds": base64.b64encode(zlib.compress(g8.tobytes(), 9)).decode()}, open(keep, "w"))

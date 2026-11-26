@@ -63,7 +63,15 @@ async function adopt(walk, from) {
   console.log(`Walk ${walk} now names the map of walk ${from}; its meta.json as it was is kept as meta-before.json.`);
 }
 
+/* THE OWNER'S ERASURES OF THE MAP (scan page eraser, edits/<map>.json): read for the pooling, which leaves them out. */
+async function editsOf(dir, out) {
+  const meta = JSON.parse(readFileSync(join(dir, 'meta.json'), 'utf8'));
+  const e = meta?.map ? await json(`edits/${meta.map}.json`) : null;
+  writeFileSync(out, JSON.stringify(e && Array.isArray(e.erased) ? e : { v: 1, erased: [] }));
+  console.log(`The owner's erasures on this map: ${e?.erased?.length ? `${e.erased.filter((x) => x[0] === 'p').length} plant squares, ${e.erased.filter((x) => x[0] === 'g').length} ground squares` : 'none'}.`);
+}
+
 if (process.argv[1] && process.argv[1].endsWith('after-walk.mjs')) {
   const [cmd, a, b] = process.argv.slice(2);
-  (cmd === 'plan' ? plan(a) : cmd === 'done' ? done(a, b) : cmd === 'adopt' ? adopt(a, b) : Promise.reject(new Error('plan, done or adopt'))).catch((e) => { console.log(`After a walk: ${e.message}`); process.exit(1); });
+  (cmd === 'plan' ? plan(a) : cmd === 'done' ? done(a, b) : cmd === 'edits' ? editsOf(a, b) : cmd === 'adopt' ? adopt(a, b) : Promise.reject(new Error('plan, done or adopt'))).catch((e) => { console.log(`After a walk: ${e.message}`); process.exit(1); });
 }

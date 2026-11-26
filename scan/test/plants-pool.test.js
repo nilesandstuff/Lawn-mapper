@@ -29,3 +29,12 @@ console.log('plants-pool: ok');
   assert.deepEqual(a, [20, 30, 45, 60, 15, 40, 255, 255], 'the longest, cut at the plant (the part above it, the parts being equal); never looked stays');
   assert.equal(joinBands([], [], 0.3048), null); }
 console.log('plants-pool (the bands): ok');
+// the owner's erasures: a plant square erased is not kept; one erased on 2 ft squares covers the four foot squares under it
+{ const { poolPlants: pool, erasedOf } = await import('../tools/plants-pool.mjs');
+  const er = erasedOf({ v: 1, plantsCellM: 0.6096, erased: [['p', 0, 0, 'plant'], ['g', 5, 5, 'turf']] });
+  assert.deepEqual([...er].sort(), ['0,0', '0,1', '1,0', '1,1']);
+  const D = { v: 1, cellM: 0.3048, boxes: [[1, 1, 10, 30], [4, 4, 10, 30]] };
+  const r = pool([D], { erased: er });
+  assert.deepEqual(r.doc.boxes, [[4, 4, 10, 30]]); assert.equal(r.stats.erasedOut, 1);
+  assert.equal(erasedOf({ v: 1, erased: [['p', 3, 3, 'plant']] }).size, 1, 'no size kept and not of that morning: as it is'); }
+console.log('plants-pool (the owner\'s erasures): ok');

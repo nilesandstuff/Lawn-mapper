@@ -62,7 +62,20 @@ export function joinBands(grids, boxes, cellM) {
 }
 
 /** docs: plants-map.json objects, newest first. -> { doc, stats } */
-export function poolPlants(docs) {
+/* THE OWNER'S ERASURES (2026-11-26; the owner: "I erased some squares. Only the squares I'm highly confident are
+   incorrect... There could a margin of error of 1-2 feet on my erases"): a plant square the owner erased is not kept,
+   whatever the walks saw; each erased square, at the size it was erased at, covers the foot squares under it. Not
+   widened by the margin: an erasure a foot off would take away a right square. -> Set of 'i,j' at cellM */
+export function erasedOf(edits, cellM = 0.3048) {
+  const out = new Set();
+  if (!edits || !Array.isArray(edits.erased)) return out;
+  const then = Number(edits.plantsCellM) || (edits.plantsAt && edits.plantsAt >= '2026-11-26T15:20' && edits.plantsAt < '2026-11-26T18:30' ? 0.6096 : cellM);
+  const f = Math.max(1, Math.round(then / cellM));
+  for (const [layer, i, j] of edits.erased) if (layer === 'p') for (let a = 0; a < f; a++) for (let b = 0; b < f; b++) out.add(`${i * f + a},${j * f + b}`);
+  return out;
+}
+
+export function poolPlants(docs, { erased = new Set() } = {}) {
   const use = docs.filter((d) => d && Array.isArray(d.boxes));
   if (!use.length) return { doc: null, stats: { walks: 0 } };
   const cellM = use[0].cellM, per = use.map((d) => { const m = new Map(); for (const [i, j, lo, hi] of d.boxes) { const k = `${i},${j}`, o = m.get(k); if (o) { o[0] = Math.min(o[0], lo); o[1] = Math.max(o[1], hi); } else m.set(k, [lo, hi]); } return m; });
@@ -77,7 +90,9 @@ export function poolPlants(docs) {
   };
   const keys = new Set(); for (const m of per) for (const k of m.keys()) keys.add(k);
   const boxes = []; let two = 0, one = 0, dropped = 0;
+  let erasedOut = 0;
   for (const k of keys) {
+    if (erased.has(k)) { erasedOut++; continue; }
     const [i, j] = k.split(',').map(Number);
     let n = 0, lo = Infinity, hi = -Infinity;
     per.forEach((m) => { const o = m.get(k); if (o) { n++; lo = Math.min(lo, o[0]); hi = Math.max(hi, o[1]); } });
@@ -125,15 +140,17 @@ export function poolPlants(docs) {
     }
     return { at0, ...best, of: m.size };
   });
-  return { doc, stats: { walks: use.length, boxes: boxes.length, two, one, dropped, each: use.map((d) => d.boxes.length), steps } };
+  return { doc, stats: { walks: use.length, boxes: boxes.length, two, one, dropped, erasedOut, each: use.map((d) => d.boxes.length), steps } };
 }
 
 if (process.argv[1] && process.argv[1].endsWith('plants-pool.mjs')) {
-  const [out, ...dirs] = process.argv.slice(2);
+  let [out, ...dirs] = process.argv.slice(2);
+  let edits = null;
+  const ei = dirs.indexOf('--edits'); if (ei >= 0) { try { edits = JSON.parse(readFileSync(dirs[ei + 1], 'utf8')); } catch { edits = null; } dirs = [...dirs.slice(0, ei), ...dirs.slice(ei + 2)]; }
   const docs = dirs.map((d) => { const f = join(d, 'plants-map.json'); return existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : null; });
-  const { doc, stats } = poolPlants(docs);
+  const { doc, stats } = poolPlants(docs, { erased: erasedOf(edits, docs.find(Boolean)?.cellM || 0.3048) });
   if (!doc) { console.log(`The walks' plants as one: none of the ${dirs.length} walks has plants on the map (no fit by agreeing corners).`); process.exit(0); }
   writeFileSync(join(out, 'plants-map.json'), JSON.stringify(doc));
-  console.log(`THE WALKS' PLANTS AS ONE: ${stats.walks} of ${dirs.length} walks have plants on the map (${stats.each.map((n) => n.toLocaleString()).join(', ')} squares each). Kept ${stats.boxes.toLocaleString()} squares: ${stats.two.toLocaleString()} seen by two walks or more, ${stats.one.toLocaleString()} by one and not gainsaid; LEFT OUT ${stats.dropped.toLocaleString()} that one walk saw where another saw the air open to over their top. The air seen open: joined, from the ground and above 8 ft, and the air empty in any season, never through a plant kept.`);
+  console.log(`THE WALKS' PLANTS AS ONE: ${stats.walks} of ${dirs.length} walks have plants on the map (${stats.each.map((n) => n.toLocaleString()).join(', ')} squares each). Kept ${stats.boxes.toLocaleString()} squares: ${stats.two.toLocaleString()} seen by two walks or more, ${stats.one.toLocaleString()} by one and not gainsaid; LEFT OUT ${stats.dropped.toLocaleString()} that one walk saw where another saw the air open to over their top.${stats.erasedOut ? ` Left out as the owner erased them: ${stats.erasedOut.toLocaleString()}.` : ''} The air seen open: joined, from the ground and above 8 ft, and the air empty in any season, never through a plant kept.`);
   stats.steps.forEach((x, q) => console.log(`  ARE THE WALKS IN STEP? walk ${q + 2}'s ${x.of.toLocaleString()} squares against the newest's: ${x.at0.toLocaleString()} shared as placed; shifted ${x.dx} ft east, ${x.dy} ft north, ${x.n.toLocaleString()} shared.`));
 }

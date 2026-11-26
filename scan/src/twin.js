@@ -216,7 +216,7 @@ export async function marks(request, env, url, { isAdmin }) {
  * A WALK'S PLANTS ON THE MAP (core session, 2026-11-23; scan/tools/plants.py, plants-keep.mjs): plants/<map>.json,
  * written by the workflow, read here by the scan page when a map opens so it can put them into the scan tool's part
  * of the map's record. Read only; the admin only.
- *   GET /api/scan/plants?map=   the file, or { none: true }
+ *   GET /api/scan/plants?map=   the file, or { none: true }; &for=record the copy made coarse enough for the record
  */
 export async function plants(request, env, url, { isAdmin }) {
   if (url.pathname !== '/api/scan/plants') return null;
@@ -225,7 +225,9 @@ export async function plants(request, env, url, { isAdmin }) {
   const map = url.searchParams.get('map') || '';
   if (!MAP.test(map)) return json({ error: 'which map?' }, 400);
   if (request.method !== 'GET') return json({ error: 'method' }, 405);
-  const o = await env.TWIN.get(`plants/${map}.json`);
+  // ?for=record: the copy coarse enough for the map's record (plants-keep.mjs), else the whole file, a foot a square
+  const rec = url.searchParams.get('for') === 'record';
+  const o = (rec ? await env.TWIN.get(`plants/${map}-record.json`) : null) || await env.TWIN.get(`plants/${map}.json`);
   if (!o) return json({ none: true });
   return new Response(o.body, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' } });
 }

@@ -2301,7 +2301,7 @@ function saveErased() {
   const map = st.map; if (!map || !st.erased) return;
   const KIND = { 1: 'turf', 2: 'paving', 3: 'porous', plant: 'plant' };
   const cells = [...st.erased].map(([key, k]) => { const [layer, ij] = key.split(':'); const [i, j] = ij.split(',').map(Number); return [layer, i, j, KIND[k] || String(k)]; });
-  const body = JSON.stringify({ v: 1, at: new Date().toISOString(), cellM: st.surfaces?.cellM || 0.3048, groundWalk: st.surfaces?.walk || null, plantsAt: st.plants?.at || null, erased: cells });
+  const body = JSON.stringify({ v: 1, at: new Date().toISOString(), cellM: st.surfaces?.cellM || 0.3048, plantsCellM: st.plants?.cellM || 0.3048, groundWalk: st.surfaces?.walk || null, plantsAt: st.plants?.at || null, erased: cells });
   const note = $('#eraser-note'); if (note) note.textContent = `${cells.length} square${cells.length === 1 ? '' : 's'} erased`;
   clearTimeout(erasedTimer);
   erasedTimer = setTimeout(async () => {
@@ -2318,7 +2318,16 @@ async function askErased(map) {
     const j = r.ok ? await r.json() : null;
     if (st.map !== map || !j || j.none || !Array.isArray(j.erased)) return;
     const K = { turf: 1, paving: 2, porous: 3, plant: 'plant' };
-    for (const [layer, i, j2, kind] of j.erased) st.erased.set(`${layer}:${i},${j2}`, K[kind] ?? kind);
+    /* PLANT SQUARES ERASED AT ANOTHER SIZE (2026-11-26: erased on 2 ft squares, now drawn a foot a square): each erased
+       square becomes the squares it covers now. The size it was erased at: plantsCellM, or for erasures saved before
+       that was kept, 2 ft when the plants then were the ones made at 10:39 am 2026-11-26 Eastern or later. */
+    const now = st.plants?.cellM || 0.3048;
+    const then = Number(j.plantsCellM) || (j.plantsAt && j.plantsAt >= '2026-11-26T15:20' && j.plantsAt < '2026-11-26T18:30' ? 0.6096 : now);
+    const f = Math.max(1, Math.round(then / now));
+    for (const [layer, i, j2, kind] of j.erased) {
+      if (layer === 'p' && f > 1) { for (let a = 0; a < f; a++) for (let b = 0; b < f; b++) st.erased.set(`p:${i * f + a},${j2 * f + b}`, 'plant'); }
+      else st.erased.set(`${layer}:${i},${j2}`, K[kind] ?? kind);
+    }
     const note = $('#eraser-note'); if (note) note.textContent = `${st.erased.size} square${st.erased.size === 1 ? '' : 's'} erased before`;
     drawMap();
   } catch { /* none read */ }
@@ -2370,10 +2379,15 @@ async function askPlants(map) {
     }
     st.plants = j; drawMap();
     if (had.plants?.at === j.at) return;
-    const data = { ...had, plants: j };
+    /* THE RECORD TAKES THE COARSER COPY (2026-11-26: a foot a square no longer fits the record's 192 KB): the page draws
+       and fuses from the whole file; the record, read by the other tools, gets the copy made to fit (plants-keep.mjs) */
+    let forRecord = j;
+    try { const rr0 = await fetch(`/api/scan/plants?map=${encodeURIComponent(map)}&for=record`, { credentials: 'same-origin' }); const jr = rr0.ok ? await rr0.json() : null; if (jr && Array.isArray(jr.boxes) && jr.at === j.at) forRecord = jr; } catch { /* the whole one, as before */ }
+    if (st.map !== map) return;
+    const data = { ...had, plants: forRecord };
     const rr = await fetch(`/api/maps/tool?id=${encodeURIComponent(map)}&tool=scan`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ data, basedOn: st.site?.at || null }), signal: AbortSignal.timeout(SEND_TIMEOUT_MS) });
     if (rr.ok && st.site) st.site.tools = { ...(st.site.tools || {}), scan: { ...(st.site.tools?.scan || {}), data } };
-    log(`a walk's plants (${j.boxes.length} boxes): ${rr.ok ? 'put into the map\'s record' : `NOT put into the map's record (the site answered ${rr.status})`}`);
+    log(`a walk's plants (${j.boxes.length} squares; ${forRecord.boxes.length} of ${Math.round((forRecord.cellM || 0.3048) * 3.281)} ft for the record): ${rr.ok ? 'put into the map\'s record' : `NOT put into the map's record (the site answered ${rr.status})`}`);
   } catch { /* no signal: the next opening tries again */ }
   finally { if (st.plants && st.map === map) fuseForWalk(map, st.plants).catch((e) => log(`fused model: ${e.message || e}`)); }
 }
