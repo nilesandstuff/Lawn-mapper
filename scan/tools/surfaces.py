@@ -192,7 +192,7 @@ def colour_class(rgb):
     return out
 
 
-REACH, SMOOTH, COLOUR = 8.0, False, False   # set from the command line in main()
+REACH, SMOOTH, COLOUR, ADE = 8.0, False, False, False   # set from the command line in main()
 CAST_MAX_M = 8.0       # m: a picture's depth cell is cast onto the ground only this near (the depth is off 3-6% of the distance)
 CAST_CONF = 0.3        # the least depth confidence for a cast cell
 
@@ -213,7 +213,7 @@ def cast_pictures(d, cut, gtree, gmed, scale=1.0, reach=None, smooth=False, colo
     # pictures inside out until today, so what it said of pictures before then is void.
     import segment_study as SS
     SS.pose_keys(keys, SS.read_track(d))
-    X, Z, Lb, Cc, R, used = [], [], [], [], [], 0
+    X, Z, Lb, Cc, R, Ad, used = [], [], [], [], [], [], 0
     reach = CAST_MAX_M if reach is None else reach
     if colour:
         try:
@@ -259,6 +259,13 @@ def cast_pictures(d, cut, gtree, gmed, scale=1.0, reach=None, smooth=False, colo
         g = np.abs(P[:, 1] - gmed[near]) <= GROUND_M
         if g.any():
             X.append(P[g, 0]); Z.append(P[g, 2]); Lb.append(lab[m][g] + 1); R.append(dist[m][g]); used += 1
+            fa = os.path.join(d, k["name"].replace(".jpg", ".ade"))
+            ak = np.zeros(int(g.sum()), np.uint8)
+            if ADE and os.path.exists(fa):
+                ab = np.fromfile(fa, dtype=np.uint8)
+                if len(ab) >= 4 + nx * ny and (int(ab[0]) | (int(ab[1]) << 8)) == nx:
+                    ak = ab[4:4 + nx * ny][np.flatnonzero(m)][g]
+            Ad.append(ak)
             cc = np.zeros(int(g.sum()), np.uint8)
             fj = os.path.join(d, k["name"])
             if colour and os.path.exists(fj):
@@ -272,7 +279,7 @@ def cast_pictures(d, cut, gtree, gmed, scale=1.0, reach=None, smooth=False, colo
             Cc.append(cc)
     if not X:
         return None
-    return np.concatenate(X), np.concatenate(Z), np.concatenate(Lb).astype(np.uint8), used, np.concatenate(Cc), np.concatenate(R)
+    return np.concatenate(X), np.concatenate(Z), np.concatenate(Lb).astype(np.uint8), used, np.concatenate(Cc), np.concatenate(R), np.concatenate(Ad)
 
 
 def load_walk(d):
@@ -310,6 +317,7 @@ def load_walk(d):
     X, Z, L = x_[ok], z_[ok], lab[ok]
     K = kind[ok] if kind is not None else None
     C = np.zeros(len(X), np.uint8)
+    A = np.zeros(len(X), np.uint8)       # the second labeller's kind (ground_labels.py; pictures' cells only)
     rf = os.path.join(d, "view-rgb.bin")
     if COLOUR and os.path.exists(rf):
         rgb = np.fromfile(rf, dtype=np.uint8)
@@ -326,9 +334,9 @@ def load_walk(d):
         gmed = np.array([np.median(gy[p:q]) for p, q in zip(brk, np.r_[brk[1:], len(gy)])])
         cast = cast_pictures(d, cut, cKDTree(gs[brk].astype(np.float64)), gmed, float(fit.get("castScale") or 1.0), REACH, SMOOTH, COLOUR)
         if cast is not None:
-            cx, cz, cl, used, ccol, crange = cast
+            cx, cz, cl, used, ccol, crange, cade = cast
             if "--nocast" not in sys.argv:
-                X, Z, L, C = np.r_[X, cx], np.r_[Z, cz], np.r_[L, cl], np.r_[C, ccol]
+                X, Z, L, C, A = np.r_[X, cx], np.r_[Z, cz], np.r_[L, cl], np.r_[C, ccol], np.r_[A, cade]
                 if K is not None:
                     K = np.r_[K, np.zeros(len(cx), K.dtype)]
             note += f" and {len(cx):,} ground cells from {used} pictures' own depth and labels (within {REACH * FT:.0f} ft{', and the smoothed depth where the raw has none' if SMOOTH else ''})" + (" (counted, NOT used)" if "--nocast" in sys.argv else "")
@@ -338,13 +346,13 @@ def load_walk(d):
     cth, sth = np.cos(th) * s_, np.sin(th) * s_
     E = cth * X - sth * (-Z) + T["tx"]
     N = sth * X + cth * (-Z) + T["ty"]
-    return E, N, L, K, C, note + f"; its {fit.get('n')} corners agree within {(fit.get('worstM') or 0) * 39.37:.0f} in."
+    return E, N, L, K, C, A, note + f"; its {fit.get('n')} corners agree within {(fit.get('worstM') or 0) * 39.37:.0f} in."
 
 
 def main():
-    global CELL, REACH, SMOOTH, COLOUR
-    a = [x for x in sys.argv[1:] if x not in ("--nocast", "--smooth", "--colour")]
-    SMOOTH, COLOUR = "--smooth" in sys.argv, "--colour" in sys.argv
+    global CELL, REACH, SMOOTH, COLOUR, ADE
+    a = [x for x in sys.argv[1:] if x not in ("--nocast", "--smooth", "--colour", "--ade")]
+    SMOOTH, COLOUR, ADE = "--smooth" in sys.argv, "--colour" in sys.argv, "--ade" in sys.argv
     if "--reach" in a:     # metres: how far a picture's depth is cast onto the ground (CAST_MAX_M by default)
         i = a.index("--reach"); REACH = float(a[i + 1]); a = a[:i] + a[i + 2:]
     edits = None
@@ -371,20 +379,20 @@ def main():
         return 1
     # SEVERAL WALKS TOGETHER (the owner, 2026-11-25: "that's how this will be intended to function, the walks are
     # cumulative"): each walk's ground put on the map by its OWN corners' fit, then pooled square by square.
-    Es, Ns, Ls, Ks, Cs, said, have_vote = [], [], [], [], [], [], True
+    Es, Ns, Ls, Ks, Cs, As, said, have_vote = [], [], [], [], [], [], [], True
     for d in a:
         got = load_walk(d)
         if got is None:
             continue
-        e_, n_, l_, k_, c_, note = got
-        Es.append(e_); Ns.append(n_); Ls.append(l_); Cs.append(c_); said.append(note)
+        e_, n_, l_, k_, c_, a_, note = got
+        Es.append(e_); Ns.append(n_); Ls.append(l_); Cs.append(c_); As.append(a_); said.append(note)
         if k_ is None:
             have_vote = False
         Ks.append(k_ if k_ is not None else np.zeros(len(e_), np.uint8))
     if not Es:
         print("\nTHE GROUND AS THE WALKS SAW IT: no walk here could be put on the map.")
         return 0
-    E, N, L, Cl = np.concatenate(Es), np.concatenate(Ns), np.concatenate(Ls), np.concatenate(Cs)
+    E, N, L, Cl, Ad = np.concatenate(Es), np.concatenate(Ns), np.concatenate(Ls), np.concatenate(Cs), np.concatenate(As)
     K = np.concatenate(Ks)
     kind = K if (have_vote or any(k.any() for k in Ks)) else None
     d = a[0]
@@ -481,6 +489,42 @@ def main():
         print(f"  THE GROUND'S OWN COLOUR: of {int(terr.sum()):,} terrain points {int((terr & (Cl == COLOUR_GREEN)).sum()):,} green, {int((terr & (Cl == COLOUR_BROWN)).sum()):,} brown, {int((terr & (Cl == COLOUR_UNKNOWN)).sum()):,} with no colour; "
               f"squares green {int(green_sq.sum() * (CELL * FT) ** 2):,} sq ft, brown {int(brown_sq.sum() * (CELL * FT) ** 2):,} (of it within {LEAF_REACH_FT} ft of a plant, so taken for LEAVES and not called: {int(leaves.sum() * (CELL * FT) ** 2):,}; "
               f"POROUS GROUND away from plants in patches of {BARE_MIN_SQFT} sq ft or more: {int(big_porous.sum() * (CELL * FT) ** 2):,}).")
+    if COLOUR and len(Es) > 1:
+        # the same question of the colour: where both walks call a square green or brown, how often alike
+        ends = np.cumsum([len(e) for e in Es]); cper = []
+        for q, e1 in enumerate(ends):
+            sel = np.zeros(len(E), bool); sel[(ends[q - 1] if q else 0):e1] = True
+            g_, b_ = grid(sel & terr & (Cl == COLOUR_GREEN)), grid(sel & terr & (Cl == COLOUR_BROWN))
+            cper.append(((g_ + b_ >= MIN_PTS) & (g_ >= 2 * b_), (g_ + b_ >= MIN_PTS) & (b_ >= 2 * g_)))
+        for q in range(len(cper)):
+            for r in range(q + 1, len(cper)):
+                (g1, b1), (g2, b2) = cper[q], cper[r]
+                both = (g1 | b1) & (g2 | b2); same = (g1 & g2) | (b1 & b2)
+                print(f"  THE COLOUR, WALK {q + 1} AGAINST WALK {r + 1}: both call {int(both.sum() * (CELL * FT) ** 2):,} sq ft green or brown; the same on {100 * same.sum() / max(1, both.sum()):.1f}% of it; brown where the other says green {int(((b1 & g2) | (g1 & b2)).sum() * (CELL * FT) ** 2):,} sq ft.")
+    if ADE:
+        # THE SECOND LABELLER (ground_labels.py), of the cells the phone called terrain: turf, low plants, porous, one a square
+        TURF, BED, POR = 1, 2, 3
+        def ade_grids(sel):
+            t_, b_, p_ = grid(sel & terr & (Ad == TURF)), grid(sel & terr & (Ad == BED)), grid(sel & terr & (Ad == POR))
+            tot = t_ + b_ + p_
+            return {"turf": (t_ >= MIN_PTS) & (t_ >= 2 * (b_ + p_)), "low plants": (b_ >= MIN_PTS) & (b_ >= 2 * (t_ + p_)), "porous": (p_ >= MIN_PTS) & (p_ >= 2 * (t_ + b_))}, tot
+        allg, tot = ade_grids(np.ones(len(E), bool))
+        sq = (CELL * FT) ** 2
+        print(f"  THE SECOND LABELLER: of the terrain, {int((terr & (Ad > 0)).sum()):,} cells labelled ({int((terr & (Ad == TURF)).sum()):,} turf, {int((terr & (Ad == BED)).sum()):,} low plants, {int((terr & (Ad == POR)).sum()):,} porous, {int((terr & (Ad > 3)).sum()):,} other); "
+              + ", ".join(f"{k} {int(v.sum() * sq):,} sq ft" for k, v in allg.items())
+              + (f"; where colour says green, the labeller says turf on {100 * (allg['turf'] & green_sq).sum() / max(1, (green_sq & (tot >= MIN_PTS)).sum()):.0f}% and low plants on {100 * (allg['low plants'] & green_sq).sum() / max(1, (green_sq & (tot >= MIN_PTS)).sum()):.0f}%" if COLOUR else "") + ".")
+        if len(Es) > 1:
+            ends = np.cumsum([len(e) for e in Es])
+            per = []
+            for q, e1 in enumerate(ends):
+                sel = np.zeros(len(E), bool); sel[(ends[q - 1] if q else 0):e1] = True
+                per.append(ade_grids(sel)[0])
+            for q in range(len(per)):
+                for r in range(q + 1, len(per)):
+                    any1 = per[q]["turf"] | per[q]["low plants"] | per[q]["porous"]; any2 = per[r]["turf"] | per[r]["low plants"] | per[r]["porous"]
+                    both = any1 & any2
+                    same = sum((per[q][k] & per[r][k]) for k in per[q])
+                    print(f"  THE SECOND LABELLER, WALK {q + 1} AGAINST WALK {r + 1}: both call {int(both.sum() * sq):,} sq ft; the same on {100 * same.sum() / max(1, both.sum()):.1f}% of it.")
     if plants:
         print(f"  THE PLANTS ON THE SAME SQUARES: {int(plant_any.sum() * (CELL * FT) ** 2):,} sq ft under a plant; {int(plant_ground.sum() * (CELL * FT) ** 2):,} where it stands within {PLANT_GROUND_DM * 4} in of the ground, so no ground is called there.")
     for name, (pav, gra) in ways.items():
