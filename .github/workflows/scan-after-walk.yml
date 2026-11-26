@@ -82,7 +82,11 @@ jobs:
               # so placed is in the one frame of the shape the walks built, not each in its own corners' fit
               node scan/tools/twin-onref.mjs "$D" | tee -a after.txt || true
               if [ -f "$D/onref.json" ]; then node scan/tools/twin-r2.mjs put "$W" "$D/onref.json" > /dev/null || true; fi
+              # the pictures' own tree cells (their depth to 12 m, the smoothed depth in the raw one's holes) beside the walk's
+              # points for plants.py, then taken away again before the ground is read (cast_plants.py)
+              python scan/tools/cast_plants.py "$D" | tee -a after.txt || true
               python scan/tools/plants.py "$D" "$D/plants.json" 2>&1 | grep -E "ON THE MAP|Nothing kept|neither" | cut -c1-400 | tee -a after.txt || true
+              python scan/tools/cast_plants.py "$D" --undo || true
               DIRS="$DIRS $D"
             done
             # the plants of every walk as one, kept with the map (the one before is a backup)
