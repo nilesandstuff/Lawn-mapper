@@ -5220,3 +5220,12 @@ OTHER: by it, the same on 80.0% of 2,042 sq ft; by the colour (green or brown), 
 it is the LESS self-consistent; its porous (2,015 sq ft against the colour's 41 + 1,207 leaves) fits pavement_study's
 "November lawn reads as earth". NOT ADOPTED. Agreement is not correctness (the colour can be wrong the same way twice);
 the owner's erasures are the judge (being added).
+HARD, S3 run 10, JUDGED BY THE OWNER'S ERASURES (1,581 squares erased as turf, 146 as paving): of the squares erased as
+turf, the colour had called 483 green and 0 brown (the same mistake, every time it spoke); the second labeller called 367
+turf, 44 low plants and 534 porous. So the colour is self-consistent and wrong the same way on both walks there, and the
+second labeller, the less self-consistent (80.0% against 96.0%), would have avoided most of those. NOW (S3): the second
+labeller runs on every walk's pictures and may SAY NO: turf is not called where, square by square, it says low plants or
+porous ground; where it says nothing the colour's word stands; the line "THE TURF AS KEPT" says how many erased-as-turf
+squares would still be turf. The route after this (proposed, not started): the large labeller (Mask2Former, measured on
+the owner's names at 97% / 89%) on the walks' pictures, a small phone model trained to copy it, corrected by the
+erasures; it would run on the phone after each walk.

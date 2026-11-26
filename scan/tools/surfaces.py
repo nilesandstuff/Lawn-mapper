@@ -557,6 +557,25 @@ def main():
             # terrain that is brown is not grass: porous ground away from plants, leaves near them; a square with no colour keeps the label's word
             grass0 = grass0 & ~(brown_sq & ~((Gc + Bc) < MIN_PTS))
         grass = grass0 & ~big_bare & ~(big_porous if COLOUR else False) & ~(leaves if COLOUR else False)
+        if ADE and name == "THE PHONE'S OWN LABELS":
+            # A SECOND WITNESS CAN SAY NO (S3 run 10: of the 1,581 squares the owner erased as turf, the colour had called
+            # 483 green and none brown; the second labeller called 367 turf, 44 low plants and 534 porous). Turf is not
+            # called where the second labeller says, square by square, low plants or porous ground; where it says nothing,
+            # the colour's word stands.
+            ag_, _ = ade_grids(np.ones(len(E), bool))
+            veto = ag_["low plants"] | ag_["porous"]
+            print(f"     THE SECOND LABELLER SAYS NO to {int((grass & veto).sum() * SQ):,} sq ft of the {int(grass.sum() * SQ):,} called turf.")
+            grass = grass & ~veto
+            if edits and isinstance(edits.get("erased"), list):
+                f = max(1, int(round(float(edits.get("cellM") or CELL) / CELL))); still = tot_ = 0
+                for e in edits["erased"]:
+                    if len(e) >= 4 and e[0] == "g" and str(e[3]) == "turf":
+                        for da in range(f):
+                            for db in range(f):
+                                c_, r_ = int(e[1]) * f + da - i0, int(e[2]) * f + db - j0
+                                if 0 <= c_ < W and 0 <= r_ < H:
+                                    tot_ += 1; still += int(grass[r_, c_])
+                print(f"     JUDGED BY THE OWNER'S ERASURES, THE TURF AS KEPT: of {tot_:,} squares erased as turf, {still:,} would still be called turf.")
         if kind is not None:
             print(f"  {name}: of {int(grass0.sum() * (CELL * FT) ** 2):,} sq ft called grass, {int((grass0 & big_bare).sum() * (CELL * FT) ** 2):,} lie in POROUS GROUND (bare soil, woodchips, moss: the pictures' vote's bare ground) in patches of {BARE_MIN_SQFT} sq ft or more and are NOT counted as grass "
                   f"({int(bare_sq.sum() * (CELL * FT) ** 2):,} sq ft called porous in all, {int(big_bare.sum() * (CELL * FT) ** 2):,} of it in such patches).")
