@@ -30,6 +30,18 @@ async function main() {
   const j = JSON.parse(readFileSync(f, 'utf8'));
   const out = { ...j, walk: String(walk), at: new Date().toISOString() };
   let body = Buffer.from(JSON.stringify(out));
+  /* TOO MANY SQUARES AT A FOOT (2026-11-26: the pictures' own tree cells made 14,176 squares, 211 KB without the open
+     air): the plants go in 2 ft squares instead, each the lowest low and the highest high of the four, before any of
+     the open air is left out. cellM says which; the page and the fusing read it. */
+  if (body.length > MAX_BYTES && Array.isArray(out.boxes) && (out.cellM || 0.3048) < 0.5) {
+    const m = new Map();
+    for (const [i, j, lo, hi] of out.boxes) { const k = `${Math.floor(i / 2)},${Math.floor(j / 2)}`, o = m.get(k); if (o) { o[0] = Math.min(o[0], lo); o[1] = Math.max(o[1], hi); } else m.set(k, [lo, hi]); }
+    const was = out.boxes.length;
+    out.boxes = [...m].map(([k, [lo, hi]]) => { const [i, j] = k.split(',').map(Number); return [i, j, lo, hi]; });
+    out.cellM = (out.cellM || 0.3048) * 2;
+    body = Buffer.from(JSON.stringify(out));
+    console.log(`The plants in 2 ft squares: ${was.toLocaleString()} foot squares are more than the ${MAX_BYTES / 1e3} KB there is room for; ${out.boxes.length.toLocaleString()} squares of 2 ft instead.`);
+  }
   // too big with where the walk saw open air (`seen`): the plants go without it, and that is said
   if (body.length > MAX_BYTES && out.clearHigh) { delete out.clearHigh; body = Buffer.from(JSON.stringify(out)); console.log(`The air seen empty in any season is LEFT OUT: with it the file is over the ${MAX_BYTES / 1e3} KB there is room for.`); }
   if (body.length > MAX_BYTES && out.seenHigh) { delete out.seenHigh; body = Buffer.from(JSON.stringify(out)); console.log(`The air seen open above 8 ft is LEFT OUT: with it the file is over the ${MAX_BYTES / 1e3} KB there is room for.`); }
