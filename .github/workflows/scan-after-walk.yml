@@ -31,7 +31,7 @@ concurrency:
 jobs:
   after:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 330
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v5
@@ -64,9 +64,13 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           MAPS_READ_TOKEN: ${{ secrets.MAPS_READ_TOKEN }}
           SITE: https://${{ vars.CUSTOM_DOMAIN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           set -o pipefail
           pip install --quiet numpy scipy pillow
+          # the picture models (the large labeller for a walk that has none yet, and the small one for the ground), on the CPU
+          TORCH=0
+          if pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu > /dev/null 2>&1 && pip install --quiet "transformers>=4.45,<5" > /dev/null 2>&1; then TORCH=1; fi
           : > after.txt
           n=0
           while IFS= read -r LINE; do
@@ -76,6 +80,14 @@ jobs:
             for W in ${LINE//,/ }; do
               D="m$n-$W"
               node scan/tools/twin-r2.mjs parts "$W" "$D" 'cloud-*' 'labels-*' view-kind.bin view-rgb.bin view.json start.json owner-trunks.json live.json meta.json 'track-*' 'keys-*' 'key-*.sem' 'key-*.rdepth' 'key-*.sdepth' 'key-*.jpg' segments-masks.npz | tail -1 | tee -a after.txt
+              # THE LARGE LABELLER ON EVERY NEW WALK (2026-11-26): Mask2Former on the free CPU (classes_cpu.py, 2-3 s a picture),
+              # once a walk; its classes are kept with the walk, so a walk already classed is not classed again. Until now this
+              # ran only by hand (scan-deploy task classes), and a walk without it fell back to the small labeller off the shelf.
+              if [ "$TORCH" = 1 ] && [ ! -f "$D/segments-masks.npz" ] && ls "$D"/key-*.jpg > /dev/null 2>&1; then
+                if timeout 50m python scan/tools/classes_cpu.py "$D" 800 2>&1 | grep -v -i "key-[0-9]" | tail -2 | tee -a after.txt && [ -f "$D/segments-masks.npz" ]; then
+                  node scan/tools/twin-r2.mjs put "$W" "$D/segments-masks.npz" | tail -1 | tee -a after.txt || true
+                else echo "  $W: the large labeller did not finish; the small one reads its ground" | tee -a after.txt; rm -f "$D/segments-masks.npz"; fi
+              fi
               # the walk on its map by its own agreeing corners; a walk they do not vouch for gives no plants and no ground
               node scan/tools/walk-fit.mjs "$D" | tee -a after.txt || true
               # and through the map's reference, a stretch at a time, when the walk's corners agree (twin-onref.mjs): every walk
@@ -98,7 +110,7 @@ jobs:
             # (the traced lawn is not read here: the comparison with it is the surfaces task's, by hand)
             # THE SECOND LABELLER (ground_labels.py: SegFormer-B0, small enough for a phone) on the walks' pictures, for the ground
             ADE=""
-            if pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu > /dev/null 2>&1 && pip install --quiet transformers > /dev/null 2>&1 && python scan/tools/ground_labels.py $DIRS | tee -a after.txt; then ADE="--ade"; else echo "  The second labeller: could not be run; the colour alone." | tee -a after.txt; fi
+            if [ "$TORCH" = 1 ] && python scan/tools/ground_labels.py $DIRS | tee -a after.txt; then ADE="--ade"; else echo "  The second labeller: could not be run; the colour alone." | tee -a after.txt; fi
             # turf, paving and porous ground, one kind a square: the ground's own colour tells turf from brown, brown near a
             # plant is fallen leaves and not called, and a plant standing on a square takes it from the ground (surfaces.py)
             python scan/tools/surfaces.py $DIRS --colour --reach 12 --smooth $ADE --plants "m$n-$FIRST/plants-map.json" --edits "m$n-edits.json" --keep "m$n-$FIRST/surfaces-map.json" | grep -E "THE GROUND AS|WALK . AGAINST|THE PHONE'S OWN LABELS|OWN COLOUR|PLANTS ON THE SAME|owner's erasures|SECOND LABELLER|THE COLOUR, WALK|OWNER'S ERASURES|Kept for" | cut -c1-600 | tee -a after.txt || true
