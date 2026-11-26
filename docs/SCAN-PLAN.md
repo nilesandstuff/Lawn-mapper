@@ -5229,3 +5229,8 @@ porous ground; where it says nothing the colour's word stands; the line "THE TUR
 squares would still be turf. The route after this (proposed, not started): the large labeller (Mask2Former, measured on
 the owner's names at 97% / 89%) on the walks' pictures, a small phone model trained to copy it, corrected by the
 erasures; it would run on the phone after each walk.
+THE OWNER, 2026-11-26: "currently the colors for porous ground shown on the page are extremely underrepresented... there's
+atleast 5,000 sqft of porous ground that could've been visible from those walks. Could be as high as 10,000 sqft. So the
+color approach way underestimates that." (Kept porous was 41 sq ft; the second labeller called 2,015.) NOW: a square the
+second labeller calls porous is porous ground unless the colour says green, in patches of 4 sq ft or more; brown near a
+plant is left as leaves only where it does not say porous.

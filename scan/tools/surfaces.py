@@ -566,6 +566,30 @@ def main():
             veto = ag_["low plants"] | ag_["porous"]
             print(f"     THE SECOND LABELLER SAYS NO to {int((grass & veto).sum() * SQ):,} sq ft of the {int(grass.sum() * SQ):,} called turf.")
             grass = grass & ~veto
+            # POROUS GROUND BY THE SECOND LABELLER (the owner, 2026-11-26: "there's atleast 5,000 sqft of porous ground that
+            # could've been visible from those walks. Could be as high as 10,000 sqft. So the color approach way
+            # underestimates that"): the colour kept 41 sq ft, and took most brown for leaves because nearly everything
+            # is near a plant now. A square the second labeller calls porous (earth, sand, dirt, mulch) is porous ground
+            # unless the colour says green (growth, turf or a bed), in patches of BARE_MIN_SQFT or more; brown near a
+            # plant is taken for leaves only where the second labeller does NOT say porous.
+            por_ade = ag_["porous"] & ~green_sq & ~paved
+            alab, an_ = ndimage.label(por_ade, structure=np.ones((3, 3)))
+            asz = np.bincount(alab.ravel())
+            ade_porous = por_ade & (asz[alab] * SQ >= BARE_MIN_SQFT)
+            leaves = leaves & ~ag_["porous"]
+            print(f"     POROUS GROUND BY THE SECOND LABELLER: {int(ade_porous.sum() * SQ):,} sq ft in patches of {BARE_MIN_SQFT} sq ft or more (the colour's own: {int(big_porous.sum() * SQ):,}); brown near plants still left as leaves: {int(leaves.sum() * SQ):,} sq ft.")
+            if edits and isinstance(edits.get("erased"), list):
+                f2 = max(1, int(round(float(edits.get("cellM") or CELL) / CELL))); hit = tot2 = 0
+                for e in edits["erased"]:
+                    if len(e) >= 4 and e[0] == "g" and str(e[3]) == "turf":
+                        for da in range(f2):
+                            for db in range(f2):
+                                c_, r_ = int(e[1]) * f2 + da - i0, int(e[2]) * f2 + db - j0
+                                if 0 <= c_ < W and 0 <= r_ < H:
+                                    tot2 += 1; hit += int(ade_porous[r_, c_])
+                print(f"     Of the {tot2:,} squares the owner erased as turf, now called porous: {hit:,}.")
+        else:
+            ade_porous = np.zeros((H, W), bool)
             if edits and isinstance(edits.get("erased"), list):
                 f = max(1, int(round(float(edits.get("cellM") or CELL) / CELL))); still = tot_ = 0
                 for e in edits["erased"]:
@@ -612,7 +636,7 @@ def main():
             # other types of ground)"): paving over porous over turf, and a plant standing on the square over all three
             g8 = np.zeros((H, W), np.uint8)
             g8[grass] = 1
-            g8[(big_bare | (big_porous if COLOUR else False)) & ~paved] = 3
+            g8[(big_bare | (big_porous if COLOUR else False) | ade_porous) & ~paved] = 3
             g8[paved] = 2
             g8[plant_ground] = 0
             # THE OWNER'S ERASURES of the ground, at the size they were erased at (edits' cellM)
