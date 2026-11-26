@@ -430,7 +430,10 @@ export function placeOnShape(ref, pts, marks, jumps, { log = () => {}, T0 = null
   const P = ref.P || AS_IS, toShape = invert({ ...P, s: 1 });
   const J = [...jumps].sort((a, b) => a - b), segOf = (o) => { let k = 0; while (k < J.length && J[k] <= o) k++; return k; };
   const corners = (marks || []).filter((m) => m?.ar && m?.map && m.kind === 'ref' && Number.isFinite(m.odo));
-  const total = Math.max(0, ...pts.stand.map((p) => p[3] || 0), ...pts.ground.map((p) => p[3] || 0));
+  // (2026-11-26: a spread of every point, 144,550 standing on the walk of 4:21 pm Thu Eastern, ran out of stack)
+  let total = 0;
+  for (const p of pts.stand) if ((p[3] || 0) > total) total = p[3];
+  for (const p of pts.ground) if ((p[3] || 0) > total) total = p[3];
   const wins = [];
   for (let c = STEP_M; c < total + STEP_M; c += STEP_M) {
     const k = segOf(Math.min(c, total));

@@ -2123,8 +2123,16 @@ async function handPart(p) {
 function uploadsNow() {
   const u = st.upStatus, N = nativeParts();
   if (!N) return u;
-  let n = null;
-  try { n = JSON.parse(N.partsStatus()); } catch { n = null; }
+  /* ASKED OF THE APP AT MOST EVERY 2 S DURING A WALK (2026-11-26; the walk of 4:21 pm Thu Eastern: 15.9 stalls a minute
+     while parts were handed over, none while not). The app answers by listing its whole folder of waiting parts, on
+     this page's own thread, and the page asked after every part kept and every part handed over: a cost that grew
+     with what waited. Off the walk the answer is asked every time, as before. */
+  const tnow = performance.now();
+  let n = st.nativeUp && st.walk && tnow - st.nativeUp.t < 2000 ? st.nativeUp.n : undefined;
+  if (n === undefined) {
+    try { n = JSON.parse(N.partsStatus()); } catch { n = null; }
+    st.nativeUp = { t: tnow, n };
+  }
   if (!n) return u;
   const a = u || { pending: 0, bytes: 0 };
   return { ...a, pending: (a.pending || 0) + n.pending, bytes: (a.bytes || 0) + n.bytes, sending: !!(a.sending || n.sending), sent: n.sent, sentBytes: n.sentBytes, dropped: (a.dropped || 0) + n.dropped, lastError: n.lastError || a.lastError || null, off: a.off || n.off || null, byApp: true };
@@ -2828,6 +2836,12 @@ function sendTwin(parts) {
 function renderUploads() {
   const el = $('#uploads');
   if (!el) return;
+  /* During a walk the box is not on screen (the AR view covers it): drawn at most every 2 s, the last change kept. */
+  if (st.walk && document.body.classList.contains('in-ar')) {
+    const t = performance.now();
+    if (t - (st.upDrawnAt || 0) < 2000) { if (!st.upDrawLater) st.upDrawLater = setTimeout(() => { st.upDrawLater = null; renderUploads(); }, 2000); return; }
+    st.upDrawnAt = t;
+  }
   const mb = (b) => (b >= 1e7 ? `${Math.round(b / 1e6)} MB` : b >= 1e5 ? `${(b / 1e6).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1e3))} KB`);
   const rows = [];
   let left = 0, trouble = false;

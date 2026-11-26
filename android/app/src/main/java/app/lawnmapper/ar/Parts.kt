@@ -44,6 +44,22 @@ class Parts private constructor(ctx: Context, val base: String) {
     private fun idOf(path: String) = MessageDigest.getInstance("SHA-1").digest(path.toByteArray()).joinToString("") { "%02x".format(it) }
     private fun metas() = dir.listFiles { f -> f.name.endsWith(".json") }?.filter { File(dir, it.nameWithoutExtension + ".bin").exists() } ?: emptyList()
 
+    /* THE LIST IN MEMORY (2026-11-26; the walk of 4:21 pm Thu Eastern: 15.9 stalls a minute while parts were handed
+       over, none while not). Every status the page asked for, and every hand-over's kick, listed the whole folder and
+       looked at each file, while the page waited on the answer: a cost that grew with what waited. Now the folder is
+       read once, and the list (id -> [n, bytes]) kept here, under the lock, as parts come and go. */
+    private var index: HashMap<String, LongArray>? = null
+    private fun idx(): HashMap<String, LongArray> {
+        index?.let { return it }
+        val m = HashMap<String, LongArray>()
+        for (f in metas()) {
+            val n = try { JSONObject(f.readText()).optLong("n") } catch (_: Exception) { 0L }
+            m[f.nameWithoutExtension] = longArrayOf(n, File(dir, f.nameWithoutExtension + ".bin").length())
+        }
+        index = m
+        return m
+    }
+
     /** Keep one part (the page's hand-over). path: the scan site's own route for it, with its query. */
     fun keep(path: String, type: String, b64: String): Boolean {
         if (!path.startsWith("/api/scan/")) return false
@@ -56,8 +72,10 @@ class Parts private constructor(ctx: Context, val base: String) {
                 tmp.writeBytes(bytes)
                 File(dir, "$id.json").writeText(JSONObject().put("path", path).put("type", type).put("n", seq++).toString())
                 val bin = File(dir, "$id.bin")
+                val n = seq - 1
                 ok = tmp.renameTo(bin)
                 if (!ok) { bin.delete(); ok = tmp.renameTo(bin) }
+                if (ok) idx()[id] = longArrayOf(n, bytes.size.toLong()) else idx().remove(id)
             }
         } catch (e: Exception) { lastError = e.message ?: e.javaClass.simpleName; ok = false }
         if (ok) { off = null; kick() }
@@ -66,13 +84,12 @@ class Parts private constructor(ctx: Context, val base: String) {
 
     /** { pending, bytes, sent, sentBytes, dropped, sending, lastError, off } for the page's upload box. */
     fun status(): String {
-        val m = metas()
-        val bytes = m.sumOf { File(dir, it.nameWithoutExtension + ".bin").length() }
-        return JSONObject().put("pending", m.size).put("bytes", bytes).put("sent", sent).put("sentBytes", sentBytes)
+        val (count, bytes) = synchronized(lock) { val m = idx(); Pair(m.size, m.values.sumOf { it[1] }) }
+        return JSONObject().put("pending", count).put("bytes", bytes).put("sent", sent).put("sentBytes", sentBytes)
             .put("dropped", dropped).put("sending", running).put("lastError", lastError ?: JSONObject.NULL).put("off", off ?: JSONObject.NULL).toString()
     }
-    fun pending(): Int = metas().size
-    fun pendingBytes(): Long = metas().sumOf { File(dir, it.nameWithoutExtension + ".bin").length() }
+    fun pending(): Int = synchronized(lock) { idx().size }
+    fun pendingBytes(): Long = synchronized(lock) { idx().values.sumOf { it[1] } }
 
     /** Send what waits: PartsService does it, with its notification; if Android will not start one now, a plain thread. */
     fun kick() {
@@ -96,7 +113,7 @@ class Parts private constructor(ctx: Context, val base: String) {
         }
         val bytes = body
         if (broken || bytes == null) {
-            synchronized(lock) { meta.delete(); File(dir, "$id.bin").delete() }
+            synchronized(lock) { meta.delete(); File(dir, "$id.bin").delete(); idx().remove(id) }
             dropped++; return "drop"
         }
         var code = 0
@@ -119,7 +136,7 @@ class Parts private constructor(ctx: Context, val base: String) {
             synchronized(lock) {
                 // only the copy that went is taken off the phone (a newer one may have been handed over meanwhile)
                 val now = try { JSONObject(meta.readText()).optLong("n") } catch (_: Exception) { n }
-                if (now == n) { meta.delete(); File(dir, "$id.bin").delete() }
+                if (now == n) { meta.delete(); File(dir, "$id.bin").delete(); idx().remove(id) }
             }
             if (code in 200..299) { sent++; sentBytes += bytes.size; lastError = null; return "ok" }
             dropped++; lastError = "refused $code $why"; return "drop"
@@ -137,7 +154,7 @@ class Parts private constructor(ctx: Context, val base: String) {
             var failedRounds = 0
             var backoff = 0L
             while (true) {
-                val all = metas().sortedBy { try { JSONObject(it.readText()).optLong("n") } catch (_: Exception) { 0L } }
+                val all = synchronized(lock) { idx().entries.sortedBy { it.value[0] }.map { File(dir, it.key + ".json") } }
                 if (all.isEmpty()) return true
                 progress(all.size, pendingBytes())
                 var failed = false

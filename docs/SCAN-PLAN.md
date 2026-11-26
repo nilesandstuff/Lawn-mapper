@@ -5326,3 +5326,36 @@ pixels, too few to be taught from two walks.
 
 MODAL, of the $15: about $0.30 for this run (L4, roughly 20 minutes up). RUNNING TOTAL: about $0.70 (and the at-most
 $0.60 of 2026-11-20).
+
+## 78. The walks of 26 Nov 4:21 and 4:27 pm (Eastern): sending during a walk is still the stutter (2026-11-26)
+
+HARD (scan-deploy task walks, run of 22:50 UTC; both walks after the outbox fix of section 76 went live, app 1.26):
+
+  walk                         sending           frames a second   stalls over 250 ms   page work a frame
+  1795728070119, 4:21 pm       during the walk   12.7              85 in 6 min          median 13 ms
+  1795728472189, 4:27 pm       HELD to the end   19.1              16 in 6 min          median 12 ms
+
+  The 4:21 walk split by whether a part was on its way: 321 s sending, gap median 79 ms, 15.9 stalls a minute; 53 s
+  not, gap median 36 ms, 0 stalls a minute. The page's own work a frame was the same on both walks, so the cost is
+  not in the frame's own work. The camera-picture read fell from 24.7 ms a frame (1.25) to 1.9-3.0 (1.26); the top
+  box from 51 ms a time to 0.5 (the placement map no longer redrawn behind the AR view). Page memory 28 MB on both.
+
+  Where the hand-over waited, read from the code: after every part kept and every part handed over, the page asked
+  the app for its own count (Bridge.partsStatus), and the app answered by listing its whole folder of waiting parts
+  and looking at each file, while the page's thread waited for the answer; the hand-over itself (keepPart) also
+  listed the folder when the sender was idle. Again a cost that grows with what waits.
+
+  Changed: the page asks the app at most every 2 s during a walk and draws the upload box at most every 2 s behind
+  the AR view (scan/public/app.js); the app keeps its list of waiting parts in memory, read off the folder once
+  (android Parts.kt, app 1.27).
+
+SPECULATION until the next walk that sends as it goes: that this was most of the 15.9 stalls a minute. If not, what is
+left is the hand-over's own synchronous write in the app (keepPart decodes and writes the part while the page
+waits) and the app's sending competing for the phone; the "send after the walk" box stays the sure way meanwhile.
+
+ALSO from the S4 run of 22:01 UTC (five walks of the owner's lot): the 4:21 walk's placement on the reference failed
+with "Maximum call stack size exceeded": the walk's 144,550 standing points spread into one Math.max (refkeep.js
+placeOnShape; the page's worker runs the same code). Now a loop; the two copies in reference-build.mjs likewise.
+The walks two by two agree on 93.3-98.4% of the ground both call; turf 15,060 sq ft called, porous ground 2,717 sq ft
+in patches (B0 off the shelf on the three new walks: the large labeller did not yet run in S4; it does from this
+commit on, section 77's follow-up).

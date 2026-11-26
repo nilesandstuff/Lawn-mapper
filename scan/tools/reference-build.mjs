@@ -289,7 +289,7 @@ async function against(dirs) {
     const last = new Map(); for (const m of live.marks || []) if (m?.ar && m?.map && m.kind === 'ref') last.set(m.id, m);
     const marks = [...last.values()], pts = twinPoints(d);
     const g = keepPlan(live.marks || [], []).g;
-    const total = Math.max(0, ...pts.stand.map((p) => p[3] || 0));
+    const total = pts.stand.reduce((m, p) => Math.max(m, p[3] || 0), 0);
     console.log(`  walk ${meta.walk || d} (${(meta.started || '').slice(0, 10)}, ${Math.round(total * FT)} ft walked, ${marks.length} corners; its own corners ${g.ok ? `agree within ${(g.worstM * 39.37).toFixed(0)} in${g.left.length ? `, ${g.left.length} left out` : ''}` : `vouch for nothing (${g.ambiguous ? 'which is wrong cannot be told' : 'none agree'})`}):`);
     // AS THE PAGE NOW DOES, every 15 m from 60 m walked: stretched by the reference's scale, a lead over the next best,
     // a loose GPS bound when there is one, and USED only when two in a row agree (walkref.js sameFix)
@@ -407,7 +407,7 @@ async function labels(dirs) {
   console.log(`DO THE PHONE'S LABELS HELP THE SHAPE FIX? The reference made here from the first walk: ${sp.length} standing points (building ${share(1)}%, tree ${share(2)}%, structure ${share(3)}%, not known ${share(0)}%), ${ref.ground.length / 3} ground.`);
   const live = readJson(wd, 'live.json') || {}, pts = twinPoints(wd);
   const refs = (live.marks || []).filter((m) => m?.ar && m?.map && m.kind === 'ref').sort((a, b) => a.odo - b.odo);
-  const total = Math.max(0, ...pts.stand.map((p) => p[3] || 0));
+  const total = pts.stand.reduce((m, p) => Math.max(m, p[3] || 0), 0);
   const mid = (() => { let x = 0, y = 0; for (const p of pts.stand) { x += p[0]; y += p[1]; } return pts.stand.length ? [x / pts.stand.length, y / pts.stand.length] : [0, 0]; })();
   for (const withK of [false, true]) {
     console.log(`   ${withK ? 'A STANDING POINT LANDS ONLY ON ITS OWN KIND' : 'BY SHAPE ALONE'} (the latest corner a pin); judged by the other corners marked so far:`);
@@ -526,7 +526,7 @@ function buildFrom(walks, log) {
    by the walk's other corners. -> one line of totals */
 function replayLive(ref, w, label, log) {
   const refs = w.marks.filter((m) => m?.ar && m?.map && m.kind === 'ref').sort((a, b) => a.odo - b.odo);
-  const total = Math.max(0, ...w.pts.stand.map((p) => p[3] || 0));
+  const total = w.pts.stand.reduce((m, p) => Math.max(m, p[3] || 0), 0);
   const mid = (() => { let x = 0, y = 0; for (const p of w.pts.stand) { x += p[0]; y += p[1]; } return w.pts.stand.length ? [x / w.pts.stand.length, y / w.pts.stand.length] : [0, 0]; })();
   const P = ref.P || AS_IS, toShape = invert({ ...P, s: 1 });
   let before = null, used = 0, asked = 0, run = 0, longest = 0; const errs = [];
