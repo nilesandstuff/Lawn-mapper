@@ -1,6 +1,6 @@
 /**
- * WHICH MAPS HAVE A WALK NOT YET TAKEN UP (core session, 2026-11-26): shared by workflow S3's planner
- * (scan/tools/after-walk.mjs) and the scan site's own clock (src/after.js), which starts S3 when one is due. Pure.
+ * WHICH MAPS HAVE A WALK NOT YET TAKEN UP (core session, 2026-11-26): shared by workflow S4's planner
+ * (scan/tools/after-walk.mjs) and the scan site's own clock (src/after.js), which starts S4 when one is due. Pure.
  */
 export const SETTLED_MS = 30 * 60 * 1000, RECENT_MS = 4 * 86400 * 1000, POOL_MAX = 6;
 export const FROM_MS = Date.UTC(2026, 10, 24);   // walks before the app sent whole walks (1.25) are not taken up by themselves

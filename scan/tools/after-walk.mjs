@@ -1,5 +1,5 @@
 /**
- * WHAT A NEW WALK SETS GOING, BY ITSELF (core session, 2026-11-26; workflow "S3. After a walk"). The owner, 2026-11-25:
+ * WHAT A NEW WALK SETS GOING, BY ITSELF (core session, 2026-11-26; workflow "S4. After a walk"). The owner, 2026-11-25:
  * "Each walk should be an update to both the reference (when it's a good walk) and the fused map." The page adds a
  * walk to the reference at its end. The ground's colours and the plants were made only when the core session ran a
  * task by hand, one walk replacing the last. Now, every hour:

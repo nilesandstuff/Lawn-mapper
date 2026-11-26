@@ -1,9 +1,9 @@
 /**
- * THE SCAN SITE STARTS "S3. AFTER A WALK" ITSELF (core session, 2026-11-26). GitHub ran this repository's schedules
+ * THE SCAN SITE STARTS "S4. AFTER A WALK" ITSELF (core session, 2026-11-26). GitHub ran this repository's schedules
  * about ten hours late, and dropped some (docs/SCAN-PLAN.md 73), so a walk's plants and ground waited for it. The
  * owner, 2026-11-26: "Yea that's do that". Every 20 minutes (the Worker's own cron, which Cloudflare keeps): the walks
- * of the last few days are read from the twin bucket as S3's planner reads them (lib/afterplan.js); when a map has a
- * settled walk its marker does not name, S3 is started through GitHub's API with the token the owner made (a
+ * of the last few days are read from the twin bucket as S4's planner reads them (lib/afterplan.js); when a map has a
+ * settled walk its marker does not name, S4 is started through GitHub's API with the token the owner made (a
  * fine-grained token on this repository, Actions read and write, kept as the Worker's secret GH_DISPATCH_TOKEN; never
  * logged). Not more than once in 50 minutes; what was done is kept in auto/_dispatch.json.
  */

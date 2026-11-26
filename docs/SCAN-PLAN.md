@@ -5234,3 +5234,6 @@ atleast 5,000 sqft of porous ground that could've been visible from those walks.
 color approach way underestimates that." (Kept porous was 41 sq ft; the second labeller called 2,015.) NOW: a square the
 second labeller calls porous is porous ground unless the colour says green, in patches of 4 sq ft or more; brown near a
 plant is left as leaves only where it does not say porous.
+NAMING (2026-11-26): "S3. After a walk" clashed with the older "S3. Yard AR segments" (scan-segment.yml); the after-walk
+workflow is now named "S4. After a walk" (the same file, scan-after-walk.yml). Where this section and 73-74 say S3 of the
+after-walk runs, it is that workflow.
