@@ -5164,3 +5164,10 @@ on the default branch with `cron: '23 * * * *'`. This repo's other schedules ran
 be counted on for "within the hour": a walk will be taken up when it fires, likely within the day. The one way to
 start S3 when a walk ends is a token that may start workflows, held by the scan site (no such secret exists; the
 owner would make one). Offered, not done.
+BUILT AND ON (2026-11-26, 9:27 am Thu Eastern, scan deploy run 616): the scan site's own cron (Cloudflare's, every 20
+minutes; src/after.js, lib/afterplan.js) starts S3 through GitHub's API with the owner's fine-grained token
+(SCAN_DISPATCH_TOKEN, given to the Worker as GH_DISPATCH_TOKEN; never printed), at most once in 50 minutes, when a map
+has a settled walk not yet taken up. The deploy's last lines: "After a walk: yes". NOT YET SEEN WORKING: no walk has
+been due since; the first walk after this is the test (an S3 run with event workflow_dispatch within about an hour of
+the walk's last part, and auto/_dispatch.json written). GitHub's own schedule fired S3 once by itself, at 6:09 am Thu
+Eastern (about 9 hours after the first slot): nothing was due.
