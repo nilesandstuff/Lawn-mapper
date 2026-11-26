@@ -47,6 +47,10 @@ bucket rather than documenting how to make them.
 The same applies to reading. A deploy log is about 1800 lines and nobody is
 scrolling it on a phone, so anything worth knowing is repeated at the end.
 
+Times and days told to the owner are in US Eastern time (the owner, 2026-11-26:
+"present times (and days) in EDT from now on"), daylight or standard as the
+date has it, e.g. "9:23 pm Wed". Logs and files may stay in UTC.
+
 ## Schema changes need two edits, not one
 
 worker/schema.sql is all CREATE TABLE IF NOT EXISTS, which does NOTHING to a
