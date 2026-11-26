@@ -85,7 +85,7 @@ jobs:
             node scan/tools/plants-pool.mjs "m$n-$FIRST" $DIRS | tee -a after.txt
             node scan/tools/plants-keep.mjs "$FIRST" "m$n-$FIRST" | tee -a after.txt || true
             # the ground's colours of every walk as one, kept with the map
-            node scan/tools/lawn-prep.mjs "m$n-$FIRST" | tee -a after.txt || true
+            # (the traced lawn is not read here: the comparison with it is the surfaces task's, by hand)
             python scan/tools/surfaces.py $DIRS --keep "m$n-$FIRST/surfaces-map.json" | grep -E "THE GROUND AS|WALK . AGAINST|THE PHONE'S OWN LABELS|Kept for" | cut -c1-500 | tee -a after.txt || true
             node scan/tools/surfaces-keep.mjs "$FIRST" "m$n-$FIRST" | tee -a after.txt || true
             node scan/tools/after-walk.mjs done "$LINE" "m$n-$FIRST" | tee -a after.txt

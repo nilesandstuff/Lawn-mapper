@@ -5117,3 +5117,24 @@ recording need Google's ARCore Extensions on top. It would end the stutter only 
 natively in the present app does too; a rewrite of the page's logic in C# is months. Its one strong case is one
 codebase for iPhone and Android. Cesium streams very large georeferenced scenes; it has no AR tracking and is not a
 speed tool for a yard that fits in one draw call. NOTHING HERE IS MEASURED by this project.
+
+
+## 73. Each walk updates its map by itself (2026-11-26)
+
+The owner, 2026-11-25: "So we're not merging the color labels? We should be. Each walk should be an update to both the
+reference (when it's a good walk) and the fused map."
+BUILT: workflow "S3. After a walk" (scan-after-walk.yml), every hour: scan/tools/after-walk.mjs finds the walks of the
+last four days that have settled (nothing new kept for half an hour), by map; a map with a walk its marker
+(auto/<map>.json) does not name has the plants (plants.py each, then plants-pool.mjs) and the ground's colours
+(surfaces.py, pooled) of its walks made again as one, six walks at the most, and kept with the map. The page puts the
+plants into the map's record when the map next opens and the fused model is made again there (as since 2026-11-23).
+plants-pool.mjs: a square foot's plant is kept when two walks saw it, or one did and no other saw the air open to over
+its top; the open air from the ground is the most any walk saw, never over a kept plant's low.
+HARD, run 1 (by hand, the two walks of 2026-11-24): the 22:04 walk given the 21:48 walk's map (its meta.json as it was
+kept as meta-before.json). Plants: 1,573 and 2,217 squares; as one 3,073: 260 seen by both walks, 2,813 by one and not
+gainsaid, 16 left out; 60 KB, kept. Ground: 602,873 points, the walks the same on 90.0% of 1,127 sq ft; paved 1,185
+sq ft, grass 6,333; kept. Marked.
+NOT DONE: the air seen open above 8 ft and "empty in any season" are the newest walk's only; the 3D point view is one
+walk at a time; a walk whose corners do not vouch for it gives nothing (by design); a scheduled run has not yet been
+seen to fire; only 260 of 3,073 plant squares are seen by both walks, which fits walks that sit a foot or so apart
+on one-foot squares and is NOT looked into.
