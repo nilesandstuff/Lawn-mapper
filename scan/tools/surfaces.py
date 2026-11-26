@@ -504,8 +504,15 @@ def main():
     if ADE:
         # THE SECOND LABELLER (ground_labels.py), of the cells the phone called terrain: turf, low plants, porous, one a square
         TURF, BED, POR = 1, 2, 3
+        # (2026-11-26, the owner: at least 5,000 sq ft of porous ground could have been seen, and 747 was kept) the second
+        # labeller speaks for every cell at the ground's height the phone did NOT call paving or a building: ARCore may
+        # call mulch, soil or a bed "tree", "unlabeled" or "structure", and those cells were never counted
+        gnd = np.isin(L, (1, 4, 7, 8, 9)) & (Ad > 0)
+        byl = {n_: int((gnd & (L == v_) & (Ad == POR)).sum()) for n_, v_ in (("terrain", 7), ("tree", 4), ("unlabeled", 1), ("structure", 8), ("object", 9))}
+        print("  THE SECOND LABELLER'S POROUS CELLS BY THE PHONE'S OWN LABEL: " + ", ".join(f"{k} {v:,}" for k, v in byl.items()) + ".")
+
         def ade_grids(sel):
-            t_, b_, p_ = grid(sel & terr & (Ad == TURF)), grid(sel & terr & (Ad == BED)), grid(sel & terr & (Ad == POR))
+            t_, b_, p_ = grid(sel & gnd & (Ad == TURF)), grid(sel & gnd & (Ad == BED)), grid(sel & gnd & (Ad == POR))
             tot = t_ + b_ + p_
             return {"turf": (t_ >= MIN_PTS) & (t_ >= 2 * (b_ + p_)), "low plants": (b_ >= MIN_PTS) & (b_ >= 2 * (t_ + p_)), "porous": (p_ >= MIN_PTS) & (p_ >= 2 * (t_ + b_))}, tot
         allg, tot = ade_grids(np.ones(len(E), bool))
