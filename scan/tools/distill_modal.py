@@ -87,6 +87,7 @@ def train(data: bytes, epochs: int = 14) -> dict:
                 lo = F.interpolate(lo, size=y.shape[-2:], mode="bilinear", align_corners=False)
                 loss = F.cross_entropy(lo, y, ignore_index=255)
                 opt.zero_grad(); loss.backward(); opt.step(); sched.step()
+            print(f"  pass {e + 1} of {ep}: loss {loss.item():.3f} ({round(time.time() - t0)} s)", flush=True)
         return m
 
     @torch.no_grad()
@@ -131,11 +132,17 @@ def train(data: bytes, epochs: int = 14) -> dict:
             return self.m(pixel_values=x).logits
     torch.onnx.export(Wrap(m).cpu().eval(), torch.zeros(1, 3, TH, TW), buf, input_names=["pixels"], output_names=["kinds"], opset_version=17, dynamic_axes={"pixels": {2: "h", 3: "w"}, "kinds": {2: "h4", 3: "w4"}})
     onnx_bytes = buf.getvalue()
-    from onnxruntime.quantization import QuantType, quantize_dynamic
-    open("/tmp/m.onnx", "wb").write(onnx_bytes)
-    quantize_dynamic("/tmp/m.onnx", "/tmp/m8.onnx", weight_type=QuantType.QUInt8)
-    q = open("/tmp/m8.onnx", "rb").read()
-    out.update({"kinds": KINDS, "size": [TW, TH], "seconds": round(time.time() - t0), "onnx_mb": round(len(onnx_bytes) / 1e6, 1), "onnx8_mb": round(len(q) / 1e6, 1)})
+    # THE 8-BIT COPY (S5 run 1, 2026-11-26: onnxruntime's quantizer failed on a node with no scale, after 30 minutes of
+    # teaching, and nothing was kept): only the matrix products made 8-bit, and a failure no longer loses the model
+    q, qwhy = b"", None
+    try:
+        from onnxruntime.quantization import QuantType, quantize_dynamic
+        open("/tmp/m.onnx", "wb").write(onnx_bytes)
+        quantize_dynamic("/tmp/m.onnx", "/tmp/m8.onnx", weight_type=QuantType.QInt8, op_types_to_quantize=["MatMul"])
+        q = open("/tmp/m8.onnx", "rb").read()
+    except Exception as e:
+        qwhy = f"{type(e).__name__}: {str(e)[:160]}"
+    out.update({"kinds": KINDS, "size": [TW, TH], "seconds": round(time.time() - t0), "onnx_mb": round(len(onnx_bytes) / 1e6, 1), "onnx8_mb": round(len(q) / 1e6, 1) if q else None, "onnx8_failed": qwhy})
     return {"numbers": out, "onnx": onnx_bytes, "onnx8": q}
 
 
@@ -144,6 +151,7 @@ def main(data: str = "data.npz", out: str = "out", epochs: int = 14):
     os.makedirs(out, exist_ok=True)
     r = train.remote(open(data, "rb").read(), epochs)
     open(os.path.join(out, "ground-labeller.onnx"), "wb").write(r["onnx"])
-    open(os.path.join(out, "ground-labeller-8bit.onnx"), "wb").write(r["onnx8"])
+    if r["onnx8"]:
+        open(os.path.join(out, "ground-labeller-8bit.onnx"), "wb").write(r["onnx8"])
     json.dump(r["numbers"], open(os.path.join(out, "numbers.json"), "w"))
     print("DISTILL " + json.dumps(r["numbers"]))

@@ -5254,3 +5254,25 @@ a bed "tree", "unlabeled" or "structure", and those cells at the ground's height
 height cell not called paving or building is the second labeller's to name; the run says how many porous cells came
 from each of the phone's labels.
 MODAL, of the $15: nothing spent yet on this (the large labeller ran on the free CPU). S5 (the phone model taught) next.
+
+
+## 75. The walk of 2026-11-26 2:10 pm (Eastern): the stutter read, and the phone labeller's first teaching (2026-11-26)
+
+HARD (walk 1795720228639, 6 min, 748 ft, recording on, kept out of the reference, the app still 1.25): 8.4 frames a
+second, 422 stalls over 250 ms. Where the page's frame work went: the camera picture read 28% (24.7 ms a frame: the old
+app's whole picture, as 1.26 would not have it); THE PLACEMENT MAP REDRAWN BEHIND THE AR VIEW 21% (223 ms a time, 251
+times) and the top box 22% (51 ms a time, 1,108 times), which holds that same redraw: together about 112 s of the
+walk's 346. The section 67 fix asked offsetParent, which says the map is laid out, not seen. NOW not redrawn at all
+while the AR view is up. Sending was under way for 346 of the walk's 347 s, so the walk cannot say what sending does
+(the "send after the walk" box would). The recording: 390 MB of the walk's 453.
+SPECULATION: that the stalls grew through the walk because the map got heavier to draw as the walk added to it (each
+redraw draws every plant and ground square); not measured.
+HARD, S4 run with the three walks (the new one held out of the reference, but its corners agree): the walks two by two
+the same on 93.5-96.3% of what both call; the large labeller's porous cells by the phone's own label: terrain 166,025,
+TREE 72,727, structure 4,944, object 4,040 (so ARCore calls a third of what the large labeller calls porous ground
+"tree"); porous ground kept 1,787 sq ft (747 the run before); turf 11,547 sq ft; of the 1,581 squares erased as turf,
+220 would still be turf.
+S5 RUN 1 (the phone labeller taught on Modal's L4): about 30 minutes, then the 8-bit copy's quantizer failed (a node with
+no scale) and NOTHING WAS KEPT, the measurements with it. About $0.40 of the $15. NOW the 8-bit copy is tried on the
+matrix products only and its failure no longer loses the model. RUNNING TOTAL of the $15: about $0.40 (and the
+at-most $0.60 of 2026-11-20).

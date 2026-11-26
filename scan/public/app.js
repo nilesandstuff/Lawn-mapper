@@ -1607,7 +1607,10 @@ function hud(f) {
   $('#mark').textContent = target ? (target.roof && !again ? (st.sightPaused ? `Go on with ${target.name}` : `Pause ${target.name} (roof)`) : `Mark ${target.name}${again ? ' again' : ''}`) : 'Mark';
   /* (2026-11-24: 33-44 ms a time, 5-6% of a walk's frame time, once the walk's ground and plants were drawn on it; it is
      not on screen during a walk) redrawn only when it can be seen */
-  if (f.t - (st.mapAt || 0) > 1000 && fitFor(L, w.odo) && $('#map')?.offsetParent) { st.mapAt = f.t; const tm = performance.now(); drawMap(); st.wperf?.time('frame: placement map redrawn (hidden page)', performance.now() - tm); }
+  /* (2026-11-26, the walk of 2:10 pm Thu Eastern: still redrawn 251 times at 223 ms each, behind the AR view, 21% of the
+     page's frame work and, inside the top box's own time, as much again: offsetParent says it is laid out, not that it
+     is seen, and the AR view covers it.) Not redrawn at all while the AR view is up; drawn again when the walk ends. */
+  if (!document.body.classList.contains('in-ar') && f.t - (st.mapAt || 0) > 1000 && fitFor(L, w.odo) && $('#map')?.offsetParent) { st.mapAt = f.t; const tm = performance.now(); drawMap(); st.wperf?.time('frame: placement map redrawn (hidden page)', performance.now() - tm); }
 }
 
 /** The lidar ground at a map point from the 1 m grid the worker sent; `fallback` off the grid. */
