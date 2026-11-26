@@ -5243,3 +5243,14 @@ took away any kind on an erased square; a square erased as turf and now called p
 kind erased is taken away. NEXT (free, no GPU): the large panoptic labeller on the two walks' pictures on the CPU runner
 (task classes, classes_cpu.py, 2.1 s a picture); ground_labels.py then takes its class wherever it labelled a picture,
 SegFormer-B0 only where it did not.
+HARD, the large labeller on the free runner (scan deploy runs 618-619, task classes, Mask2Former on the CPU: 2.7 and 2.2
+s a picture, 491 and 325 pictures, 1,328 s and 701 s) and S4 run 13 with it as the second labeller (every picture by it):
+  - the walks against each other by it: the same on 88.2% of 1,808 sq ft (B0 80.0%; the colour 95.0%).
+  - JUDGED BY THE OWNER'S ERASURES, 1,581 erased as turf: it calls 559 turf, 10 low plants, 478 porous (B0: 367, 44, 534).
+    The turf as kept after its "no": 221 of the 1,581 would still be turf.
+  - porous ground: 1,042 sq ft by it; 747 kept in patches of 4 sq ft or more. Still far under the owner's 5,000-10,000.
+FOUND (the code): the second labeller had spoken only for cells the PHONE called terrain; ARCore may call mulch, soil or
+a bed "tree", "unlabeled" or "structure", and those cells at the ground's height were never counted. NOW every ground-
+height cell not called paving or building is the second labeller's to name; the run says how many porous cells came
+from each of the phone's labels.
+MODAL, of the $15: nothing spent yet on this (the large labeller ran on the free CPU). S5 (the phone model taught) next.
