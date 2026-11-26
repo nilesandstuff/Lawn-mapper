@@ -5276,3 +5276,26 @@ S5 RUN 1 (the phone labeller taught on Modal's L4): about 30 minutes, then the 8
 no scale) and NOTHING WAS KEPT, the measurements with it. About $0.40 of the $15. NOW the 8-bit copy is tried on the
 matrix products only and its failure no longer loses the model. RUNNING TOTAL of the $15: about $0.40 (and the
 at-most $0.60 of 2026-11-20).
+
+## 76. The upload's list kept in memory, and the part's text made by the browser (2026-11-26)
+
+The owner, after the 2:10 pm walk: "the upload file isn't being stored in RAM right? I could see that being another
+reason why performance degrades as a walk goes on."
+
+HARD, from the code (not yet from a walk):
+  - The parts are not kept in the page's memory. Each is written to the phone's disk first (IndexedDB in the page;
+    with the app, handed to the app's own folder of parts on disk), and the recording is written to disk by ARCore.
+    The page's memory on that walk was 31 MB (section 75).
+  - But the outbox read its WHOLE waiting list back off the disk after every part it kept and every part it sent,
+    only to count it, and each sending round read every waiting part at once. The work per part grew with the
+    backlog, and the backlog stood the whole walk long (sending under way 346 of 347 s, section 75): a cost that grows
+    as the walk goes on, the shape the owner felt.
+  - Each part was also turned into text (base64, for the hand-over to the app) by a loop on the page's own thread.
+
+Changed: the waiting list (id, time, size, walk) is read off the disk once and kept in memory; a part's body is
+read only when it goes (scan/lib/outbox.js, tests unchanged and passing). The text is made by FileReader, the
+browser's native encoder (scan/public/app.js handPart).
+
+SPECULATION until a walk measures it: that this was a large part of the late-walk stutter. The next walk's
+performance read (stalls by minute, first half against second) is the test; the camera-picture fix in app 1.26 lands
+at the same time, so the two are told apart by when in the walk the stalls fall, not by their total.

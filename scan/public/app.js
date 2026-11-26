@@ -2109,10 +2109,15 @@ const nativeParts = () => { const N = window.LawnARNative; return N && typeof N.
 const partUrl = (p) => { const ref = /^ref:/.test(p.name) ? p.name.slice(4) : null; return ref != null ? `/api/scan/reference?map=${encodeURIComponent(ref)}&walk=${encodeURIComponent(p.walk)}` : `/api/scan/twin?walk=${encodeURIComponent(p.walk)}&part=${encodeURIComponent(p.name)}`; };
 async function handPart(p) {
   const N = nativeParts(); if (!N) return sendPart(p);
-  const u8 = new Uint8Array(await new Response(p.body).arrayBuffer());
-  let bin = '';
-  for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
-  return N.keepPart(partUrl(p), p.type || 'application/octet-stream', btoa(bin)) ? 'ok' : 'retry';
+  /* THE BROWSER'S OWN ENCODER (2026-11-26): the part was turned into text by a loop on the page's own thread, a part
+     at a time, while the walk ran. FileReader does the same in the browser's native code, off that thread. */
+  const b64 = await new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => { const u = String(r.result || ''); resolve(u.slice(u.indexOf(',') + 1)); };
+    r.onerror = () => reject(r.error || new Error('could not read the part'));
+    r.readAsDataURL(p.body instanceof Blob ? p.body : new Blob([p.body]));
+  });
+  return N.keepPart(partUrl(p), p.type || 'application/octet-stream', b64) ? 'ok' : 'retry';
 }
 /** The upload's state for the page: the outbox's own, with what the app holds added when the app sends. */
 function uploadsNow() {

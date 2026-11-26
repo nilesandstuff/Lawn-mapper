@@ -70,15 +70,28 @@ export function newOutbox({ store, send, onChange = () => {}, now = () => Date.n
      bucket) a part written again while its older copy waited in this round's list, or was on its way, must not be
      deleted when the older copy lands: live.json is rewritten every few seconds and at the walk's end, and the end's
      copy, the one with everything, was deleted as "sent". Only the copy that went is taken off the phone. */
+  /* THE LIST IN MEMORY (2026-11-26; the owner, after a walk whose stutters "seemed to have gotten worse as the walk
+     progressed": "the upload file isn't being stored in RAM right?"). It was not: the parts wait on the phone's disk.
+     But every part kept and every part sent read the WHOLE waiting list back off the disk to count it, and every
+     round read every waiting part's body at once, so the work per part grew with the backlog -- on the 2:10 pm walk
+     of 26 Nov about 1,400 parts, sending the whole walk long. Now the list (id, time, size, walk) is read off the
+     disk once, kept here, and a body is read only when its part goes. */
+  let index = null;
+  const load = async () => {
+    if (index) return index;
+    const m = new Map();
+    try { for (const x of await store.all()) m.set(x.id, { id: x.id, at: x.at, size: sizeOf(x.body), walk: x.walk }); } catch { /* an empty list; the next look tries again */ return m; }
+    return (index = index || m);
+  };
   const settle = async (item) => {
     const cur = store.get ? await store.get(item.id) : item;
-    if (!cur || cur.at === item.at) await store.del(item.id);
+    if (!cur || cur.at === item.at) { await store.del(item.id); const ix = await load(); if (ix.get(item.id)?.at === item.at) ix.delete(item.id); }
     else kickAgain = true;
   };
   const emit = async () => {
     try {
-      const all = await store.all();
-      st.pending = all.length; st.bytes = all.reduce((a, x) => a + sizeOf(x.body), 0); st.walks = new Set(all.map((x) => x.walk)).size;
+      const ix = [...(await load()).values()];
+      st.pending = ix.length; st.bytes = ix.reduce((a, x) => a + x.size, 0); st.walks = new Set(ix.map((x) => x.walk)).size;
     } catch { /* the count can wait */ }
     onChange({ ...st });
   };
@@ -91,7 +104,7 @@ export function newOutbox({ store, send, onChange = () => {}, now = () => Date.n
       for (;;) {
         kickAgain = false; // what arrives from here on is seen by the next look
         if (st.off || held) break;
-        const all = await store.all();
+        const all = [...(await load()).values()].sort((a, b) => a.at - b.at);
         if (!all.length) break;
         st.sending = true; st.waitingMs = 0; await emit();
         /* SEVERAL AT ONCE (2026-11-12, the first walk that timed itself: 407 parts, 18.5 MB, 25 minutes for a 4-minute
@@ -99,8 +112,11 @@ export function newOutbox({ store, send, onChange = () => {}, now = () => Date.n
            The wait is the round trip, not the bytes, so `parallel` parts go together. A part that must wait stops
            the round as before; the others of its group finish first. */
         let failed = false;
-        const one = async (item) => {
-          let r;
+        const one = async (entry) => {
+          let r, item;
+          try { item = await store.get(entry.id); } catch { item = undefined; }
+          if (item === null) { const ix = await load(); if (ix.get(entry.id) === entry) ix.delete(entry.id); return 'ok'; } // gone already
+          if (!item) return 'retry';
           try { r = await send(item); } catch (e) { r = 'retry'; st.lastError = e?.message || 'no connection'; }
           if (r === 'ok') { await settle(item); st.sent++; st.sentBytes += sizeOf(item.body); st.lastError = null; backoff = 0; await emit(); }
           else if (r === 'drop') { await settle(item); st.dropped++; st.lastDrop = `${item.name}: ${item.dropWhy || 'refused'}`; await emit(); }
@@ -129,7 +145,9 @@ export function newOutbox({ store, send, onChange = () => {}, now = () => Date.n
     status: () => ({ ...st }),
     /** Keep a part on the phone and send it when it can. */
     async add(walk, name, type, body) {
-      await store.put({ id: `${walk}/${name}`, walk, name, type, body, at: now() + (seq++) * 1e-3 });
+      const x = { id: `${walk}/${name}`, walk, name, type, body, at: now() + (seq++) * 1e-3 };
+      await store.put(x);
+      (await load()).set(x.id, { id: x.id, at: x.at, size: sizeOf(body), walk });
       await emit();
       run();
     },
