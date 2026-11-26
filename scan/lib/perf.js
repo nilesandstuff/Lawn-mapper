@@ -87,6 +87,10 @@ export function newPerf({ now = () => performance.now() } = {}) {
   let lastPos = null, lastT = null, stillFor = 0, jumps = 0, jumpMax = 0, stillS = 0;
   const up = { parts: 0, ok: 0, retry: 0, dropped: 0, bytes: 0, ms: 0, openedAt: null, doneAt: null };
   const bySend = { on: { gap: hist(1000), n: 0, stalls: 0, ms: 0 }, off: { gap: hist(1000), n: 0, stalls: 0, ms: 0 } };
+  /* MINUTE BY MINUTE (2026-11-26; the owner: the stutters "seemed to have gotten worse as the walk progressed"): the
+     frames, stalls and the page's own work in each minute of the walk, so a walk says whether it slows as it goes. */
+  const MIN_TOP = 90, byMin = [];
+  const minOf = (t) => { const m = Math.min(MIN_TOP - 1, Math.max(0, Math.floor((t - (firstFrameAt ?? t)) / 60000))); return byMin[m] || (byMin[m] = { n: 0, stalls: 0, workMs: 0 }); };
   return {
     /** Seconds since the page began, kept under `name` the first time it is said. */
     stage(name) { if (stages[name] == null) stages[name] = r1((now() - t0) / 1000); },
@@ -101,6 +105,8 @@ export function newPerf({ now = () => performance.now() } = {}) {
            sending when the frame began. A send is not the page's work on a frame, so the split is the only way to see it. */
         if (sending != null) { const b = sending ? bySend.on : bySend.off; b.gap.add(g); b.n++; if (g > STALL_MS) b.stalls++; b.ms += g; }
       }
+      const mb = minOf(start); mb.n++; mb.workMs += end - start;
+      if (lastStart != null && start - lastStart > STALL_MS) mb.stalls++;
       lastStart = start; lastFrameAt = end;
       work.add(end - start);
     },
@@ -135,6 +141,7 @@ export function newPerf({ now = () => performance.now() } = {}) {
           gapMs: { median: gap.q(0.5), p95: gap.q(0.95), p99: gap.q(0.99), worst: Math.round(gap.max()) },
           longShare: gap.n() ? +(long / gap.n()).toFixed(3) : null, stalls,
           workMs: { median: work.q(0.5), p95: work.q(0.95), worst: Math.round(work.max()) },
+          byMinute: Array.from(byMin, (b) => (b ? { n: b.n, stalls: b.stalls, workMs: r1(b.workMs / Math.max(1, b.n)) } : { n: 0, stalls: 0, workMs: null })),
           workShare: walkS > 0 && work.n() ? +((work.mean() * work.n()) / (walkS * 1000)).toFixed(2) : null,
           bySend: bySend.on.n + bySend.off.n ? Object.fromEntries(['on', 'off'].map((k) => [k, { n: bySend[k].n, s: Math.round(bySend[k].ms / 1000), gapMedian: bySend[k].gap.q(0.5), gapP95: bySend[k].gap.q(0.95), stallsPerMin: bySend[k].ms > 0 ? r1(bySend[k].stalls / (bySend[k].ms / 60000)) : null }])) : null,
         } : null,
@@ -170,6 +177,7 @@ export function perfLines(p) {
     `speed, downloads: ${res || 'none seen'}`,
     `speed, frames: ${f ? `${f.n} at ${f.perS ?? '?'} a second; gap between frames median ${f.gapMs.median} ms, 95% under ${f.gapMs.p95}, 99% under ${f.gapMs.p99}, worst ${f.gapMs.worst}; ${Math.round((f.longShare || 0) * 100)}% of gaps over ${LONG_MS} ms, ${f.stalls} stalls over ${STALL_MS} ms; the page's own work a frame median ${f.workMs.median} ms, 95% under ${f.workMs.p95}, worst ${f.workMs.worst} (${Math.round((f.workShare || 0) * 100)}% of the walk's time)` : 'no frames'}`,
     ...(f?.bySend ? [`speed, frames while a part was being sent / while none was: ${['on', 'off'].map((k) => { const b = f.bySend[k]; return b.n ? `${b.s} s, gap median ${b.gapMedian} ms, 95% under ${b.gapP95}, ${b.stallsPerMin} stalls over ${STALL_MS} ms a minute` : 'none'; }).join(' / ')}`] : []),
+    ...(f?.byMinute?.length > 1 ? [`speed, minute by minute (frames / stalls / the page's work a frame, ms): ${f.byMinute.map((b, i) => `${i + 1}: ${b.n}/${b.stalls}/${b.workMs ?? '-'}`).join(', ')}`] : []),
     `speed, jitter: ${j ? `${j.stillMmPerFrame ? `held still ${j.stillS} s, its place moved median ${j.stillMmPerFrame.median} mm a frame, 95% under ${j.stillMmPerFrame.p95}, worst ${j.stillMmPerFrame.worst}` : 'never held still long enough to say'}; ${j.jumps} jumps over ${JUMP_M * 100} cm in one frame${j.jumps ? ` (worst ${j.jumpWorstCm} cm)` : ''}` : 'no poses'}`,
     `speed, where a frame's time goes: ${where || 'not timed'}`,
     `speed, waits: ${waits || 'none timed'}`,

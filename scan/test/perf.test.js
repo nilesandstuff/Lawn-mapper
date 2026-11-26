@@ -58,5 +58,15 @@ const check = (name, ok, detail = '') => { console.log(`${ok ? 'PASS' : 'FAIL'} 
   ]);
   check('downloads by group: size, time, and what the phone already had', r['lidar model'].kb === 2500 && r['lidar model'].slowestMs === 4200 && r.engine.cached === 1 && !r.upload && !JSON.stringify(r).includes('secret'), JSON.stringify(r));
 }
+// minute by minute: a walk that slows as it goes says so
+{
+  const P = newPerf({ now: () => 0 });
+  let t = 0;
+  for (; t < 60000; t += 33) P.frame(t, t + 10);            // minute 1: smooth, 10 ms of work
+  for (; t < 120000; t += 400) P.frame(t, t + 30);          // minute 2: a stall every frame, 30 ms of work
+  const f = P.summary().frames, m = f.byMinute;
+  check('minute by minute: two minutes, the second all stalls', m.length === 2 && m[0].stalls === 0 && m[0].workMs === 10 && m[1].stalls > 100 && m[1].workMs === 30, JSON.stringify(m));
+  check('and a line for it', perfLines(P.summary()).some((l) => l.startsWith('speed, minute by minute') && l.includes('2: ')), '');
+}
 console.log(failures ? `\n${failures} FAILED` : '\nperf: ok');
 process.exit(failures ? 1 : 0);
