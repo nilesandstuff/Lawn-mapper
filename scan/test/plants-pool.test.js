@@ -18,3 +18,14 @@ assert.deepEqual(doc.seenHigh, { a: 1 }); assert.equal(doc.walks, 2);
 assert.equal(poolPlants([null, {}]).doc, null);
 assert.deepEqual(poolPlants([A]).doc.boxes, A.boxes, 'one walk: itself');
 console.log('plants-pool: ok');
+// the open air above 8 ft, one band a square: the longest any walk claimed, cut where a kept plant stands in it
+{ const { joinBands } = await import('../tools/plants-pool.mjs');
+  const band = (i0, w, pairs) => ({ cellM: 0.6096, i0, j0: 0, w, h: 1, unitDm: 2, notSeen: 255, enc: 'zlib+base64', bands: deflateSync(Buffer.from(Uint8Array.from(pairs.flat()))).toString('base64') });
+  const A = band(0, 3, [[20, 30], [255, 255], [15, 40]]), B = band(1, 3, [[20, 60], [0, 0], [255, 255]]);
+  // a plant kept in square 1 (feet 2-3) from 70 to 90 dm (35-45 units): B's band 20-60 cut to its longer part (above on a tie)
+  const j = joinBands([A, B], [[2, 0, 70, 90]], 0.3048);
+  const a = [...inflateSync(Buffer.from(j.bands, 'base64'))];
+  assert.deepEqual([j.i0, j.w], [0, 4]);
+  assert.deepEqual(a, [20, 30, 45, 60, 15, 40, 255, 255], 'the longest, cut at the plant (the part above it, the parts being equal); never looked stays');
+  assert.equal(joinBands([], [], 0.3048), null); }
+console.log('plants-pool (the bands): ok');
