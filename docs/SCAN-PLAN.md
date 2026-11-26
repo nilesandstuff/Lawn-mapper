@@ -1845,6 +1845,9 @@ C# and keep only what ARCore and ARKit share). Until then, these keep the work p
   - THE PAGE AND THE STUDIES DO THE WORK; THE APP ONLY REPORTS. A new ability goes in the bridge as data any phone
     can give (a pose, a depth grid with a 0-1 confidence, a picture with its projection), never as an ARCore idea the
     page must know about.
+  - THE OWNER'S LINK FOR THE LABELS ON IPHONES (2026-11-26, "save this link for when we get iPhones in the mix"):
+    https://developer.apple.com/documentation/coreml/using-core-ml-for-semantic-image-segmentation -- Apple's Core ML
+    running a segmentation model on the camera's pictures, on the phone. Not read or tried yet by the core session.
   - ARKIT HAS NO OUTDOOR LABELS. Scene Semantics (sky, building, tree, terrain...) is ARCore's alone; ARKit only
     classifies a LiDAR mesh into indoor kinds, and ARCore on iOS has no semantics or depth. Anything that needs labels
     must also work with them missing, or take them from our own model (the Segformer the studies already run, on the

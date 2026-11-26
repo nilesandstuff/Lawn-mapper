@@ -1,0 +1,99 @@
+name: S3. After a walk
+
+# EACH WALK UPDATES ITS MAP BY ITSELF (core session, 2026-11-26). The owner, 2026-11-25: "Each walk should be an update
+# to both the reference (when it's a good walk) and the fused map." Every hour: the walks of the last few days that
+# have finished being sent, by their map (scan/tools/after-walk.mjs plan). For a map with a walk not yet taken up, the
+# plants (plants.py, then plants-pool.mjs) and the ground's colours (surfaces.py) of ALL its walks of late are made
+# again as one and kept with the map; the start page puts the plants into the map's record when the map next opens,
+# and the fused model is made again from them there. Nothing runs when no walk is new.
+#
+# By hand: `walks` = "walk,walk,..." (newest first) does those walks now and marks them.
+# Free CPU. Prints walk ids, counts and sizes only: no map ids, no places, no pictures.
+on:
+  schedule:
+    - cron: '23 * * * *'
+  workflow_dispatch:
+    inputs:
+      walks:
+        description: 'Walks of ONE map, newest first, comma separated; empty to look for new walks'
+        default: ''
+      adopt:
+        description: 'A walk that names no map takes another walk''s: "<walk>:<walk whose map it takes>"; empty for none'
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scan-after-walk
+  cancel-in-progress: false
+
+jobs:
+  after:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+      - name: A walk that names no map takes another walk's
+        if: ${{ inputs.adopt != '' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ADOPT: ${{ inputs.adopt }}
+        run: |
+          if [[ "$ADOPT" =~ ^[0-9]+:[0-9]+$ ]]; then node scan/tools/after-walk.mjs adopt "${ADOPT%%:*}" "${ADOPT##*:}" | tee adopt.txt; else echo "adopt: not <walk>:<walk>"; exit 1; fi
+      - name: Which maps have a new walk
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WALKS: ${{ inputs.walks }}
+        run: |
+          if [[ "$WALKS" =~ ^[0-9,]+$ ]]; then echo "$WALKS" > after-plan.txt; echo "AFTER A WALK: asked by hand for walks ${WALKS//,/, }."; else node scan/tools/after-walk.mjs plan after-plan.txt; fi
+          echo "DUE=$(grep -c . after-plan.txt || true)" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v5
+        if: ${{ env.DUE != '0' }}
+        with:
+          python-version: '3.11'
+      - name: The walks' plants and ground, made again as one
+        if: ${{ env.DUE != '0' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          MAPS_READ_TOKEN: ${{ secrets.MAPS_READ_TOKEN }}
+          SITE: https://${{ vars.CUSTOM_DOMAIN }}
+        run: |
+          set -o pipefail
+          pip install --quiet numpy scipy
+          : > after.txt
+          n=0
+          while IFS= read -r LINE; do
+            [ -z "$LINE" ] && continue
+            n=$((n + 1)); FIRST="${LINE%%,*}"; DIRS=""
+            echo "MAP $n: walks ${LINE//,/, }" | tee -a after.txt
+            for W in ${LINE//,/ }; do
+              D="m$n-$W"
+              node scan/tools/twin-r2.mjs parts "$W" "$D" 'cloud-*' 'labels-*' view-kind.bin view-rgb.bin view.json start.json owner-trunks.json live.json meta.json 'track-*' 'keys-*' 'key-*.sem' 'key-*.rdepth' | tail -1 | tee -a after.txt
+              # the walk on its map by its own agreeing corners; a walk they do not vouch for gives no plants and no ground
+              node scan/tools/walk-fit.mjs "$D" | tee -a after.txt || true
+              python scan/tools/plants.py "$D" "$D/plants.json" 2>&1 | grep -E "ON THE MAP|Nothing kept|neither" | cut -c1-400 | tee -a after.txt || true
+              DIRS="$DIRS $D"
+            done
+            # the plants of every walk as one, kept with the map (the one before is a backup)
+            node scan/tools/plants-pool.mjs "m$n-$FIRST" $DIRS | tee -a after.txt
+            node scan/tools/plants-keep.mjs "$FIRST" "m$n-$FIRST" | tee -a after.txt || true
+            # the ground's colours of every walk as one, kept with the map
+            node scan/tools/lawn-prep.mjs "m$n-$FIRST" | tee -a after.txt || true
+            python scan/tools/surfaces.py $DIRS --keep "m$n-$FIRST/surfaces-map.json" | grep -E "THE GROUND AS|WALK . AGAINST|THE PHONE'S OWN LABELS|Kept for" | cut -c1-500 | tee -a after.txt || true
+            node scan/tools/surfaces-keep.mjs "$FIRST" "m$n-$FIRST" | tee -a after.txt || true
+            node scan/tools/after-walk.mjs done "$LINE" "m$n-$FIRST" | tee -a after.txt
+            rm -rf m$n-*
+          done < after-plan.txt
+      - name: The answer
+        if: ${{ always() }}
+        run: |
+          echo "--------------------------------------------------------------"
+          if [ -s adopt.txt ]; then cat adopt.txt; fi
+          if [ -s after.txt ]; then cut -c1-600 after.txt; else echo "No walk is new: nothing was made again."; fi
