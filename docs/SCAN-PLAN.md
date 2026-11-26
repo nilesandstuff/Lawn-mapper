@@ -5171,3 +5171,25 @@ has a settled walk not yet taken up. The deploy's last lines: "After a walk: yes
 been due since; the first walk after this is the test (an S3 run with event workflow_dispatch within about an hour of
 the walk's last part, and auto/_dispatch.json written). GitHub's own schedule fired S3 once by itself, at 6:09 am Thu
 Eastern (about 9 hours after the first slot): nothing was due.
+
+
+## 74. One kind of ground a square; porous ground and leaves by colour; more ground from the walks already made (2026-11-26)
+
+The owner, 2026-11-26: "Make it so only 1 type of ground (paving, turf, porous ground) can occupy the same space
+vertically. And at ground level, plant has to be mutually exclusive too (but a plant can be ABOVE other types of
+ground)... find out how we can get more ground/plants/trees/grass on the map from the walks we already have mapped...
+the south side of the lawn had lots of tree leaves on it... we shouldn't really guess what's under the leaves."
+BUILT (surfaces.py): one byte a square, paving over porous over turf; a plant whose lowest part is within 12 in of the
+ground (the pooled plants) takes the square from the ground; the phone's "terrain" split by the picture's colour at
+the point (view-rgb.bin for the walk's points, the JPG for the pictures' cast cells): green turf; brown within 6 ft of
+a plant is LEAVES, not called; brown elsewhere in patches of 4 sq ft or more porous ground.
+HARD, S3 run 5 (9:42 am Thu Eastern; the two walks of 2026-11-24, through the reference):
+  - of 371,010 terrain points 196,138 green, 23,895 brown, 91,678 with no colour; squares green 3,499 sq ft, brown 373
+    (243 near plants, so leaves; 97 porous). 226 sq ft taken by plants standing on them.
+  - MORE GROUND, MEASURED BY THE TWO WALKS AGREEING: as kept until now (pictures cast to 8 m, raw depth only), the
+    walks both called 1,128 sq ft and agreed on 93.5%; to 12 m, 1,147 and 93.6%; to 12 m WITH THE SMOOTHED DEPTH where
+    the raw has none, 3,937 sq ft and 94.8% (paving within 2 ft of the other's 93%, against 91%); to 16 m with it,
+    4,148 and 94.7%. Grass 5,879 -> 12,182 sq ft, paving 1,150 -> 2,583. KEPT: 12 m with the smoothed depth.
+SPECULATION: that late-November turf reading tan is part of the brown; that the smoothed depth's agreement holds on
+walks that do not look at the same edges twice. Neither measured. Plants by the same means (more of the pictures) not
+tried yet.

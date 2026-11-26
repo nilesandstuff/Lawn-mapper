@@ -92,12 +92,9 @@ jobs:
             # (the traced lawn is not read here: the comparison with it is the surfaces task's, by hand)
             # turf, paving and porous ground, one kind a square: the ground's own colour tells turf from brown, brown near a
             # plant is fallen leaves and not called, and a plant standing on a square takes it from the ground (surfaces.py)
-            python scan/tools/surfaces.py $DIRS --colour --plants "m$n-$FIRST/plants-map.json" --keep "m$n-$FIRST/surfaces-map.json" | grep -E "THE GROUND AS|WALK . AGAINST|THE PHONE'S OWN LABELS|OWN COLOUR|PLANTS ON THE SAME|Kept for" | cut -c1-600 | tee -a after.txt || true
-            # HOW MUCH MORE THE PICTURES COULD GIVE (said, not kept): their depth cast farther, and the smoothed depth in the raw one's holes
-            for X in "--reach 12" "--reach 12 --smooth" "--reach 16 --smooth"; do
-              echo "  IF CAST WITH $X:" | tee -a after.txt
-              python scan/tools/surfaces.py $DIRS --colour $X --plants "m$n-$FIRST/plants-map.json" | grep -E "WALK . AGAINST|THE PHONE'S OWN LABELS: [0-9]|OWN COLOUR" | head -3 | cut -c1-500 | tee -a after.txt || true
-            done
+            python scan/tools/surfaces.py $DIRS --colour --reach 12 --smooth --plants "m$n-$FIRST/plants-map.json" --keep "m$n-$FIRST/surfaces-map.json" | grep -E "THE GROUND AS|WALK . AGAINST|THE PHONE'S OWN LABELS|OWN COLOUR|PLANTS ON THE SAME|Kept for" | cut -c1-600 | tee -a after.txt || true
+            # (S3 run 5, 2026-11-26: cast to 12 m with the smoothed depth in the raw one's holes, the two walks both called
+            # 3,937 sq ft and agreed on 94.8% of it; as before, 1,128 sq ft and 93.5%. So kept that way. docs/SCAN-PLAN.md 74)
             node scan/tools/surfaces-keep.mjs "$FIRST" "m$n-$FIRST" | tee -a after.txt || true
             # each walk names the walks of its map, for the 3D view of them all together
             node -e "require('fs').writeFileSync('mapwalks.json', JSON.stringify({ v: 1, walks: process.argv[1].split(',') }))" "$LINE"
