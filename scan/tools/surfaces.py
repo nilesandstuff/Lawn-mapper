@@ -525,6 +525,28 @@ def main():
                     both = any1 & any2
                     same = sum((per[q][k] & per[r][k]) for k in per[q])
                     print(f"  THE SECOND LABELLER, WALK {q + 1} AGAINST WALK {r + 1}: both call {int(both.sum() * sq):,} sq ft; the same on {100 * same.sum() / max(1, both.sum()):.1f}% of it.")
+    # JUDGED BY THE OWNER'S ERASURES (2026-11-26): the ground squares the owner erased as wrong, each with the kind it had
+    # been drawn as. For each labeller: of the squares erased as TURF, how many it too calls turf (the same mistake) and
+    # how many it calls something else; the same for paving and porous ground.
+    if edits and isinstance(edits.get("erased"), list) and (COLOUR or ADE):
+        f = max(1, int(round(float(edits.get("cellM") or CELL) / CELL)))
+        cuts = {}
+        for e in edits["erased"]:
+            if len(e) >= 4 and e[0] == "g":
+                for da in range(f):
+                    for db in range(f):
+                        c_, r_ = int(e[1]) * f + da - i0, int(e[2]) * f + db - j0
+                        if 0 <= c_ < W and 0 <= r_ < H:
+                            cuts.setdefault(str(e[3]), []).append((r_, c_))
+        for kind_, cells in cuts.items():
+            rr, cc = np.array([x[0] for x in cells]), np.array([x[1] for x in cells])
+            parts = [f"{len(cells):,} erased as {kind_}"]
+            if COLOUR:
+                parts.append(f"the colour calls {int(green_sq[rr, cc].sum()):,} green, {int(brown_sq[rr, cc].sum()):,} brown")
+            if ADE:
+                ag, _ = ade_grids(np.ones(len(E), bool))
+                parts.append("the second labeller calls " + ", ".join(f"{int(v[rr, cc].sum()):,} {k}" for k, v in ag.items()))
+            print("  JUDGED BY THE OWNER'S ERASURES: " + "; ".join(parts) + ".")
     if plants:
         print(f"  THE PLANTS ON THE SAME SQUARES: {int(plant_any.sum() * (CELL * FT) ** 2):,} sq ft under a plant; {int(plant_ground.sum() * (CELL * FT) ** 2):,} where it stands within {PLANT_GROUND_DM * 4} in of the ground, so no ground is called there.")
     for name, (pav, gra) in ways.items():

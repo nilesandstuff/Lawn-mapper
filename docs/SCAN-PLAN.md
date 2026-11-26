@@ -5204,3 +5204,19 @@ ground called; brown taken for leaves 1,207 sq ft, porous 41.
 NOT KEPT in run 7: 211 KB without the open air, over the 160 KB a map's record has room for. Now (plants-keep.mjs) the
 plants go in 2 ft squares when a foot is too many, before any open air is dropped (run 8).
 SPECULATION: the 2,098 sq ft "standing within 12 in" include fallen leaves the phone calls tree; not measured.
+
+PLANTS A FOOT A SQUARE AGAIN, AND THE OWNER'S ERASURES (2026-11-26): plants-keep.mjs keeps the whole file a foot a square
+(plants/<map>.json: the scan page draws and fuses from it) and a copy coarse enough for the map's record
+(plants/<map>-record.json; GET /api/scan/plants&for=record). The owner's erasures (edits/<map>.json) are left out of the
+pooled plants and the kept ground; plant erasures made on 2 ft squares cover the four foot squares under them; the
+erasures now keep the size they were made at (plantsCellM).
+HARD, S3 run 9 (scan deploy 617): the owner had erased 396 plant squares (of 2 ft) and 1,727 ground squares (of 1 ft);
+1,208 pooled plant squares left out for them; plants kept 12,972 squares of 1 ft (216 KB), the record's copy 3,726 of
+2 ft (75 KB).
+THE SECOND LABELLER, A STUDY (ground_labels.py: SegFormer-B0, ADE20K, small enough for a phone), same run: of the
+terrain cells it labelled, turf 686,921, low plants 72,701, porous 164,334, other 157,073; squares turf 8,693 sq ft, low
+plants 399, porous 2,015. Where the colour says green it says turf on 83%, low plants on 2%. THE WALKS AGAINST EACH
+OTHER: by it, the same on 80.0% of 2,042 sq ft; by the colour (green or brown), 96.0% of 2,138 sq ft. So, off the shelf,
+it is the LESS self-consistent; its porous (2,015 sq ft against the colour's 41 + 1,207 leaves) fits pavement_study's
+"November lawn reads as earth". NOT ADOPTED. Agreement is not correctness (the colour can be wrong the same way twice);
+the owner's erasures are the judge (being added).

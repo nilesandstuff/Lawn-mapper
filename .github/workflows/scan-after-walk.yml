@@ -107,7 +107,7 @@ jobs:
             if [ -z "$NO_ADE" ]; then
               pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu > /dev/null 2>&1 && pip install --quiet transformers > /dev/null 2>&1 \
                 && python scan/tools/ground_labels.py $DIRS | tee -a after.txt \
-                && python scan/tools/surfaces.py $DIRS --colour --reach 12 --smooth --ade --plants "m$n-$FIRST/plants-map.json" | grep -E "SECOND LABELLER|THE COLOUR, WALK" | cut -c1-600 | tee -a after.txt || echo "  The second labeller: could not be run." | tee -a after.txt
+                && python scan/tools/surfaces.py $DIRS --colour --reach 12 --smooth --ade --plants "m$n-$FIRST/plants-map.json" --edits "m$n-edits.json" | grep -E "SECOND LABELLER|THE COLOUR, WALK|OWNER'S ERASURES" | cut -c1-600 | tee -a after.txt || echo "  The second labeller: could not be run." | tee -a after.txt
             fi
             # each walk names the walks of its map, for the 3D view of them all together
             node -e "require('fs').writeFileSync('mapwalks.json', JSON.stringify({ v: 1, walks: process.argv[1].split(',') }))" "$LINE"
