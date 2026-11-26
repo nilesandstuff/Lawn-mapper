@@ -5193,3 +5193,14 @@ HARD, S3 run 5 (9:42 am Thu Eastern; the two walks of 2026-11-24, through the re
 SPECULATION: that late-November turf reading tan is part of the brown; that the smoothed depth's agreement holds on
 walks that do not look at the same edges twice. Neither measured. Plants by the same means (more of the pictures) not
 tried yet.
+
+THE PICTURES' OWN PLANTS (cast_plants.py, 2026-11-26): each picture's cells the phone labelled tree, its raw depth to
+12 m and the smoothed depth in the raw one's holes, put beside the walk's points (in the runner only) before plants.py.
+HARD, S3 run 7: 190,101 and 345,079 such points added (one a 4 in cube) to the walks' 128,550 and 142,449. Plant squares
+1,650 -> 7,255 and 2,267 -> 20,941; as one 14,176 (3,205 before); SEEN BY BOTH WALKS 2,806 (258 before): of the 21:48
+walk's squares 23% are the 22:04 walk's too, against 13%. The best shift shares 2,905 (1 ft east, 4 ft south): the
+walks are in step. Then 14,107 sq ft lie under a plant; 2,098 sq ft have a plant within 12 in of the ground and so no
+ground called; brown taken for leaves 1,207 sq ft, porous 41.
+NOT KEPT in run 7: 211 KB without the open air, over the 160 KB a map's record has room for. Now (plants-keep.mjs) the
+plants go in 2 ft squares when a foot is too many, before any open air is dropped (run 8).
+SPECULATION: the 2,098 sq ft "standing within 12 in" include fallen leaves the phone calls tree; not measured.
