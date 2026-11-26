@@ -53,12 +53,18 @@ service = "lawn-mapper"
 [vars]
 LAWNMAP_HOST = "${lawnmap}"
 # Admin only while the tracking test runs (docs/SCAN-PLAN.md phase 1).
-ADMIN_ONLY = "${adminOnly ? '1' : '0'}"
+ADMIN_ONLY = "${adminOnly ? '1' : '0'}"${process.env.GH_REPO ? `
+GH_REPO = "${process.env.GH_REPO}"
+GH_REF = "${process.env.GH_REF || 'main'}"` : ''}
 
 [[routes]]
 pattern = "${domain}"
 custom_domain = true
-${d1Id ? `
+${process.env.GH_REPO ? `
+# THE SITE STARTS "S3. AFTER A WALK" ITSELF (src/after.js): its own clock, every 20 minutes, and where to start it
+[triggers]
+crons = ["*/20 * * * *"]
+` : ''}${d1Id ? `
 # The tool's own database (scan/schema.sql): the walks' results, so nobody copies and pastes them.
 [[d1_databases]]
 binding = "DB"

@@ -142,6 +142,10 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+          # the site starts "S3. After a walk" itself (scan/src/after.js): where, and the owner's token to do it with
+          GH_REPO: ${{ github.repository }}
+          GH_REF: ${{ github.event.repository.default_branch }}
+          SCAN_DISPATCH_TOKEN: ${{ secrets.SCAN_DISPATCH_TOKEN }}
         run: |
           node scan/tools/prepare.mjs
           # the built page opened in a browser first (scan/tools/page-check.mjs): a page that throws is not deployed
@@ -158,6 +162,12 @@ jobs:
             d=$(sed -n 's/^pattern = "\(.*\)"$/\1/p' scan/wrangler.toml)
             who=$(grep -q 'ADMIN_ONLY = "1"' scan/wrangler.toml && echo "admin only" || echo "open to everyone")
             echo "SCAN_STATE=live ($who) at https://$d" >> "$GITHUB_ENV"
+            # the token never printed: wrangler reads it from its input and says only that it was kept
+            if [ -n "$SCAN_DISPATCH_TOKEN" ]; then
+              if printf '%s' "$SCAN_DISPATCH_TOKEN" | npx wrangler secret put GH_DISPATCH_TOKEN --config scan/wrangler.toml > secret.log 2>&1; then echo "SCAN_AFTER=yes: a walk starts its map's update by itself (every 20 minutes the site looks)" >> "$GITHUB_ENV"; else echo "SCAN_AFTER=NO: the token could not be given to the site ($(grep -m1 -i error secret.log | cut -c1-120))" >> "$GITHUB_ENV"; fi
+            else
+              echo "SCAN_AFTER=no: no SCAN_DISPATCH_TOKEN secret, so a walk's map waits for GitHub's own hourly schedule (hours late)" >> "$GITHUB_ENV"
+            fi
           else
             tail -30 scan-deploy.log
             echo "SCAN_STATE=did not deploy -- see the step above" >> "$GITHUB_ENV"
@@ -880,6 +890,7 @@ jobs:
           case "${{ inputs.task || 'deploy' }}" in
             deploy)
               echo "Scan site: ${SCAN_STATE:-not deployed -- see the steps above}"
+              if [ -n "$SCAN_AFTER" ]; then echo "After a walk: $SCAN_AFTER"; fi
               echo "Engine: ${SCAN_ENGINE:-unknown}"
               if [ -n "$SCAN_R2" ]; then echo "Twins: kept in the $SCAN_R2 bucket, viewed at /twin.html"; else echo "Twins: NOT kept (no bucket: see the twin bucket step)"; fi
               echo "Open it from the dashboard's Yard AR card (admin account), on each phone." ;;

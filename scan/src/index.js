@@ -14,6 +14,7 @@
  * page (404) and no data. It fails closed.
  */
 
+import { afterWalks } from './after.js';
 import { walks } from './walks.js';
 import { twin, reference, warp, things, plants, marks, surfaces, edits } from './twin.js';
 import { recording } from './recording.js';
@@ -70,6 +71,10 @@ function privately(res, path) {
 }
 
 export default {
+  // every 20 minutes (scan/wrangler.toml [triggers], prepare.mjs): start S3 when a walk is due (src/after.js)
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(afterWalks(env).then((r) => console.log(`after a walk: ${JSON.stringify(r)}`), (e) => console.log(`after a walk: ${e.message}`)));
+  },
   async fetch(request, env) {
     const url = new URL(request.url);
     // the app's pairing (src/app.js) is a sign-in too: it carries its own one-time proof
