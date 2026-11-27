@@ -5831,3 +5831,13 @@ SKY_NEAR_SHARE (0.3) of, nearer than 30 m, is never sky; only the naming prep pa
 studies are as they were). (3) The owner's names carry onto the things made again where a thing is unchanged; a name
 on a thing now split is dropped (which piece was meant is not known); the page now keeps which shape a name was
 given on (picked), so from here a name follows the shape tapped. name_prep_selftest.py covers all three.
+
+## 101. The map update ran back to back all afternoon (Fri 2026-11-27, 3:20-7 pm Eastern)
+
+HARD: S4 runs 46063018089 (1h04m), 46069719957, 46076087462 (queued 30 min, then 40 min), 46082003803 ... each started
+by the site's hourly clock, each queued behind the last, each "1 map due" for the same six walks. The map has more
+than POOL_MAX (6) walks; only the six newest are pooled and named in its marker, so the older ones were "not taken
+up" every hour, for ever. It also left no gap for a deploy or the naming prep (only one reader of the bucket at a time).
+FIXED (scan/lib/afterplan.js planOf, used by the workflow's own planner and the site's clock): when a map's marker
+is full, only a walk newer than its oldest walk counts as new. The workflow's planner reads it from the branch at
+once; the site's clock from the next scan deploy.
