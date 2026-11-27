@@ -5525,3 +5525,12 @@ sq ft lying flat fell in small pieces. Run again: section 85.
 SPECULATION: the paving holdout falling run on run (90, 46, 32%) may not be noise. With fewer squares solid, a hidden
 block on a path beside a wall now has empty squares where it had solid ones on its rim, and less than half its rim is
 called, so the fill leaves it. If so the fill should count a built square as part of the rim (called, not paving).
+
+## 85. Section 84's deck grouping on the lot (S4 run 45940511517, 11:32 pm Thu - 12:05 am Fri Eastern, head 494d92e)
+
+HARD: SOLID 1,029 sq ft (unchanged); OPEN 86 sq ft (was 49), boards 3.0 ft up in the middle. Of the 187 sq ft lying
+flat 1-6 ft up, 101 sq ft still fell in pieces under 16 sq ft even with pieces within 2 ft taken as one. Fill held
+out: turf 70% right, paving 31% (68 squares). Built things kept with the plants, 10 KB. No errors.
+
+Waiting on the owner's eyes: whether the back deck is now open, and what the 1,029 sq ft of solid still holds that
+is not a structure, or misses that is.
