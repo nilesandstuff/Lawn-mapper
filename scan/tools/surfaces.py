@@ -819,7 +819,9 @@ def main():
         ft_sq = CELL * FT
         l_solid, l_deck = np.zeros((H, W), bool), np.zeros((H, W), bool)
         l_top = np.zeros((H, W))
-        claimed = np.zeros((H, W), bool)
+        claimed = np.zeros((H, W), bool)       # a shape's footprint and the band round it: no walls of the walks' own there
+        claimed_fp = np.zeros((H, W), bool)    # the footprints alone: no deck of the walks' own there (a deck beside a house is in its band)
+        deck_part = 0
         verdict = {"confirmed": [], "deck": 0, "tree": 0, "unseen": 0, "nothing": 0}
         offs_all, trimmed_tree, moved_in, moved_out = [], 0, 0, 0
         band_sq = int(np.ceil(LIDAR_BAND_FT / ft_sq))
@@ -849,6 +851,7 @@ def main():
                     sub = l_deck[y0:y1, x0:x1]; sub |= (fp | flat_l)
                     l_top[y0:y1, x0:x1] = np.where(fp | flat_l, np.where(p50w[y0:y1, x0:x1] > 0, p50w[y0:y1, x0:x1], LT[y0:y1, x0:x1]), l_top[y0:y1, x0:x1])
                     claimed[y0:y1, x0:x1] |= fp | band
+                    claimed_fp[y0:y1, x0:x1] |= fp | flat_l
                     verdict["deck"] += 1
                     continue
                 # walls along the edge: each edge square takes the median offset of the walls within WALL_NEAR_FT
@@ -866,6 +869,7 @@ def main():
                 if seen_share >= SEEN_SHARE and wall_share < 0.05 and looked_fp and plants_here.sum() >= 0.5 * fp.sum():
                     verdict["tree"] += 1          # seen round, no wall anywhere, and a plant over most of it: a tree
                     claimed[y0:y1, x0:x1] |= fp
+                    claimed_fp[y0:y1, x0:x1] |= fp
                     nb_ = not_built[y0:y1, x0:x1]; nb_ |= fp
                     continue
                 default = WALL_INSET_FT if lk_kind == 1 else 0.0
@@ -894,17 +898,32 @@ def main():
                 newfp &= ~treecut
                 nb_ = not_built[y0:y1, x0:x1]; nb_ |= treecut & fp
                 trimmed_tree += int(treecut.sum())
+                # A DECK INSIDE A SHAPE (S4 of 12:28 am Fri: the back deck was taken in by the house's shape and the band
+                # round it, and no deck at all was left): boards lying flat over 16 sq ft or more of it, with the lidar's
+                # top no more than 1.5 m over them (a railing; a porch's floor has its roof far over it) and no roof seen
+                # from under, are a deck, not the building
+                dp = newfp & flat_w[y0:y1, x0:x1] & (LT[y0:y1, x0:x1] - p50w[y0:y1, x0:x1] <= 1.5) & ~roofed_sq[y0:y1, x0:x1]
+                if dp.any():
+                    lab_d, nd_ = ndimage.label(ndimage.binary_dilation(dp, structure=np.ones((3, 3))), structure=np.ones((3, 3)))
+                    szd = np.bincount(lab_d[dp], minlength=nd_ + 1); bigd = szd * SQ >= DECK_MIN_SQFT; bigd[0] = False
+                    dp = dp & bigd[lab_d]
+                if dp.any():
+                    newfp &= ~dp
+                    sub = l_deck[y0:y1, x0:x1]; sub |= dp
+                    l_top[y0:y1, x0:x1] = np.where(dp, p50w[y0:y1, x0:x1], l_top[y0:y1, x0:x1])
+                    deck_part += int(dp.sum())
                 moved_in += int((fp & ~newfp).sum()); moved_out += int((newfp & ~fp).sum())
                 sub = l_solid[y0:y1, x0:x1]; sub |= newfp
                 l_top[y0:y1, x0:x1] = np.where(newfp, np.maximum(LT[y0:y1, x0:x1], np.where(walls, p90w[y0:y1, x0:x1], 0)), l_top[y0:y1, x0:x1])
                 claimed[y0:y1, x0:x1] |= newfp | band
+                claimed_fp[y0:y1, x0:x1] |= newfp
         # what the walks alone saw, away from every lidar shape: decks as before; solid only in pieces of WALK_ONLY_SQFT or more
         w_solid = solid_sq & ~roofed_sq & ~claimed
         lab_w, nw_ = ndimage.label(w_solid, structure=np.ones((3, 3)))
         if nw_:
             szw = np.bincount(lab_w.ravel()); bigw = szw * SQ >= WALK_ONLY_SQFT; bigw[0] = False
             w_solid = bigw[lab_w]
-        w_deck = deck_sq & ~claimed
+        w_deck = deck_sq & ~claimed_fp
         roofed_l = roofed_sq & ndimage.binary_dilation(l_solid | w_solid, structure=np.ones((3, 3)), iterations=max(1, int(round(12 / ft_sq)))) if (l_solid | w_solid).any() else np.zeros_like(roofed_sq)
         top_solid = np.where(l_solid, l_top, top_solid)
         top_deck = np.where(l_deck, l_top, top_deck)
@@ -913,7 +932,7 @@ def main():
         cf = verdict["confirmed"]
         print(f"  THE LIDAR'S SHAPES, CHECKED BY THE WALKS: {len(cf) + verdict['deck'] + verdict['tree'] + verdict['nothing'] + verdict['unseen']} shapes (buildings and low structures); "
               f"confirmed with their walls placed {len(cf)}" + (f" (the walls, by stretches, in the middle {np.median(offs_all):+.1f} ft from the lidar's edge, inward +, from {np.percentile(offs_all, 10):+.1f} to {np.percentile(offs_all, 90):+.1f})" if offs_all else "")
-              + f"; a deck, not a building {verdict['deck']}; a tree, not a structure {verdict['tree']}; looked round but no wall found {verdict['nothing']} (kept, walls {WALL_INSET_FT} ft in); not looked at enough to judge {verdict['unseen']} (kept so).")
+              + f"; a deck, not a building {verdict['deck']} (and decks inside a shape {int(deck_part * SQ):,} sq ft); a tree, not a structure {verdict['tree']}; looked round but no wall found {verdict['nothing']} (kept, walls {WALL_INSET_FT} ft in); not looked at enough to judge {verdict['unseen']} (kept so).")
         print(f"     THE SHAPES MADE AGAIN: {int(moved_in * SQ):,} sq ft of the lidar's shapes outside their walls taken off, {int(moved_out * SQ):,} sq ft added where the walls stand outside the lidar's edge; "
               f"{int(trimmed_tree * SQ):,} sq ft cut where a tree touches and no wall was seen. SOLID {int(solid_sq.sum() * SQ):,} sq ft ({int((l_solid & solid_sq).sum() * SQ):,} from the lidar's shapes, {int(w_solid.sum() * SQ):,} from the walks alone), "
               f"OPEN {int(deck_sq.sum() * SQ):,} sq ft ({int(l_deck.sum() * SQ):,} from the lidar's shapes, {int((w_deck & deck_sq).sum() * SQ):,} from the walks alone).")

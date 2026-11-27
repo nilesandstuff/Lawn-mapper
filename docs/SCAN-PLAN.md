@@ -5569,3 +5569,27 @@ asked of the features session.
 
 SPECULATION: the confirmation threshold (25% of the looked-at edge) and the 4 ft reach are guesses; the first run on
 the lot will print each shape's verdict and the walls' offsets.
+
+## 87. Section 86 on the lot (S4 run 45945944470, 12:28-12:58 am Fri Eastern, head 97a1429)
+
+HARD:
+  The lidar's built things on the walks' squares: buildings 31,044 sq ft, low structures 1,298 sq ft (the model of
+  2026-11-27).
+  7 shapes; CONFIRMED with their walls placed 3. Their walls, stretch by stretch, stand in the middle 0.7 ft in from
+  the lidar's edge (10th to 90th percentile -0.5 to +2.5 ft). None were judged a deck or a tree, and none were looked
+  round without a wall found. 4 were not looked at enough to judge (kept whole, walls 2 ft in).
+  Made again: 915 sq ft of the shapes outside their walls taken off, 398 sq ft added outside the lidar's edge, 9 sq ft
+  cut where a tree touches.
+  SOLID 6,567 sq ft (6,549 from the lidar's shapes, 18 from the walks alone), tops 18 ft in the middle. OPEN 0 sq ft.
+  Fill held out: turf 76%, paving 42% (108 squares).
+  The walks' own decks (49-86 sq ft in 84-85) were all lost: every one lay in the 6 ft band round the house, which
+  shut out the walks' own built things.
+
+THEN (this commit): only a shape's footprint shuts out a deck of the walks' own, not its band. And a DECK INSIDE A
+SHAPE: boards lying flat over 16 sq ft or more of a shape (pieces within 2 ft as one), with the lidar's top no more
+than 1.5 m over them and no roof seen from under, are a deck, not the building. A porch floor has its roof far above
+it. For the fused model that is kind 5 over a lidar roof: fusing 6 makes it a deck.
+
+SPECULATION: the 4 shapes not judged are most likely the neighbours' houses, seen from past 16 ft or not at all. That
+is what the lidar says, and it stays so. The +0.7 ft median is under the 2 ft the shade map assumes (structures.js
+WALL_INSET_M); three houses is too few to change that number.
