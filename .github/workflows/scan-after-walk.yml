@@ -113,7 +113,12 @@ jobs:
             if [ "$TORCH" = 1 ] && python scan/tools/ground_labels.py $DIRS | tee -a after.txt; then ADE="--ade"; else echo "  The second labeller: could not be run; the colour alone." | tee -a after.txt; fi
             # turf, paving and porous ground, one kind a square: the ground's own colour tells turf from brown, brown near a
             # plant is fallen leaves and not called, and a plant standing on a square takes it from the ground (surfaces.py)
-            python scan/tools/surfaces.py $DIRS --colour --reach 12 --smooth $ADE --plants "m$n-$FIRST/plants-map.json" --edits "m$n-edits.json" --keep "m$n-$FIRST/surfaces-map.json" | grep -E "THE GROUND AS|WALK . AGAINST|THE PHONE'S OWN LABELS|OWN COLOUR|PLANTS ON THE SAME|owner's erasures|SECOND LABELLER|THE COLOUR, WALK|OWNER'S ERASURES|Kept for|BUILT|built things|ARCORE|SPECKS|THE FILL|GAPS FILLED" | cut -c1-700 | tee -a after.txt || true
+            # THE LIDAR'S SHAPES for the walks to check (2026-11-27; the owner: "checks on the lidar... 'lidar says there's a
+            # building here. Yup there is, but the shape is a bit off'"): the shade map's lidar model on the walks' squares
+            LIDAR=""
+            node scan/tools/lidar-built.mjs "m$n-$FIRST" "m$n-lidar.json" | tee -a after.txt || true
+            if [ -f "m$n-lidar.json" ]; then LIDAR="--lidar m$n-lidar.json"; fi
+            python scan/tools/surfaces.py $DIRS --colour --reach 12 --smooth $ADE $LIDAR --plants "m$n-$FIRST/plants-map.json" --edits "m$n-edits.json" --keep "m$n-$FIRST/surfaces-map.json" | grep -E "THE GROUND AS|WALK . AGAINST|THE PHONE'S OWN LABELS|OWN COLOUR|PLANTS ON THE SAME|owner's erasures|SECOND LABELLER|THE COLOUR, WALK|OWNER'S ERASURES|Kept for|BUILT|built things|ARCORE|SPECKS|THE FILL|GAPS FILLED|LIDAR'S SHAPES|SHAPES MADE" | cut -c1-900 | tee -a after.txt || true
             # (S3 run 5, 2026-11-26: cast to 12 m with the smoothed depth in the raw one's holes, the two walks both called
             # 3,937 sq ft and agreed on 94.8% of it; as before, 1,128 sq ft and 93.5%. So kept that way. docs/SCAN-PLAN.md 74)
             node scan/tools/surfaces-keep.mjs "$FIRST" "m$n-$FIRST" | tee -a after.txt || true

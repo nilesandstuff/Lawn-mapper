@@ -15,9 +15,11 @@ Counts, areas and widths only: no places (the repository and its logs are public
 
   python scan/tools/surfaces.py <twin dir>
 """
+import base64
 import json
 import os
 import sys
+import zlib
 
 import numpy as np
 
@@ -207,6 +209,18 @@ FLAT_M = 0.4           # m: a deck's boards are flat: their cells span less than
 DECK_M = (0.3, 1.8)    # m: the boards' height over the ground
 DECK_MIN_SQFT = 16     # a deck is bigger than a table or a car's hood
 HALO_SHARE = 0.2       # a solid square holds at least this share of the most cells on a square within 2 ft (else a wall's smear)
+# THE LIDAR'S SHAPES, CHECKED BY THE WALKS (2026-11-27; the owner: "the lidar shapes are really good, but they have some
+# fuzziness at edges, lidar doesn't actually know how far in the walls sit, and it can get confused when trees touch the
+# building"): surfaces.py --lidar
+LIDAR_BAND_FT = 6      # the walks' walls within this of a lidar shape's edge, in or out, are that shape's walls
+WALL_NEAR_FT = 4       # an edge square takes the walls within this of it
+WALL_SPREAD_FT = 8     # an edge square with no walls near takes the offset of the edge within this that has one
+WALL_INSET_FT = 2      # walls stand 2 ft in from a roof's edge where the walks did not see them (structures.js WALL_INSET_M)
+CONFIRM_SHARE = 0.25   # walls found along this share of the edge the walks looked at: the shape is confirmed
+SEEN_SHARE = 0.5       # the walks looked at this share of a shape's edge: they could judge it
+DECK_SHARE = 0.3       # a low shape with its boards lying flat over this share of what was looked at is a deck
+DECK_TOP_M = 2.5       # a lidar shape no taller than this may be a deck
+WALK_ONLY_SQFT = 16    # a solid piece the lidar does not have stands on the walks alone only this big
 
 
 def cast_pictures(d, cut, gtree, gmed, scale=1.0, reach=None, smooth=False, colour=False):
@@ -423,6 +437,13 @@ def main():
             edits = json.load(open(ef))
         except Exception:
             edits = None
+    lidar_b = None
+    if "--lidar" in a:     # the lidar's built things on the map's squares (lidar-built.mjs): each checked by the walks
+        i = a.index("--lidar"); lf = a[i + 1]; a = a[:i] + a[i + 2:]
+        try:
+            lidar_b = json.load(open(lf))
+        except Exception:
+            lidar_b = None
     plants = None
     if "--plants" in a:    # the map's plants as one (plants-pool.mjs): a plant standing on a square takes it from the ground; brown near a plant is leaves
         i = a.index("--plants"); pf = a[i + 1]; a = a[:i] + a[i + 2:]
@@ -772,6 +793,127 @@ def main():
     top_solid = np.maximum(p90_all, plane_top)
     top_deck = np.where(plane_floor > 0, plane_floor, p50_all)
     looked = (ground_all > 0) | (bgrid(np.ones(len(BE), bool)) > 0)
+    # THE LIDAR'S SHAPES, CHECKED (--lidar; 2026-11-27, the owner: "more of a broad 'lidar says there's a building here.
+    # Yup there is, but the shape is a bit off' or 'it's a deck, not a building'"). Each lidar building and low
+    # structure is a shape; the walks' cells say, shape by shape: confirmed, and where its walls stand (moved in or out
+    # from the lidar's edge, a stretch at a time); a deck; a tree, not a structure; or not looked at (kept, walls 2 ft
+    # in). The lidar is the second witness, so a wall on ONE source counts beside a lidar edge. Solid and open then come
+    # from the shapes, and from the walks alone only in pieces of WALK_ONLY_SQFT or more away from any shape.
+    if lidar_b is not None:
+        from scipy.spatial import cKDTree
+        lk_ = np.frombuffer(zlib.decompress(base64.b64decode(lidar_b["kinds"])), np.uint8).reshape(lidar_b["h"], lidar_b["w"])
+        lt_ = np.frombuffer(zlib.decompress(base64.b64decode(lidar_b["tops"])), np.uint8).reshape(lidar_b["h"], lidar_b["w"])
+        LK, LT = np.zeros((H, W), np.uint8), np.zeros((H, W))
+        oi, oj = i0 - int(lidar_b["i0"]), j0 - int(lidar_b["j0"])
+        ys_, xs_ = np.mgrid[0:H, 0:W]
+        sy, sx = ys_ + oj, xs_ + oi
+        inl = (sy >= 0) & (sx >= 0) & (sy < lidar_b["h"]) & (sx < lidar_b["w"])
+        LK[inl] = lk_[sy[inl], sx[inl]]; LT[inl] = lt_[sy[inl], sx[inl]] / 10.0
+        cw_ = bok & np.isin(BK, (8, 9)) & (BH > 0.15) & (BH <= STRUCT_TOP_M)
+        nw, p10w, p50w, p90w, nsw = sq_stats(cw_)
+        enough_w = (nw >= MIN_PTS) & (2 * nw >= ground_all)
+        wall_w = enough_w & (p90w - p10w >= STAND_M) & (p90w >= STAND_TOP_M)
+        flat_w = enough_w & (p90w - p10w < FLAT_M) & (p50w >= DECK_M[0]) & (p50w <= DECK_M[1]) & ~wall_w
+        near_look = ndimage.binary_dilation(looked, structure=np.ones((3, 3)), iterations=3)
+        ft_sq = CELL * FT
+        l_solid, l_deck = np.zeros((H, W), bool), np.zeros((H, W), bool)
+        l_top = np.zeros((H, W))
+        claimed = np.zeros((H, W), bool)
+        verdict = {"confirmed": [], "deck": 0, "tree": 0, "unseen": 0, "nothing": 0}
+        offs_all, trimmed_tree, moved_in, moved_out = [], 0, 0, 0
+        band_sq = int(np.ceil(LIDAR_BAND_FT / ft_sq))
+        for lk_kind in (1, 4):
+            lab_l, nl_ = ndimage.label(LK == lk_kind, structure=np.ones((3, 3)))
+            for o, sl in enumerate(ndimage.find_objects(lab_l), start=1):
+                if sl is None:
+                    continue
+                y0, y1 = max(0, sl[0].start - band_sq - 1), min(H, sl[0].stop + band_sq + 1)
+                x0, x1 = max(0, sl[1].start - band_sq - 1), min(W, sl[1].stop + band_sq + 1)
+                fp = lab_l[y0:y1, x0:x1] == o
+                if fp.sum() * SQ < 4:
+                    continue
+                d_in, d_out = ndimage.distance_transform_edt(fp), ndimage.distance_transform_edt(~fp)
+                sd = np.where(fp, d_in - 0.5, -(d_out - 0.5)) * ft_sq          # ft, + inside the lidar's edge
+                band = np.abs(sd) <= LIDAR_BAND_FT
+                walls = wall_w[y0:y1, x0:x1] & band
+                edge = fp & (d_in <= 1)
+                ey, ex = np.nonzero(edge)
+                seen_e = near_look[y0:y1, x0:x1][edge]
+                seen_share = seen_e.mean() if len(seen_e) else 0.0
+                top_o = float(np.median(LT[y0:y1, x0:x1][fp])) if fp.any() else 0.0
+                flat_l = flat_w[y0:y1, x0:x1] & (fp | band)
+                looked_fp = (near_look[y0:y1, x0:x1] & fp).sum()
+                # a deck: a low shape whose boards lie flat over a good share of what the walks looked at of it
+                if top_o <= DECK_TOP_M and looked_fp and (flat_l & fp).sum() >= DECK_SHARE * looked_fp and (flat_l & fp).sum() > (walls & fp).sum():
+                    sub = l_deck[y0:y1, x0:x1]; sub |= (fp | flat_l)
+                    l_top[y0:y1, x0:x1] = np.where(fp | flat_l, np.where(p50w[y0:y1, x0:x1] > 0, p50w[y0:y1, x0:x1], LT[y0:y1, x0:x1]), l_top[y0:y1, x0:x1])
+                    claimed[y0:y1, x0:x1] |= fp | band
+                    verdict["deck"] += 1
+                    continue
+                # walls along the edge: each edge square takes the median offset of the walls within WALL_NEAR_FT
+                wy, wx = np.nonzero(walls)
+                off = np.full(len(ey), np.nan)
+                if len(wy):
+                    tw = cKDTree(np.c_[wy, wx].astype(float))
+                    for q_, (yy, xx) in enumerate(zip(ey, ex)):
+                        nb = tw.query_ball_point([yy, xx], WALL_NEAR_FT / ft_sq)
+                        if len(nb) >= 2:
+                            off[q_] = float(np.median(sd[wy[nb], wx[nb]]))
+                has = np.isfinite(off)
+                wall_share = has[seen_e].mean() if seen_e.any() else 0.0
+                plants_here = plant_any[y0:y1, x0:x1] & fp
+                if seen_share >= SEEN_SHARE and wall_share < 0.05 and looked_fp and plants_here.sum() >= 0.5 * fp.sum():
+                    verdict["tree"] += 1          # seen round, no wall anywhere, and a plant over most of it: a tree
+                    claimed[y0:y1, x0:x1] |= fp
+                    continue
+                default = WALL_INSET_FT if lk_kind == 1 else 0.0
+                if has.any():
+                    te = cKDTree(np.c_[ey[has], ex[has]].astype(float))
+                    for q_ in np.flatnonzero(~has):
+                        nb = te.query_ball_point([ey[q_], ex[q_]], WALL_SPREAD_FT / ft_sq)
+                        off[q_] = float(np.median(off[has][nb])) if nb else default
+                else:
+                    off[:] = default
+                if wall_share >= CONFIRM_SHARE:
+                    verdict["confirmed"].append(float(np.median(off[has])))
+                    offs_all += list(off[has])
+                elif seen_share >= SEEN_SHARE:
+                    verdict["nothing"] += 1
+                else:
+                    verdict["unseen"] += 1
+                # the shape again: each square inside the line its nearest edge square's walls make
+                cand = sd >= -LIDAR_BAND_FT
+                cy_, cx_ = np.nonzero(cand)
+                _, ne = cKDTree(np.c_[ey, ex].astype(float)).query(np.c_[cy_, cx_].astype(float))
+                newfp = np.zeros_like(fp)
+                newfp[cy_, cx_] = sd[cy_, cx_] >= off[ne] - 0.5 * ft_sq
+                # where a tree touches: an edge stretch with no wall seen, under a plant standing on the ground, is cut
+                treecut = newfp & plant_ground[y0:y1, x0:x1] & ~ndimage.binary_dilation(walls, structure=np.ones((3, 3)), iterations=int(np.ceil(WALL_NEAR_FT / ft_sq)))
+                newfp &= ~treecut
+                trimmed_tree += int(treecut.sum())
+                moved_in += int((fp & ~newfp).sum()); moved_out += int((newfp & ~fp).sum())
+                sub = l_solid[y0:y1, x0:x1]; sub |= newfp
+                l_top[y0:y1, x0:x1] = np.where(newfp, np.maximum(LT[y0:y1, x0:x1], np.where(walls, p90w[y0:y1, x0:x1], 0)), l_top[y0:y1, x0:x1])
+                claimed[y0:y1, x0:x1] |= newfp | band
+        # what the walks alone saw, away from every lidar shape: decks as before; solid only in pieces of WALK_ONLY_SQFT or more
+        w_solid = solid_sq & ~roofed_sq & ~claimed
+        lab_w, nw_ = ndimage.label(w_solid, structure=np.ones((3, 3)))
+        if nw_:
+            szw = np.bincount(lab_w.ravel()); bigw = szw * SQ >= WALK_ONLY_SQFT; bigw[0] = False
+            w_solid = bigw[lab_w]
+        w_deck = deck_sq & ~claimed
+        roofed_l = roofed_sq & ndimage.binary_dilation(l_solid | w_solid, structure=np.ones((3, 3)), iterations=max(1, int(round(12 / ft_sq)))) if (l_solid | w_solid).any() else np.zeros_like(roofed_sq)
+        top_solid = np.where(l_solid, l_top, top_solid)
+        top_deck = np.where(l_deck, l_top, top_deck)
+        solid_sq = (l_solid | w_solid | roofed_l) & ~l_deck
+        deck_sq = (l_deck | w_deck) & ~solid_sq
+        cf = verdict["confirmed"]
+        print(f"  THE LIDAR'S SHAPES, CHECKED BY THE WALKS: {len(cf) + verdict['deck'] + verdict['tree'] + verdict['nothing'] + verdict['unseen']} shapes (buildings and low structures); "
+              f"confirmed with their walls placed {len(cf)}" + (f" (the walls, by stretches, in the middle {np.median(offs_all):+.1f} ft from the lidar's edge, inward +, from {np.percentile(offs_all, 10):+.1f} to {np.percentile(offs_all, 90):+.1f})" if offs_all else "")
+              + f"; a deck, not a building {verdict['deck']}; a tree, not a structure {verdict['tree']}; looked round but no wall found {verdict['nothing']} (kept, walls {WALL_INSET_FT} ft in); not looked at enough to judge {verdict['unseen']} (kept so).")
+        print(f"     THE SHAPES MADE AGAIN: {int(moved_in * SQ):,} sq ft of the lidar's shapes outside their walls taken off, {int(moved_out * SQ):,} sq ft added where the walls stand outside the lidar's edge; "
+              f"{int(trimmed_tree * SQ):,} sq ft cut where a tree touches and no wall was seen. SOLID {int(solid_sq.sum() * SQ):,} sq ft ({int((l_solid & solid_sq).sum() * SQ):,} from the lidar's shapes, {int(w_solid.sum() * SQ):,} from the walks alone), "
+              f"OPEN {int(deck_sq.sum() * SQ):,} sq ft ({int(l_deck.sum() * SQ):,} from the lidar's shapes, {int((w_deck & deck_sq).sum() * SQ):,} from the walks alone).")
     if any(Ps):
         print(f"  ARCORE'S SURFACES: {pstat['walls']} walls, {pstat['walls kept']} of them along built things the labels saw (the rest, a fence or a hedge, left out); {pstat['floors']} floors off the ground of 16 sq ft or more, {pstat['floors kept']} where the labels saw a floor; {pstat['ceilings']} ceilings over 6 ft.")
     print(f"  BUILT THINGS: {len(BE):,} cells off the ground ({int((BK == 8).sum()):,} walls, pillars, doors; {int((BK == 9).sum()):,} floors, steps, railings; {int((BK == 10).sum()):,} roofs seen from under); "
@@ -875,8 +1017,6 @@ def main():
             # FOR THE START PAGE'S MAP (the owner's eyes on the lawn trace): one byte a square, rows south to north,
             # 0 not called, 1 grass, 2 paved, 3 bare (a patch of BARE_MIN_SQFT or more); the square at column c, row r has its south-west corner (i0 + c) * cellM
             # east and (j0 + r) * cellM north of the map's point
-            import base64
-            import zlib
             # ONE KIND A SQUARE (the owner, 2026-11-26: "only 1 type of ground (paving, turf, porous ground) can occupy the
             # same space vertically. And at ground level, plant has to be mutually exclusive too (but a plant can be ABOVE
             # other types of ground)"): paving over porous over turf, and a plant standing on the square over all three

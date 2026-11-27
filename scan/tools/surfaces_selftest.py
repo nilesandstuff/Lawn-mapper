@@ -123,6 +123,23 @@ def make(d):
     json.dump({"ok": True, "T": {"theta": 0, "tx": 0, "ty": 0, "s": 1}, "n": 3, "worstM": 0.1}, open(os.path.join(d, "fit.json"), "w"))
 
 
+def lidar_file(path):
+    """The lidar's shapes for the scene (lidar-built.mjs's file): the house behind the wall, its roof's edge 2 ft out
+    over the lawn (the lidar sees the eaves, not the wall), and the deck as a low structure."""
+    c = 0.3048
+    i0, j0, w, h = -30, -10, 60, 60
+    k = np.zeros((h, w), np.uint8); t = np.zeros((h, w), np.uint8)
+    for r in range(h):
+        for q in range(w):
+            x, n = (i0 + q + 0.5) * c, (j0 + r + 0.5) * c          # n = -z
+            if -6 <= x <= 6 and n >= -WALL_Z - 0.6:
+                k[r, q], t[r, q] = 1, 60
+            if DECK[0] <= x <= DECK[1] and -DECK[3] <= n <= -DECK[2]:
+                k[r, q], t[r, q] = 4, 6
+    enc = lambda a: base64.b64encode(zlib.compress(a.tobytes(), 9)).decode()
+    json.dump({"v": 1, "cellM": c, "i0": i0, "j0": j0, "w": w, "h": h, "enc": "zlib+base64", "kinds": enc(k), "tops": enc(t)}, open(path, "w"))
+
+
 def main():
     with tempfile.TemporaryDirectory() as tmp:
         d = os.path.join(tmp, "m1-1")
@@ -132,7 +149,25 @@ def main():
         r = subprocess.run([sys.executable, os.path.join(HERE, "surfaces.py"), d, "--ade", "--keep", out], capture_output=True, text=True)
         print(r.stdout[-3000:]); print(r.stderr[-3000:])
         assert r.returncode == 0, "surfaces.py failed"
+        check(json.load(open(out)), r, tmp)
+        # AND WITH THE LIDAR'S SHAPES (--lidar): the walls placed where the walks saw them, 2 ft in from the roof's edge
+        lf = os.path.join(tmp, "lidar-built.json"); lidar_file(lf)
+        r = subprocess.run([sys.executable, os.path.join(HERE, "surfaces.py"), d, "--ade", "--keep", out, "--lidar", lf], capture_output=True, text=True)
+        print(r.stdout[-3000:]); print(r.stderr[-3000:])
+        assert r.returncode == 0, "surfaces.py failed"
         j = json.load(open(out))
+        g = check(j, r, tmp)
+        c = j["cellM"]
+        at = lambda x, z: g[int(np.floor(-z / c)) - j["j0"], int(np.floor(x / c)) - j["i0"]]
+        assert "THE LIDAR'S SHAPES, CHECKED BY THE WALKS: 2 shapes" in r.stdout and "confirmed with their walls placed 1" in r.stdout and "a deck, not a building 1" in r.stdout, "the shapes' verdicts"
+        assert at(0.0, WALL_Z + 0.45) != 4, f"under the eaves, between the roof's edge and the wall: not solid ({at(0.0, WALL_Z + 0.45)})"
+        assert at(-5.0, WALL_Z + 0.1) == 4, "the wall, all along the lidar's shape"
+        kinds = np.bincount(g.ravel(), minlength=11)
+        print("surfaces selftest with the lidar: ok;", ", ".join(f"{k}: {v}" for k, v in enumerate(kinds) if v))
+
+
+def check(j, r, tmp):
+    if True:
         g = np.frombuffer(zlib.decompress(base64.b64decode(j["kinds"])), np.uint8).reshape(j["h"], j["w"])
         c = j["cellM"]
         at = lambda x, z: g[int(np.floor(-z / c)) - j["j0"], int(np.floor(x / c)) - j["i0"]]   # north = -z
@@ -154,6 +189,7 @@ def main():
         assert at(-1.0, -7.5) != 4, f"a trunk only the walk's points called building is not solid ({at(-1.0, -7.5)})"
         kinds = np.bincount(g.ravel(), minlength=11)
         print("surfaces selftest: ok;", ", ".join(f"{k}: {v}" for k, v in enumerate(kinds) if v))
+        return g
 
 
 if __name__ == "__main__":

@@ -5534,3 +5534,38 @@ out: turf 70% right, paving 31% (68 squares). Built things kept with the plants,
 
 Waiting on the owner's eyes: whether the back deck is now open, and what the 1,029 sq ft of solid still holds that
 is not a structure, or misses that is.
+
+## 86. Structures as checks on the lidar's shapes (2026-11-27, 12:30 am Fri Eastern)
+
+HARD (the owner, on section 85's map): "It's better in some ways, worse in others. Maybe we're approaching this the
+wrong way... Maybe the orange and purple colors shouldn't be point-by-point mapping, but rather checks on the
+lidar... So more of a broad 'lidar says there's a building here. Yup there is, but the shape is a bit off' or 'it's a
+deck, not a building. And that's an aboveground pool'... Because the lidar shapes are really good, but they have some
+fuzziness at edges, lidar doesn't actually know how far in the walls sit, and it can get confused when trees touch the
+building."
+
+BUILT (this commit):
+  - scan/tools/lidar-built.mjs: the shade map's lidar model of the walk's map (its kinds after the owner's erasures,
+    structures.js BUILDING 1 and STRUCTURE 4, and each column's top) put onto the walks' 1 ft squares in the map's
+    local frame. No rule is re-derived. Test: scan/test/lidar-built.test.js.
+  - surfaces.py --lidar: each lidar shape (8-connected) is judged by the walks, shape by shape:
+      a DECK, not a building: no taller than 2.5 m, and its boards lie flat over 30% of what the walks looked at of it;
+      CONFIRMED: walls (cells standing 0.4 m or more and reaching 0.6 m; ONE source is enough, the lidar being the
+        second witness) within 4 ft of 25% or more of the edge the walks looked at. Each edge stretch then takes the
+        median offset of the walls near it, in or out by up to 6 ft, and a stretch with none takes the median of those
+        within 8 ft; the shape is made again inside that line;
+      a TREE, not a structure: looked round (half its edge), no wall anywhere, and a plant over most of it;
+      looked round but no wall found, or not looked at: kept, walls 2 ft in from the roof's edge (structures.js).
+    Where a tree touches and no wall was seen, the shape is cut under a plant standing on the ground.
+    The walks alone add a deck as before, but a solid piece only of 16 sq ft or more away from every lidar shape.
+  - scan-after-walk.yml runs it before surfaces.py.
+  The self-test has the house's roof edge 2 ft out over the lawn and the deck as a low structure: the wall is placed
+  where the walks saw it (the eaves not solid) and the deck is a deck.
+
+NOT YET: an above-ground pool. The labels as kept (.ade) hold our kinds, not the large labeller's "swimming pool";
+telling a pool needs that class kept, a relabelling of the walks. The fused model: plants.structures can now say
+"the lidar's structure is a deck" and the walls' true line, but fuse.js adds walls only where the lidar has no roof;
+asked of the features session.
+
+SPECULATION: the confirmation threshold (25% of the looked-at edge) and the 4 ft reach are guesses; the first run on
+the lot will print each shape's verdict and the walls' offsets.
