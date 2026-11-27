@@ -23,5 +23,22 @@ async function main() {
   if (old) await writeObject(BUCKET, `surfaces/backup/${meta.map}-${Date.now()}.json`, old, 'application/json');
   await writeObject(BUCKET, key, body, 'application/json', { walk: String(walk) });
   console.log(`Ground kept with the map: ${(body.length / 1e3).toFixed(0)} KB${old ? '; the one it replaces is kept as a backup' : ''}. The start page draws it when the map next opens.`);
+  /* THE BUILT THINGS FOR THE FUSED MODEL (agreed with the features session, 2026-11-27; docs/MAPS.md plants.structures):
+     put into BOTH plants files beside the map (the whole one and the record's copy), with a new `at` for both, so the
+     scan page puts the record's copy into the map's record when the map next opens and the fusing sees a new walk side */
+  const sf = join(dir, 'structures.json');
+  if (!existsSync(sf)) return;
+  const structures = JSON.parse(readFileSync(sf, 'utf8'));
+  const at = new Date().toISOString();
+  let n = 0;
+  for (const k of [`plants/${meta.map}.json`, `plants/${meta.map}-record.json`]) {
+    const b = await readObject(BUCKET, k).catch(() => null);
+    if (!b) continue;
+    const doc = JSON.parse(Buffer.from(b).toString('utf8'));
+    await writeObject(BUCKET, k, Buffer.from(next), 'application/json', { walk: String(doc.walk || walk) });
+    n++;
+  }
+  const sz = Buffer.byteLength(JSON.stringify(structures));
+  console.log(n ? `Built things put with the map's plants (${n} files, ${(sz / 1e3).toFixed(0)} KB): the scan page puts them into the map's record when the map next opens, for the fused model.` : 'Built things NOT put with the plants: the map has no plants kept.');
 }
 main().catch((e) => { console.log(`Ground: ${e.message}`); process.exit(1); });

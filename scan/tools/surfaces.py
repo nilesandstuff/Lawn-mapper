@@ -636,7 +636,7 @@ def main():
                 c_ = np.floor((mu[0] + ts * ax[0]) / CELL).astype(int) - i0; r_ = np.floor((mu[1] + ts * ax[1]) / CELL).astype(int) - j0
                 ok_ = (c_ >= 0) & (r_ >= 0) & (c_ < W) & (r_ < H)
                 m_ = np.zeros((H, W), bool); m_[r_[ok_], c_[ok_]] = True
-                wl.append(m_)
+                wl.append((m_, float(ph.max())))
             elif kind_ in (0, 1):
                 hm = float(np.median(ph))
                 if (kind_ == 0 and not (0.15 < hm < 1.8)) or (kind_ == 1 and hm < 1.8):
@@ -650,9 +650,10 @@ def main():
                 if ins.sum() * SQ < (16 if kind_ == 0 else 8):
                     continue     # a table, a car's hood: a deck or a porch's floor is bigger
                 m_ = np.zeros((H, W), bool); m_[r0:r1, c0:c1] = ins
-                (fl_ if kind_ == 0 else ce).append(m_)
+                (fl_ if kind_ == 0 else ce).append((m_, hm))
         return wl, fl_, ce
     PM = [plane_masks(q) for q in range(len(Ps))]
+    plane_top, plane_floor = np.zeros((H, W)), np.zeros((H, W))   # m over the ground: a wall plane's top, a floor plane's height
 
     def built_of(sel, walks):
         so, fl, rf = bgrid(sel & (BK == 8) & (BH > 0.15)), bgrid(sel & (BK == 9) & (BH > 0.15) & (BH < 1.8)), bgrid(sel & (BK == 10) & (BH > 1.8))
@@ -663,27 +664,44 @@ def main():
         near1 = ndimage.binary_dilation(solid, structure=np.ones((3, 3)), iterations=1) if solid.any() else solid
         add_w = np.zeros_like(solid)
         for q in walks:
-            for m_ in PM[q][0]:
+            for m_, top_ in PM[q][0]:
                 pstat["walls"] += 1
                 if (m_ & near1).sum() >= 0.3 * m_.sum():
                     add_w |= m_; pstat["walls kept"] += 1
+                    plane_top[m_] = np.maximum(plane_top[m_], top_)
         solid = solid | add_w
         # a floor ARCore found off the ground, where the labels saw a floor on a fifth of it or more, is a floor all over
         add_f = np.zeros_like(solid)
         for q in walks:
-            for m_ in PM[q][1]:
+            for m_, top_ in PM[q][1]:
                 pstat["floors"] += 1
                 if ((fl > 0) & m_).sum() >= 0.2 * m_.sum():
                     add_f |= m_; pstat["floors kept"] += 1
+                    plane_floor[m_] = top_
         deck = (deck | add_f) & ~solid
         near_solid = ndimage.binary_dilation(solid, structure=np.ones((3, 3)), iterations=max(1, int(round(12 / (CELL * FT))))) if solid.any() else solid
         ceil = np.zeros_like(solid)
         for q in walks:
-            for m_ in PM[q][2]:
+            for m_, _h in PM[q][2]:
                 pstat["ceilings"] += 1; ceil |= m_
         roofed = ((rf >= MIN_PTS) | ceil) & near_solid
         return solid | roofed | (deck & roofed), deck & ~roofed, roofed
     solid_sq, deck_sq, roofed_sq = built_of(np.ones(len(BE), bool), range(len(Ps)))
+    # HOW HIGH (for the fused model; the features session, 2026-11-27: "Without it a wall or shed has no top, and a deck
+    # has no height for its boards"): a solid square's top is the highest built cell over it (or its wall plane's
+    # top), a deck's boards the median height of the floor cells on it (or its floor plane's)
+    top_solid = np.zeros(H * W)
+    sel_ = bin_ & (BK == 8)
+    np.maximum.at(top_solid, bkey[sel_], BH[sel_])
+    top_solid = np.maximum(top_solid.reshape(H, W), plane_top)
+    fsel = bin_ & (BK == 9) & (BH > 0.15) & (BH < 1.8)
+    top_deck = plane_floor.copy()
+    if fsel.any():
+        o_ = np.argsort(bkey[fsel], kind="stable"); kk_, hh_ = bkey[fsel][o_], BH[fsel][o_]
+        br_ = np.flatnonzero(np.r_[True, np.diff(kk_) != 0])
+        meds = np.array([np.median(hh_[a_:b_]) for a_, b_ in zip(br_, np.r_[br_[1:], len(kk_)])])
+        td = top_deck.ravel(); td[kk_[br_]] = meds; top_deck = td.reshape(H, W)
+    looked = (ground_all > 0) | (bgrid(np.ones(len(BE), bool)) > 0)
     if any(Ps):
         print(f"  ARCORE'S SURFACES: {pstat['walls']} walls, {pstat['walls kept']} of them along built things the labels saw (the rest, a fence or a hedge, left out); {pstat['floors']} floors off the ground of 16 sq ft or more, {pstat['floors kept']} where the labels saw a floor; {pstat['ceilings']} ceilings over 6 ft.")
     print(f"  BUILT THINGS: {len(BE):,} cells off the ground ({int((BK == 8).sum()):,} walls, pillars, doors; {int((BK == 9).sum()):,} floors, steps, railings; {int((BK == 10).sum()):,} roofs seen from under); "
@@ -852,6 +870,19 @@ def main():
                 print(f"     THE FILL HELD OUT ({nm_}): of {hd:,} squares called {nm_} and hidden in 3 ft blocks, put back {nm_} {100 * same / max(1, hd):.0f}%, as the other kind {100 * other / max(1, hd):.0f}%, left empty {100 * left / max(1, hd):.0f}%.")
             g8, got = GF.fill(g8, SQ, CELL * FT, blocked)
             print(f"     THE GAPS FILLED (bridge: a gap {100 * GF.BRIDGE_SHARE:.0f}% one kind round it; reach: turf {GF.REACH_FT[1]:.0f} ft, paving {GF.REACH_FT[2]:.0f} ft from where it was seen; gaps of {GF.MAX_GAP_SQFT} sq ft or less): turf {int(got[1] * SQ):,} sq ft, paving {int(got[2] * SQ):,} sq ft, kept as GUESSED.")
+            # THE BUILT THINGS FOR THE FUSED MODEL (agreed with the features session, 2026-11-27; docs/MAPS.md plants.structures):
+            # kinds 0 no claim, 4 solid, 5 open (a deck), 255 never looked; tops in decimetres over the ground (0 unknown)
+            sk_ = np.where(looked, 0, 255).astype(np.uint8)
+            sk_[g8 == 4] = 4; sk_[g8 == 5] = 5
+            tp_ = np.zeros((H, W), np.uint8)
+            tp_[g8 == 4] = np.clip(np.round(top_solid[g8 == 4] * 10), 0, 254).astype(np.uint8)
+            tp_[g8 == 5] = np.clip(np.round(top_deck[g8 == 5] * 10), 0, 254).astype(np.uint8)
+            enc_ = lambda a_: base64.b64encode(zlib.compress(a_.tobytes(), 9)).decode()
+            sdoc = {"cellM": CELL, "i0": i0, "j0": j0, "w": int(W), "h": int(H), "enc": "zlib+base64", "notSeen": 255,
+                    "kinds": enc_(sk_), "tops": enc_(tp_), "unitDm": 1,
+                    "what": "kinds: one byte a square, rows south to north: 0 no claim, 4 solid structure, 5 open structure (a deck's boards), 255 never looked; tops: decimetres over the ground (a solid's top, a deck's walking surface; 0 not known)"}
+            json.dump(sdoc, open(os.path.join(os.path.dirname(keep) or ".", "structures.json"), "w"))
+            print(f"     The built things for the fused model: {int((sk_ == 4).sum() * SQ):,} sq ft solid (tops in the middle {np.median(tp_[sk_ == 4]) / 10 * FT if (sk_ == 4).any() else 0:.0f} ft), {int((sk_ == 5).sum() * SQ):,} sq ft open (boards in the middle {np.median(tp_[sk_ == 5]) / 10 * FT if (sk_ == 5).any() else 0:.1f} ft up); kept as structures.json ({os.path.getsize(os.path.join(os.path.dirname(keep) or '.', 'structures.json')) / 1e3:.0f} KB).")
             json.dump({"v": 1, "cellM": CELL, "i0": i0, "j0": j0, "w": int(W), "h": int(H), "from": "the walk's ground points by the phone's own labels",
                        "what": "one byte a square, rows south to north: 0 not called, 1 grass, 2 paved, 3 porous ground: bare soil, woodchips, moss (a patch of 4 sq ft or more), 4 solid structure (walls, pillars, what stands under a roof), 5 open structure (a deck's boards: rain passes through); 9 grass and 10 paved GUESSED (a gap filled, not seen)", "enc": "zlib+base64",
                        "kinds": base64.b64encode(zlib.compress(g8.tobytes(), 9)).decode()}, open(keep, "w"))

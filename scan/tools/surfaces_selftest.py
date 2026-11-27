@@ -136,6 +136,13 @@ def main():
         assert at(5.0, WALL_Z + 0.1) == 4, f"the wall's east end, by ARCore's plane where the labels saw nothing ({at(5.0, WALL_Z + 0.1)})"
         assert at(5.8, -5.0) != 4, "the fence's plane is not a wall"
         assert "ARCORE'S SURFACES: 2 walls, 1 of them" in r.stdout, "the surfaces' line"
+        sj = json.load(open(os.path.join(tmp, "structures.json")))
+        sk = np.frombuffer(zlib.decompress(base64.b64decode(sj["kinds"])), np.uint8).reshape(sj["h"], sj["w"])
+        tp = np.frombuffer(zlib.decompress(base64.b64decode(sj["tops"])), np.uint8).reshape(sj["h"], sj["w"])
+        sat = lambda a, x, z: a[int(np.floor(-z / c)) - sj["j0"], int(np.floor(x / c)) - sj["i0"]]
+        assert sat(sk, 3.2, -5.5) == 5 and abs(sat(tp, 3.2, -5.5) - 6) <= 1, "the deck's boards at 0.6 m for the fused model"
+        assert sat(sk, 0.0, WALL_Z + 0.1) == 4 and sat(tp, 0.0, WALL_Z + 0.1) >= 25, "the wall's top for the fused model"
+        assert sat(sk, 2.0, -1.0) == 0, "the lawn: looked at, no claim"
         kinds = np.bincount(g.ravel(), minlength=11)
         print("surfaces selftest: ok;", ", ".join(f"{k}: {v}" for k, v in enumerate(kinds) if v))
 
