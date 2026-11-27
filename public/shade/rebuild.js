@@ -216,7 +216,7 @@ export async function rebuildModel(mapId, { onProgress = () => {}, signal = null
         const fused = fuseModel(fin, plants, origin, { open, openHigh, openBare, built });
         const madeFrom = put.at ? `${put.at}|${plants.at}|${FUSE_VERSION}` : null;
         const fp = await putModelFiles(fetchFn, base, mapId, await modelFiles(fused), 'fused', { madeFrom });
-        fusedInfo = { ok: fp.ok, walkAt: plants.at ?? null, version: FUSE_VERSION, refined: fused.meta.fused.refined, added: fused.meta.fused.added, trimmed: fused.meta.fused.trimmed, trimmedBare: fused.meta.fused.trimmedBare, moved: fused.meta.fused.moved.length, removed: fused.meta.fused.removed.length, structuresAdded: fused.meta.fused.structuresAdded, decksAdded: fused.meta.fused.decksAdded };
+        fusedInfo = { ok: fp.ok, walkAt: plants.at ?? null, version: FUSE_VERSION, refined: fused.meta.fused.refined, added: fused.meta.fused.added, trimmed: fused.meta.fused.trimmed, trimmedBare: fused.meta.fused.trimmedBare, moved: fused.meta.fused.moved.length, removed: fused.meta.fused.removed.length, structuresAdded: fused.meta.fused.structuresAdded, decksAdded: fused.meta.fused.decksAdded, notBuilt: fused.meta.fused.notBuilt, toDeck: fused.meta.fused.toDeck };
       } catch (e) { fusedInfo = { ok: false, why: String(e?.message || e).slice(0, 120) }; }
     }
     /* A first build keeps its lidar and line-up in the map's shade part, as the page does (shade.js shadePart), so
