@@ -26,7 +26,7 @@ import numpy as np
 
 MODEL = "CIDAS/clipseg-rd64-refined"
 VERSION = 1
-# (name, the words, what it is for the map: solid / open / fence / pool / ground or plant, the last never a structure)
+# (name, the words, what it is for the map: solid / open / fence / pool; none, ground or plant are never a structure)
 THINGS = [
     ("house", "the wall of a house", "solid"),
     ("garage", "a garage", "solid"),
@@ -39,8 +39,13 @@ THINGS = [
     ("deck", "a wooden deck", "open"),
     ("stairs", "outdoor wooden stairs", "open"),
     ("sandbox", "a sandbox", "open"),
-    ("fence", "a fence", "fence"),
-    ("pool", "a swimming pool", "pool"),
+    ("pergola", "a pergola", "open"),            # the owner: "Pergola should count as open"
+    ("gazebo", "a gazebo", "open"),              # "A gazebo depends on its roof... The more important thing is the walls, so
+                                                 # we just need to be sure we don't put in walls where there aren't any"
+    ("fence", "a wooden or vinyl privacy fence", "fence"),   # "Fence should be it's own"
+    ("chain-link", "a chain-link fence", "none"),            # "Chain link actually doesn't need to count for anything because
+                                                             # it doesn't block light, wind, or water"
+    ("pool", "a swimming pool", "pool"),          # "pool should be it's own kind since it traps water"
     ("lawn", "grass lawn", "ground"),
     ("paving", "a paved driveway or sidewalk", "ground"),
     ("tree", "a tree", "plant"),

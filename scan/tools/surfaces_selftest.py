@@ -35,6 +35,7 @@ def look_at(eye, target):
 
 
 DECK = (2.0, 4.5, -7.0, -4.0, 0.6)     # x0, x1, z0, z1, height
+SHED = (-4.5, -2.5, -8.0, -6.5)        # x0, x1, z0, z1: a shed 2 m tall, only the walk's kept points on its walls
 WALL_Z = -10.0
 
 
@@ -61,7 +62,8 @@ def make(d):
     xs, zs = xs.ravel(), zs.ravel()
     hole = (xs >= 0) & (xs <= 0.9) & (zs >= -3) & (zs <= -2.1)
     under_deck = (xs >= DECK[0]) & (xs <= DECK[1]) & (zs >= DECK[2]) & (zs <= DECK[3])
-    keep = ~hole & ~under_deck & (zs > WALL_Z)
+    in_shed = (xs >= SHED[0]) & (xs <= SHED[1]) & (zs >= SHED[2]) & (zs <= SHED[3])
+    keep = ~hole & ~under_deck & ~in_shed & (zs > WALL_Z)
     xs, zs = xs[keep], zs[keep]
     speck = (xs >= -5.2) & (xs <= -4.6) & (zs >= -6.0) & (zs <= -5.4)
     lab = np.where((xs < -3) & ~speck, 6, 7).astype(np.uint8)          # sidewalk 5 + 1, terrain 6 + 1
@@ -70,6 +72,14 @@ def make(d):
     tx_ = -1.0 + rng.uniform(-0.15, 0.15, 400); tz_ = -7.5 + rng.uniform(-0.15, 0.15, 400); ty_ = rng.uniform(0.4, 2.5, 400)
     wx, wy = np.r_[wx, tx_], np.r_[wy, ty_]
     wz = np.r_[np.full(3000, WALL_Z + 0.02), tz_]
+    # the shed's four walls, 0.2-2.0 m up, a point every 5 cm along them
+    sx_, sz_ = [], []
+    for t_ in np.arange(0, 1, 0.025):
+        for (ax, az, bx, bz) in ((SHED[0], SHED[2], SHED[1], SHED[2]), (SHED[1], SHED[2], SHED[1], SHED[3]), (SHED[1], SHED[3], SHED[0], SHED[3]), (SHED[0], SHED[3], SHED[0], SHED[2])):
+            sx_.append(ax + t_ * (bx - ax)); sz_.append(az + t_ * (bz - az))
+    sx_, sz_ = np.repeat(sx_, 10), np.repeat(sz_, 10)
+    sy_ = np.tile(np.linspace(0.2, 2.0, 10), len(sx_) // 10)
+    wx, wy, wz = np.r_[wx, sx_], np.r_[wy, sy_], np.r_[wz, sz_]
     t = np.arange(len(xs) + len(wx), dtype=np.float32) * 0.01
     recs = np.zeros((len(xs) + len(wx), 6), np.float32)
     recs[:, 0] = t
@@ -108,8 +118,8 @@ def make(d):
                     continue
                 dist[k], conf[k] = tt, 1.0
                 sem[k] = (6, 7, 2)[what]          # terrain, structure, building
-                ade[k] = (1, 8, 8)[what]
-                yi[k] = (14, 9, 1)[what]          # the yard labeller: lawn, deck, house (yard_labels.THINGS, 1-based)          # turf, and the deck's boards labelled "wall" like the wall (the owner's deck, 2026-11-27): the shape must tell them apart
+                ade[k] = (1, 8, 8)[what]          # turf, and the deck's boards labelled "wall" like the wall (the owner's deck, 2026-11-27): the shape must tell them apart
+                yi[k] = (17, 9, 1)[what]          # the yard labeller: lawn, deck, house (yard_labels.THINGS, 1-based)
         r = np.concatenate([[nx, ny], np.round(dist * 1000), np.round(conf * 255)]).astype("<u2")
         r.tofile(os.path.join(d, name.replace(".jpg", ".rdepth")))
         hdr = np.array([nx & 255, nx >> 8, ny & 255, ny >> 8], np.uint8)
@@ -141,6 +151,8 @@ def lidar_file(path):
                 k[r, q], t[r, q] = 1, 60
             if DECK[0] <= x <= DECK[1] and -DECK[3] <= n <= -DECK[2]:
                 k[r, q], t[r, q] = 4, 6
+            if SHED[0] <= x <= SHED[1] and -SHED[3] <= n <= -SHED[2]:
+                k[r, q], t[r, q] = 4, 20
     enc = lambda a: base64.b64encode(zlib.compress(a.tobytes(), 9)).decode()
     json.dump({"v": 1, "cellM": c, "i0": i0, "j0": j0, "w": w, "h": h, "enc": "zlib+base64", "kinds": enc(k), "tops": enc(t)}, open(path, "w"))
 
@@ -166,12 +178,24 @@ def main():
         at = lambda x, z: g[int(np.floor(-z / c)) - j["j0"], int(np.floor(x / c)) - j["i0"]]
         yl = [l for l in r.stdout.splitlines() if "THE YARD LABELS ON THE LIDAR'S SHAPES" in l]
         assert yl and "(building, 80 sq ft, confirmed): " in yl[0] and "house 8" in yl[0] and "a deck): " in yl[0] and "deck 3" in yl[0].split("a deck): ")[1], f"the yard labels on the shapes ({yl})"
-        assert "THE LIDAR'S SHAPES, CHECKED BY THE WALKS: 2 shapes" in r.stdout and "confirmed with their walls placed 1" in r.stdout and "a deck, not a building 1" in r.stdout, "the shapes' verdicts"
+        assert "THE LIDAR'S SHAPES, CHECKED BY THE WALKS: 3 shapes" in r.stdout and "confirmed with their walls placed 2" in r.stdout and "a deck, not a building 1" in r.stdout, "the shapes' verdicts"
         assert at(0.0, WALL_Z + 0.45) != 4, f"under the eaves, between the roof's edge and the wall: not solid ({at(0.0, WALL_Z + 0.45)})"
         assert at(-5.0, WALL_Z + 0.1) == 4, "the wall, all along the lidar's shape"
         sj = json.load(open(os.path.join(tmp, "structures.json")))
         sk = np.frombuffer(zlib.decompress(base64.b64decode(sj["kinds"])), np.uint8).reshape(sj["h"], sj["w"])
         assert not (sk == 6).any(), "no lidar shape here is a tree: nothing taken away"
+        # TWO WALKS, THE SECOND PUT 1 FT EAST AND 1 FT NORTH: the walls against each other say so
+        d2 = os.path.join(tmp, "m1-2")
+        import shutil
+        shutil.copytree(d, d2)
+        json.dump({"ok": True, "T": {"theta": 0, "tx": 0.3048, "ty": 0.3048, "s": 1}, "n": 3, "worstM": 0.1}, open(os.path.join(d2, "fit.json"), "w"))
+        r2 = subprocess.run([sys.executable, os.path.join(HERE, "surfaces.py"), d, d2, "--ade", "--keep", out, "--lidar", lf], capture_output=True, text=True)
+        assert r2.returncode == 0, r2.stderr[-2000:]
+        al = [l for l in r2.stdout.splitlines() if "THE WALKS' WALLS AGAINST EACH OTHER" in l]
+        print(al)
+        import re as _re
+        m2 = _re.search(r"walk 2: ([+-][0-9.]+) ft east, ([+-][0-9.]+) ft north", al[0] if al else "")
+        assert m2 and abs(float(m2.group(1)) - 1) <= 0.5 and abs(float(m2.group(2)) - 1) <= 0.5, f"walk 2 found 1 ft east and 1 ft north of walk 1 ({al})"
         kinds = np.bincount(g.ravel(), minlength=11)
         print("surfaces selftest with the lidar: ok;", ", ".join(f"{k}: {v}" for k, v in enumerate(kinds) if v))
 

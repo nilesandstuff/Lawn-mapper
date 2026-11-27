@@ -215,6 +215,7 @@ HALO_SHARE = 0.2       # a solid square holds at least this share of the most ce
 LIDAR_BAND_FT = 6      # the walks' walls within this of a lidar shape's edge, in or out, are that shape's walls
 WALL_OUT_MAX_FT = 1    # but a wall moves the edge OUT by no more than this (the lidar's outline is good; the bulges were walls seen out of place)
 WALL_IN_MAX_FT = 4     # and IN by no more than this (eaves)
+ADD_AGREE_FT = 1.5     # ...unless two walks or more put it further out and agree within this: an addition since the flight
 BUILT_FIT_M = 0.3      # a walk whose corners agree no better than this gives no built things
 YARD_MAX_M = 8.0       # the yard labels' cells counted this near the camera
 YARD_CELLS = []        # (x, z session, label) of the walk being read, filled by cast_pictures, moved onto the map by load_walk
@@ -493,7 +494,7 @@ def load_walk(d):
         for yx_, yz_, yi_ in YARD_CELLS:
             YARD_MAP.append((cth * yx_ - sth * (-yz_) + T["tx"], sth * yx_ + cth * (-yz_) + T["ty"], yi_))
     YARD_CELLS.clear()
-    if worst > BUILT_FIT_M:
+    if worst > BUILT_FIT_M and fit.get("by") != "the reference":
         built = tuple(a_[:0] for a_ in built); planes = []
         note += f"; ITS BUILT THINGS LEFT OUT (its corners agree only within {worst * 39.37:.0f} in)"
     return E, N, L, K, C, A, Src, Rg, built, planes, note + f"; its {fit.get('n')} corners agree within {(fit.get('worstM') or 0) * 39.37:.0f} in."
@@ -897,6 +898,12 @@ def main():
         claimed = np.zeros((H, W), bool)       # a shape's footprint and the band round it: no walls of the walks' own there
         claimed_fp = np.zeros((H, W), bool)    # the footprints alone: no deck of the walks' own there (a deck beside a house is in its band)
         deck_part = 0
+        new_add = 0
+        align_rows = {}                        # walk -> [(outward directions, how far its walls sit out from the others')]
+        wall_q = []                            # each walk's own walls
+        for q in range(len(Bs)):
+            nq_, p10q, _p50q, p90q, _nsq = sq_stats(cw_ & (BW == q))
+            wall_q.append((nq_ >= MIN_PTS) & (p90q - p10q >= STAND_M) & (p90q >= STAND_TOP_M))
         shapes_info = []                       # (lidar kind, footprint, its corner, the verdict) for the yard labels' study
         verdict = {"confirmed": [], "deck": 0, "tree": 0, "unseen": 0, "nothing": 0}
         offs_all, trimmed_tree, moved_in, moved_out = [], 0, 0, 0
@@ -931,15 +938,38 @@ def main():
                     verdict["deck"] += 1
                     shapes_info.append((lk_kind, fp, y0, x0, "a deck"))
                     continue
-                # walls along the edge: each edge square takes the median offset of the walls within WALL_NEAR_FT
+                # walls along the edge: each edge square takes the median offset of the walls within WALL_NEAR_FT ON ITS
+                # OWN FACE (the owner's picture, SCAN-PLAN 91: at a step in a wall the walls of both faces were mixed and
+                # the step rounded off, filled on one side and cut on the other): a wall belongs to the face of its
+                # nearest edge square, and counts for an edge square whose outward direction is within 45 degrees of it
+                gyy, gxx = np.gradient(sd)
+                nrm = -np.stack([gxx, gyy], -1); nrm /= np.maximum(1e-9, np.linalg.norm(nrm, axis=-1, keepdims=True))   # outward, (east, north)
+                ne_ = nrm[ey, ex]
                 wy, wx = np.nonzero(walls)
-                off = np.full(len(ey), np.nan)
+                off = np.full(len(ey), np.nan); nwalks = np.zeros(len(ey), int); spread_q = np.full(len(ey), np.inf)
+                offq = np.full((len(Bs), len(ey)), np.nan)
                 if len(wy):
+                    _, w_edge = cKDTree(np.c_[ey, ex].astype(float)).query(np.c_[wy, wx].astype(float))
+                    w_face = ne_[w_edge]
+                    w_bits = np.zeros(len(wy), np.int64)
+                    for q in range(len(Bs)):
+                        w_bits |= wall_q[q][y0:y1, x0:x1][wy, wx].astype(np.int64) << q
                     tw = cKDTree(np.c_[wy, wx].astype(float))
                     for q_, (yy, xx) in enumerate(zip(ey, ex)):
-                        nb = tw.query_ball_point([yy, xx], WALL_NEAR_FT / ft_sq)
+                        nb = np.asarray(tw.query_ball_point([yy, xx], WALL_NEAR_FT / ft_sq), int)
+                        if len(nb):
+                            nb = nb[(w_face[nb] @ ne_[q_]) > 0.7]
                         if len(nb) >= 2:
                             off[q_] = float(np.median(sd[wy[nb], wx[nb]]))
+                            bits = int(np.bitwise_or.reduce(w_bits[nb]))
+                            nwalks[q_] = bin(bits).count("1")
+                            for q in range(len(Bs)):
+                                mq = nb[(w_bits[nb] >> q) & 1 == 1]
+                                if len(mq) >= 2:
+                                    offq[q, q_] = float(np.median(sd[wy[mq], wx[mq]]))
+                            fq = offq[:, q_][np.isfinite(offq[:, q_])]
+                            if len(fq) >= 2:
+                                spread_q[q_] = float(fq.max() - fq.min())
                 has = np.isfinite(off)
                 wall_share = has[seen_e].mean() if seen_e.any() else 0.0
                 plants_here = plant_any[y0:y1, x0:x1] & fp
@@ -958,9 +988,22 @@ def main():
                         off[q_] = float(np.median(off[has][nb])) if nb else default
                 else:
                     off[:] = default
-                off = np.clip(off, -WALL_OUT_MAX_FT, WALL_IN_MAX_FT)
+                # OUT BY MORE THAN A FOOT only where two walks or more put the wall there and agree within ADD_AGREE_FT
+                # (the owner: "we should be able to see if there's a genuine new addition to a building since the lidar
+                # was flown")
+                added = (off < -WALL_OUT_MAX_FT) & (nwalks >= 2) & (spread_q <= ADD_AGREE_FT)
+                new_add += int(added.sum())
+                off = np.where(added, np.clip(off, -LIDAR_BAND_FT, WALL_IN_MAX_FT), np.clip(off, -WALL_OUT_MAX_FT, WALL_IN_MAX_FT))
                 if wall_share >= CONFIRM_SHARE:
                     verdict["confirmed"].append(float(np.median(off[has])))
+                    # EACH WALK'S WALLS AGAINST THE OTHERS' on the same face (the owner: "get the auto alignment and checks
+                    # better so we fix the problem at the source"): a walk put d ft off moves its walls by d along each
+                    # face's outward direction; the shift that best explains how far its walls sit from the others'
+                    for q in range(len(Bs)):
+                        oth = np.nanmedian(np.where(np.arange(len(Bs))[:, None] == q, np.nan, offq), axis=0) if len(Bs) > 1 else np.full(len(ey), np.nan)
+                        okq = np.isfinite(offq[q]) & np.isfinite(oth)
+                        if okq.any():
+                            align_rows.setdefault(q, []).append((ne_[okq], -(offq[q][okq] - oth[okq])))
                     shapes_info.append((lk_kind, fp, y0, x0, "confirmed"))
                     offs_all += list(off[has])
                 elif seen_share >= SEEN_SHARE:
@@ -1013,11 +1056,22 @@ def main():
         deck_sq = (l_deck | w_deck) & ~solid_sq
         cf = verdict["confirmed"]
         yard_study(shapes_info, H, W, i0, j0, SQ)
+        if align_rows:
+            parts_ = []
+            for q in sorted(align_rows):
+                Nq = np.concatenate([a_[0] for a_ in align_rows[q]]); dq = np.concatenate([a_[1] for a_ in align_rows[q]])
+                if len(dq) < 6 or np.linalg.matrix_rank(Nq) < 2:
+                    parts_.append(f"walk {q + 1}: too few faces ({len(dq)} edge squares)")
+                    continue
+                sh, *_ = np.linalg.lstsq(Nq, dq, rcond=None)
+                res_ = dq - Nq @ sh
+                parts_.append(f"walk {q + 1}: {sh[0] * ft_sq:+.1f} ft east, {sh[1] * ft_sq:+.1f} ft north (from {len(dq):,} edge squares of walls; left over after the shift {np.sqrt(np.mean(res_ ** 2)) * ft_sq:.1f} ft)")
+            print("  THE WALKS' WALLS AGAINST EACH OTHER (each walk's walls on a confirmed shape's faces against the other walks' walls on the same faces; the shift that best explains the gaps): " + "; ".join(parts_) + ".")
         print(f"  THE LIDAR'S SHAPES, CHECKED BY THE WALKS: {len(cf) + verdict['deck'] + verdict['tree'] + verdict['nothing'] + verdict['unseen']} shapes (buildings and low structures); "
               f"confirmed with their walls placed {len(cf)}" + (f" (the walls, by stretches, in the middle {np.median(offs_all):+.1f} ft from the lidar's edge, inward +, from {np.percentile(offs_all, 10):+.1f} to {np.percentile(offs_all, 90):+.1f})" if offs_all else "")
               + f"; a deck, not a building {verdict['deck']} (and decks inside a shape {int(deck_part * SQ):,} sq ft); a tree, not a structure {verdict['tree']}; looked round but no wall found {verdict['nothing']} (kept, walls {WALL_INSET_FT} ft in); not looked at enough to judge {verdict['unseen']} (kept so).")
         print(f"     THE SHAPES MADE AGAIN: {int(moved_in * SQ):,} sq ft of the lidar's shapes outside their walls taken off, {int(moved_out * SQ):,} sq ft added where the walls stand outside the lidar's edge; "
-              f"{int(trimmed_tree * SQ):,} sq ft cut where a tree touches and no wall was seen. SOLID {int(solid_sq.sum() * SQ):,} sq ft ({int((l_solid & solid_sq).sum() * SQ):,} from the lidar's shapes, {int(w_solid.sum() * SQ):,} from the walks alone), "
+              f"{int(trimmed_tree * SQ):,} sq ft cut where a tree touches and no wall was seen; edge squares moved out more than {WALL_OUT_MAX_FT} ft by two walks or more agreeing (an addition since the flight?) {new_add:,}. SOLID {int(solid_sq.sum() * SQ):,} sq ft ({int((l_solid & solid_sq).sum() * SQ):,} from the lidar's shapes, {int(w_solid.sum() * SQ):,} from the walks alone), "
               f"OPEN {int(deck_sq.sum() * SQ):,} sq ft ({int(l_deck.sum() * SQ):,} from the lidar's shapes, {int((w_deck & deck_sq & ~l_deck).sum() * SQ):,} from the walks alone).")
     if any(Ps):
         print(f"  ARCORE'S SURFACES: {pstat['walls']} walls, {pstat['walls kept']} of them along built things the labels saw (the rest, a fence or a hedge, left out); {pstat['floors']} floors off the ground of 16 sq ft or more, {pstat['floors kept']} where the labels saw a floor; {pstat['ceilings']} ceilings over 6 ft.")

@@ -5664,3 +5664,39 @@ in yellow and the deck and its stairs in red; the picture is kept out of the rep
 SPECULATION: a wall stretch takes the median offset of the walls within 4 ft. At a step in the wall, walls from both
 faces mix, which rounds the step off: the outline is filled on one side and cut on the other. Where the lidar's edge
 already follows the step, it is better left alone.
+
+## 92. The owner's kinds, and the walks' alignment measured by their walls (2026-11-27, about 3:20 am Fri Eastern)
+
+HARD (the owner):
+  - "pool should be it's own kind since it traps water."
+  - "Fence should be it's own, but Chain link actually doesn't need to count for anything because it doesn't block
+    light, wind, or water."
+  - "Pergola should count as open... But... A gazebo depends on its roof... if it's got roof tiles, that's closed, and
+    but if it's wood it's open. The more important thing is the walls, so we just need to be sure we don't put in walls
+    where there aren't any."
+  - "The 1 feet out restriction is decent, but we should be able to see if there's a genuine new addition to a
+    building since the lidar was flown."
+  - "Regarding how misaligned walks caused the bulges, that sounds like a bigger problem, that we need to backtrack and
+    get the auto alignment and checks better so we fix the problem at the source rather than throwing away info that
+    could potentially be valuable if it can be aligned better."
+
+A CORRECTION to what the core session told the owner in section 89. Every walk but the 16-picture one was ALREADY put
+on the map through the reference, a stretch at a time (12-24 of 12-26 stretches matched). The "6 ft north" came from
+plants-pool's ARE THE WALKS IN STEP, whose best shift raised the shared squares by only 10-15% (795 to 912, 1,120 to
+1,248): weak evidence. And section 89's 12 in rule threw away the newest walk's walls by its own two corners (37 in)
+when the reference had placed it (18 of 18). That rule now passes a walk placed through the reference.
+
+BUILT (this commit):
+  - THE WALKS' WALLS AGAINST EACH OTHER: on each confirmed lidar shape, each walk's walls on a face against the other
+    walks' walls on the same face. The east-north shift that best explains the gaps (least squares over the faces'
+    outward directions) is printed for each walk, with what is left over. This is alignment proved by the walks
+    agreeing with each other, the lidar's edge only telling which way a face points. The self-test's second walk, put
+    1 ft east and 1 ft north, is found +0.8 ft east and +0.9 ft north.
+  - Walls on their OWN FACE: an edge stretch takes only the walls whose nearest edge faces within 45 degrees of its
+    own, so a step in a wall is no longer rounded off (section 91).
+  - AN ADDITION SINCE THE FLIGHT: an edge stretch moves out more than 1 ft (to 6 ft) when two walks or more put the
+    wall there and agree within 1.5 ft; counted in the "SHAPES MADE AGAIN" line.
+  - yard_labels.THINGS: pergola and gazebo (open; walls only where the walks see them), "a wooden or vinyl privacy
+    fence" (fence), "a chain-link fence" (counts for nothing), the pool its own kind. 21 things.
+NEXT: the first run on the lot of the labels and the walls against each other. If a walk is found off, the fix goes
+where the owner says, at the source: the reference's placement of that walk, not a correction in surfaces.py.
