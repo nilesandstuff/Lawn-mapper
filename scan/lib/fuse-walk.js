@@ -40,12 +40,14 @@ export async function fuseWalk({ fetchFn, base = '', map, plants, origin, F, loa
   // the air above 8 ft seen EMPTY IN ANY SEASON (plants.clearHigh, SCAN-PLAN 62), read by the same band reader; a
   // fusing that does not know it ignores it
   const openBare = plants.clearHigh && F.openHighFromSeen && F.fusedGrid ? await F.openHighFromSeen(plants.clearHigh, origin, F.fusedGrid(lidar.meta)).catch(() => null) : null;
-  const fused = F.fuseModel(lidar, plants, origin, { open, openHigh, ...(openBare ? { openBare } : {}) });
+  // the walls and decks the walks saw (plants.structures, docs/MAPS.md; fusing 5): the same call as the shade page's
+  const built = plants.structures && F.structuresFromWalk && F.fusedGrid ? await F.structuresFromWalk(plants.structures, origin, F.fusedGrid(lidar.meta)).catch(() => null) : null;
+  const fused = F.fuseModel(lidar, plants, origin, { open, openHigh, ...(openBare ? { openBare } : {}), ...(built ? { built } : {}) });
   const files = await modelFiles(fused);
   const put = (u, body) => fetchFn(u, { ...init, method: 'PUT', headers: { 'Content-Type': 'application/octet-stream', 'X-Model-Made-From': want }, body });
   for (let i = 0; i < (files.parts || []).length; i++) { const r = await put(`${url}&file=fused&part=${i + 1}`, files.parts[i]); if (!r.ok) return { made: false, why: `part ${i + 1} refused (${r.status})` }; }
   const r = await put(`${url}&file=fused`, files.main);
   if (!r.ok) return { made: false, why: `the site answered ${r.status}` };
   const f = fused.meta?.fused || {};
-  return { made: true, madeFrom: want, withOpenAir: !!open, withOpenHigh: !!openHigh, stats: { refined: f.refined ?? null, added: f.added ?? null, trimmed: f.trimmed ?? null, moved: (f.moved || []).length } };
+  return { made: true, madeFrom: want, withOpenAir: !!open, withOpenHigh: !!openHigh, withBuilt: !!built, stats: { refined: f.refined ?? null, added: f.added ?? null, trimmed: f.trimmed ?? null, moved: (f.moved || []).length, structuresAdded: f.structuresAdded ?? null, decksAdded: f.decksAdded ?? null } };
 }
