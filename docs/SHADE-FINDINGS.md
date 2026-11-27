@@ -1853,6 +1853,11 @@ rain passes), where no crown stands over it; under a crown the crown keeps the k
 the walk built. Only added: a lidar roof or structure is never changed or removed by one walk's labels. A square
 with no top is left out. Tested on the synthetic lot only. NOT MEASURED: any real walk's squares; the 95% is a
 guess at boards with their gaps.
+LIVE 2026-11-26 evening Eastern (main and scan sites deployed by the core session). Its fuse-check on the owner's
+lot with the first plants.structures (6 walks pooled): 954 half-metre cells of structure added, 61 of deck. The
+owner found the walk's solid squares too many (a wood line, trees, most of the back deck, a bulge round walls, patches
+in the lawn and drive); the core session tightened how they are found (b2db5d0, scan/tools/surfaces.py), the format
+and this fusing unchanged. These first counts are not a measure of the rule here.
 
 ## Speculation
 
