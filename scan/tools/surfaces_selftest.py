@@ -66,21 +66,29 @@ def make(d):
     speck = (xs >= -5.2) & (xs <= -4.6) & (zs >= -6.0) & (zs <= -5.4)
     lab = np.where((xs < -3) & ~speck, 6, 7).astype(np.uint8)          # sidewalk 5 + 1, terrain 6 + 1
     wx = rng.uniform(-6, 0, 3000); wy = rng.uniform(0.4, 2.8, 3000)   # the phone labelled only the wall's west half
+    # a tree's trunk in the lawn the phone called "building" (one source: the walk's kept points), 0.3 m across, 0.4-2.5 m up
+    tx_ = -1.0 + rng.uniform(-0.15, 0.15, 400); tz_ = -7.5 + rng.uniform(-0.15, 0.15, 400); ty_ = rng.uniform(0.4, 2.5, 400)
+    wx, wy = np.r_[wx, tx_], np.r_[wy, ty_]
+    wz = np.r_[np.full(3000, WALL_Z + 0.02), tz_]
     t = np.arange(len(xs) + len(wx), dtype=np.float32) * 0.01
     recs = np.zeros((len(xs) + len(wx), 6), np.float32)
     recs[:, 0] = t
     recs[:len(xs), 2], recs[:len(xs), 3], recs[:len(xs), 4] = xs, 0.0, zs
-    recs[len(xs):, 2], recs[len(xs):, 3], recs[len(xs):, 4] = wx, wy, WALL_Z + 0.02
+    recs[len(xs):, 2], recs[len(xs):, 3], recs[len(xs):, 4] = wx, wy, wz
     recs[:, 5] = 0.0
     labs = np.zeros((len(recs), 4), np.uint8)
     labs[:len(xs), 0] = lab
     labs[len(xs):, 0] = 3                                              # building 2 + 1
     recs.tofile(os.path.join(d, "cloud-0.bin")); labs.tofile(os.path.join(d, "labels-0.bin"))
-    # two pictures, from the lawn, at the deck and the wall
+    # pictures from the lawn at the deck and the wall
     nx, ny = 72, 128
     P = persp()
     keys, track = [], []
-    for i, (eye, tgt) in enumerate((([1.0, 1.5, -1.0], [3.2, 0.3, -5.5]), ([0.0, 1.5, -4.0], [0.0, 1.2, -10.0]))):
+    # (since the rule wants two sources for a built square and a picture's built cells only within 5 m: two looks at the
+    # deck, and five along the wall from 4.5 m)
+    views = [([1.0, 1.5, -2.5], [3.2, 0.3, -5.5]), ([5.5, 1.5, -3.0], [3.2, 0.3, -5.5])]
+    views += [([x0, 1.5, -5.5], [x0, 1.2, WALL_Z]) for x0 in (-4.0, -2.0, 0.0, 2.0, 4.0)]
+    for i, (eye, tgt) in enumerate(views):
         C = look_at(eye, tgt)
         name = f"key-{i:04d}.jpg"
         keys.append({"name": name, "t": 1.0 + i, "view": C.T.ravel().tolist(), "proj": P.T.ravel().tolist()})
@@ -99,7 +107,7 @@ def make(d):
                     continue
                 dist[k], conf[k] = tt, 1.0
                 sem[k] = (6, 7, 2)[what]          # terrain, structure, building
-                ade[k] = (1, 9, 8)[what]          # turf, floor, built
+                ade[k] = (1, 8, 8)[what]          # turf, and the deck's boards labelled "wall" like the wall (the owner's deck, 2026-11-27): the shape must tell them apart
         r = np.concatenate([[nx, ny], np.round(dist * 1000), np.round(conf * 255)]).astype("<u2")
         r.tofile(os.path.join(d, name.replace(".jpg", ".rdepth")))
         hdr = np.array([nx & 255, nx >> 8, ny & 255, ny >> 8], np.uint8)
@@ -143,6 +151,7 @@ def main():
         assert sat(sk, 3.2, -5.5) == 5 and abs(sat(tp, 3.2, -5.5) - 6) <= 1, "the deck's boards at 0.6 m for the fused model"
         assert sat(sk, 0.0, WALL_Z + 0.1) == 4 and sat(tp, 0.0, WALL_Z + 0.1) >= 25, "the wall's top for the fused model"
         assert sat(sk, 2.0, -1.0) == 0, "the lawn: looked at, no claim"
+        assert at(-1.0, -7.5) != 4, f"a trunk only the walk's points called building is not solid ({at(-1.0, -7.5)})"
         kinds = np.bincount(g.ravel(), minlength=11)
         print("surfaces selftest: ok;", ", ".join(f"{k}: {v}" for k, v in enumerate(kinds) if v))
 

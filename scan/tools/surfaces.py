@@ -196,6 +196,17 @@ REACH, SMOOTH, COLOUR, ADE = 8.0, False, False, False   # set from the command l
 CAST_MAX_M = 8.0       # m: a picture's depth cell is cast onto the ground only this near (the depth is off 3-6% of the distance)
 CAST_CONF = 0.3        # the least depth confidence for a cast cell
 STRUCT_TOP_M = 4.0     # m: built cells this high over the ground at most are put down onto their squares
+# WHAT IS SOLID (2026-11-27, after the owner's eyes on the first map: "a wood line; some trees, tree trunks maybe; most of
+# the large deck in the back (none of which is called open structure); a fairly wide area bulging out from real walls;
+# random small patches in the middle of the lawn and driveway")
+BUILT_MAX_M = 5.0      # m: a picture's built cell counts only this near (at 8 m the depth is off up to half a metre)
+NOT_BUILT = (1, 3, 6, 9, 10)   # the phone's own labels that veto the large labeller's "built": sky, tree, terrain, car, person
+STAND_M = 0.4          # m: a wall stands up: its cells over a square span this much height (10th to 90th percentile)
+STAND_TOP_M = 0.6      # m: and reach this high
+FLAT_M = 0.4           # m: a deck's boards are flat: their cells span less than this
+DECK_M = (0.3, 1.8)    # m: the boards' height over the ground
+DECK_MIN_SQFT = 16     # a deck is bigger than a table or a car's hood
+HALO_SHARE = 0.2       # a solid square holds at least this share of the most cells on a square within 2 ft (else a wall's smear)
 
 
 def cast_pictures(d, cut, gtree, gmed, scale=1.0, reach=None, smooth=False, colour=False):
@@ -215,7 +226,7 @@ def cast_pictures(d, cut, gtree, gmed, scale=1.0, reach=None, smooth=False, colo
     import segment_study as SS
     SS.pose_keys(keys, SS.read_track(d))
     X, Z, Lb, Cc, R, Ad, used = [], [], [], [], [], [], 0
-    Pn, SX, SZ, SH, SK, SP = [], [], [], [], [], []   # each ground cell's picture; the built cells (x, z, height, kind, picture)
+    Pn, SX, SZ, SH, SK, SP, SR, SL = [], [], [], [], [], [], [], []   # each ground cell's picture; the built cells (x, z, height, kind, picture, range, the phone's own label)
     reach = CAST_MAX_M if reach is None else reach
     if colour:
         try:
@@ -271,6 +282,7 @@ def cast_pictures(d, cut, gtree, gmed, scale=1.0, reach=None, smooth=False, colo
         sb = ~g & np.isin(ak_all, (8, 9, 10)) & (hgt > -0.5) & (hgt <= STRUCT_TOP_M)
         if sb.any():
             SX.append(P[sb, 0]); SZ.append(P[sb, 2]); SH.append(hgt[sb]); SK.append(ak_all[sb]); SP.append(np.full(int(sb.sum()), pic_no, np.int32))
+            SR.append(dist[m][sb]); SL.append(lab[m][sb].astype(np.int16))
         if g.any():
             X.append(P[g, 0]); Z.append(P[g, 2]); Lb.append(lab[m][g] + 1); R.append(dist[m][g]); used += 1
             ak = ak_all[g]
@@ -288,7 +300,7 @@ def cast_pictures(d, cut, gtree, gmed, scale=1.0, reach=None, smooth=False, colo
             Cc.append(cc)
     if not X:
         return None
-    built = (np.concatenate(SX), np.concatenate(SZ), np.concatenate(SH), np.concatenate(SK), np.concatenate(SP)) if SX else None
+    built = tuple(np.concatenate(v) for v in (SX, SZ, SH, SK, SP, SR, SL)) if SX else None
     return np.concatenate(X), np.concatenate(Z), np.concatenate(Lb).astype(np.uint8), used, np.concatenate(Cc), np.concatenate(R), np.concatenate(Ad), np.concatenate(Pn), built
 
 
@@ -339,8 +351,16 @@ def load_walk(d):
     Rg = np.full(len(X), np.nan)                 # how far the camera was from it (kept points: not known here)
     # the walk's kept points on built things, off the ground: the phone's "building" label or the pictures' vote's "built"
     hk = y_ - g_
-    sk = fin & (hk > 0.3) & (hk <= STRUCT_TOP_M) & ((lab == 3) | ((kind == TR.KINDS.index("built")) if kind is not None else False))
+    # (2026-11-27, the owner: a wood line and trees called solid) where both speak, both must say built: the phone's
+    # "building" is not taken where the vote says tree or plant, nor the vote's "built" where the phone says sky, tree,
+    # terrain, a car or a person
+    if kind is not None:
+        vb, vsoft = kind == TR.KINDS.index("built"), np.isin(kind, [TR.KINDS.index("tree"), TR.KINDS.index("plant"), TR.KINDS.index("grass")])
+    else:
+        vb, vsoft = np.zeros(len(lab), bool), np.zeros(len(lab), bool)
+    sk = fin & (hk > 0.3) & (hk <= STRUCT_TOP_M) & (((lab == 3) & ~vsoft) | (vb & ~np.isin(lab.astype(np.int16) - 1, NOT_BUILT)))
     BX, BZ, BH, BK, BP = [x_[sk]], [z_[sk]], [hk[sk]], [np.full(int(sk.sum()), 8, np.uint8)], [np.full(int(sk.sum()), -1, np.int32)]
+    BR, BL = [np.full(int(sk.sum()), np.nan)], [lab[sk].astype(np.int16) - 1]
     # the pictures' own ground, where the walk kept their label grids
     if fin.sum() > 100:
         from scipy.spatial import cKDTree
@@ -353,6 +373,7 @@ def load_walk(d):
             cx, cz, cl, used, ccol, crange, cade, cpic, cbuilt = cast
             if cbuilt is not None:
                 BX.append(cbuilt[0]); BZ.append(cbuilt[1]); BH.append(cbuilt[2]); BK.append(cbuilt[3]); BP.append(cbuilt[4])
+                BR.append(cbuilt[5]); BL.append(cbuilt[6])
             if "--nocast" not in sys.argv:
                 X, Z, L, C, A = np.r_[X, cx], np.r_[Z, cz], np.r_[L, cl], np.r_[C, ccol], np.r_[A, cade]
                 Src, Rg = np.r_[Src, cpic], np.r_[Rg, crange]
@@ -380,7 +401,8 @@ def load_walk(d):
             _, nn = cKDTree(gs[brk].astype(np.float64)).query(np.floor(xyz[:, [0, 2]]))
             planes.append((int(pl[1]), xyz[:, 0], xyz[:, 2], xyz[:, 1] - gmed[nn]))
     bx, bz = np.concatenate(BX), np.concatenate(BZ)
-    built = (cth * bx - sth * (-bz) + T["tx"], sth * bx + cth * (-bz) + T["ty"], np.concatenate(BH), np.concatenate(BK), np.concatenate(BP))
+    built = (cth * bx - sth * (-bz) + T["tx"], sth * bx + cth * (-bz) + T["ty"], np.concatenate(BH), np.concatenate(BK), np.concatenate(BP),
+             np.concatenate(BR), np.concatenate(BL))
     note += f"; {len(bx):,} cells on built things off the ground"
     if pj is not None:
         note += f"; ARCore's surfaces: {sum(1 for p_ in planes if p_[0] == 2)} walls, {sum(1 for p_ in planes if p_[0] == 0)} facing up, {sum(1 for p_ in planes if p_[0] == 1)} facing down"
@@ -502,6 +524,7 @@ def main():
     Bg, Tg = grid(BARE), grid((K > 0) if kind is not None else np.ones(len(L), bool))   # of the points the vote spoke for
     bare_sq = (Bg >= MIN_PTS) & (Bg * 2 >= Tg)
     from scipy import ndimage
+    import ground_fill as GF
     blab, bn = ndimage.label(bare_sq, structure=np.ones((3, 3)))
     bsize = np.bincount(blab.ravel())
     big_bare = bare_sq & (bsize[blab] * (CELL * FT) ** 2 >= BARE_MIN_SQFT)
@@ -606,6 +629,14 @@ def main():
     WI = np.repeat(np.arange(len(Es)), [len(e) for e in Es])      # each ground point's walk
     BE = np.concatenate([b[0] for b in Bs]); BN = np.concatenate([b[1] for b in Bs]); BH = np.concatenate([b[2] for b in Bs])
     BK = np.concatenate([b[3] for b in Bs]); BW = np.concatenate([np.full(len(b[0]), q, np.int32) for q, b in enumerate(Bs)])
+    BR = np.concatenate([b[5] for b in Bs]); BL = np.concatenate([b[6] for b in Bs])
+    BS = BW.astype(np.int64) * 100000 + np.where(np.concatenate([b[4] for b in Bs]) >= 0, np.concatenate([b[4] for b in Bs]), 99999)
+    # THE TWO VETOES ON A CELL (2026-11-27): the phone's own label says it is not built (sky, tree, terrain, a car, a
+    # person); or a picture saw it from further than BUILT_MAX_M
+    veto_lab = (BK != 10) & np.isin(BL, NOT_BUILT)
+    veto_far = np.isfinite(BR) & (BR > BUILT_MAX_M)
+    bok = ~veto_lab & ~veto_far
+    bstat = {}
     bci, bcj = np.floor(BE / CELL).astype(int) - i0, np.floor(BN / CELL).astype(int) - j0
     bin_ = (bci >= 0) & (bcj >= 0) & (bci < W) & (bcj < H)
     bkey = np.where(bin_, bcj * W + bci, 0)
@@ -655,10 +686,55 @@ def main():
     PM = [plane_masks(q) for q in range(len(Ps))]
     plane_top, plane_floor = np.zeros((H, W)), np.zeros((H, W))   # m over the ground: a wall plane's top, a floor plane's height
 
-    def built_of(sel, walks):
-        so, fl, rf = bgrid(sel & (BK == 8) & (BH > 0.15)), bgrid(sel & (BK == 9) & (BH > 0.15) & (BH < 1.8)), bgrid(sel & (BK == 10) & (BH > 1.8))
-        solid = (so >= MIN_PTS) & (2 * so >= ground_all)
-        deck = (fl >= MIN_PTS) & (fl >= so) & (2 * fl >= ground_all) & ~solid
+    def sq_stats(m):
+        """Per square, of the cells m: how many, their heights' 10th, 50th and 90th percentiles, how many sources."""
+        n = np.zeros(H * W); p10 = np.zeros(H * W); p50 = np.zeros(H * W); p90 = np.zeros(H * W); ns = np.zeros(H * W)
+        m = m & bin_
+        if m.any():
+            kk, hh, ss = bkey[m], BH[m], BS[m]
+            o_ = np.lexsort((hh, kk)); kk, hh, ss = kk[o_], hh[o_], ss[o_]
+            br_ = np.flatnonzero(np.r_[True, np.diff(kk) != 0]); en_ = np.r_[br_[1:], len(kk)]
+            cnt = en_ - br_
+            q_ = lambda f: hh[br_ + np.minimum(cnt - 1, np.floor(f * (cnt - 1) + 0.5).astype(int))]
+            n[kk[br_]], p10[kk[br_]], p50[kk[br_]], p90[kk[br_]] = cnt, q_(0.1), q_(0.5), q_(0.9)
+            u_ = np.unique(kk * 10000000 + ss)
+            ns += np.bincount((u_ // 10000000).astype(np.int64), minlength=H * W)
+        return n.reshape(H, W), p10.reshape(H, W), p50.reshape(H, W), p90.reshape(H, W), ns.reshape(H, W)
+
+    def built_of(sel, walks, say=None):
+        # WHAT STANDS UP IS SOLID, WHAT LIES FLAT OFF THE GROUND IS A DECK (2026-11-27, after the owner's eyes on the first
+        # map): by the shape of the cells over a square, not the label's word between "wall" and "floor" (most of the
+        # large deck in the back was called solid): a wall's cells span its height, a deck's boards lie at one height.
+        # And a square is built only on two sources or more (a picture, or a walk's kept points), as for the far specks.
+        c = sel & bok & np.isin(BK, (8, 9)) & (BH > 0.15) & (BH <= STRUCT_TOP_M)
+        n, p10, p50, p90, ns = sq_stats(c)
+        enough = (n >= MIN_PTS) & (2 * n >= ground_all)
+        stands0 = enough & (p90 - p10 >= STAND_M) & (p90 >= STAND_TOP_M)
+        stands = stands0 & (ns >= 2)
+        # a wall's smear: a square beside a wall with a fifth or less of the cells of the densest square within 2 ft
+        dens = ndimage.maximum_filter(np.where(stands, n, 0), size=5)
+        halo = stands & (n < HALO_SHARE * dens)
+        solid = stands & ~halo
+        # a small piece standing alone that does not reach a man's chest is not a wall (a pillar does)
+        lab_s, ns_ = ndimage.label(solid, structure=np.ones((3, 3)))
+        lone_low = np.zeros_like(solid)
+        if ns_:
+            sz_ = np.bincount(lab_s.ravel()); top_ = ndimage.maximum(p90, lab_s, index=np.arange(ns_ + 1))
+            small_low = (sz_ * SQ <= GF.SPECK_SQFT) & (np.asarray(top_) < 1.2); small_low[0] = False
+            lone_low = small_low[lab_s]
+            solid = solid & ~lone_low
+        flat0 = enough & (p90 - p10 < FLAT_M) & (p50 >= DECK_M[0]) & (p50 <= DECK_M[1]) & ~stands0
+        flat = flat0 & (ns >= 2)
+        lab_f, nf_ = ndimage.label(flat, structure=np.ones((3, 3)))
+        deck = flat
+        if nf_:
+            szf = np.bincount(lab_f.ravel()); bigf = szf * SQ >= DECK_MIN_SQFT; bigf[0] = False
+            deck = bigf[lab_f]
+        if say is not None:
+            say.update({"one source": int(((stands0 | flat0) & (ns < 2)).sum()), "smear": int(halo.sum()), "low lone": int(lone_low.sum()),
+                        "small flat": int((flat & ~deck).sum()), "flat": int(flat.sum())})
+        fl = bgrid(c & (BK == 9))
+        rf = bgrid(sel & bok & (BK == 10) & (BH > 1.8))
         # a wall ARCore found, along a built thing the labels saw for 30% of its length or more, is a wall all along:
         # the gaps between what the labels saw filled (a fence's plane, with no building seen along it, is not)
         near1 = ndimage.binary_dilation(solid, structure=np.ones((3, 3)), iterations=1) if solid.any() else solid
@@ -670,12 +746,12 @@ def main():
                     add_w |= m_; pstat["walls kept"] += 1
                     plane_top[m_] = np.maximum(plane_top[m_], top_)
         solid = solid | add_w
-        # a floor ARCore found off the ground, where the labels saw a floor on a fifth of it or more, is a floor all over
+        # a floor ARCore found off the ground, where the labels saw a floor or the cells lie flat on a fifth of it or more, is a floor all over
         add_f = np.zeros_like(solid)
         for q in walks:
             for m_, top_ in PM[q][1]:
                 pstat["floors"] += 1
-                if ((fl > 0) & m_).sum() >= 0.2 * m_.sum():
+                if (((fl > 0) | flat0) & m_).sum() >= 0.2 * m_.sum():
                     add_f |= m_; pstat["floors kept"] += 1
                     plane_floor[m_] = top_
         deck = (deck | add_f) & ~solid
@@ -686,26 +762,22 @@ def main():
                 pstat["ceilings"] += 1; ceil |= m_
         roofed = ((rf >= MIN_PTS) | ceil) & near_solid
         return solid | roofed | (deck & roofed), deck & ~roofed, roofed
-    solid_sq, deck_sq, roofed_sq = built_of(np.ones(len(BE), bool), range(len(Ps)))
+    solid_sq, deck_sq, roofed_sq = built_of(np.ones(len(BE), bool), range(len(Ps)), bstat)
     # HOW HIGH (for the fused model; the features session, 2026-11-27: "Without it a wall or shed has no top, and a deck
     # has no height for its boards"): a solid square's top is the highest built cell over it (or its wall plane's
     # top), a deck's boards the median height of the floor cells on it (or its floor plane's)
-    top_solid = np.zeros(H * W)
-    sel_ = bin_ & (BK == 8)
-    np.maximum.at(top_solid, bkey[sel_], BH[sel_])
-    top_solid = np.maximum(top_solid.reshape(H, W), plane_top)
-    fsel = bin_ & (BK == 9) & (BH > 0.15) & (BH < 1.8)
-    top_deck = plane_floor.copy()
-    if fsel.any():
-        o_ = np.argsort(bkey[fsel], kind="stable"); kk_, hh_ = bkey[fsel][o_], BH[fsel][o_]
-        br_ = np.flatnonzero(np.r_[True, np.diff(kk_) != 0])
-        meds = np.array([np.median(hh_[a_:b_]) for a_, b_ in zip(br_, np.r_[br_[1:], len(kk_)])])
-        td = top_deck.ravel(); td[kk_[br_]] = meds; top_deck = td.reshape(H, W)
+    _n, _p10, p50_all, p90_all, _ns = sq_stats(bok & np.isin(BK, (8, 9)) & (BH > 0.15) & (BH <= STRUCT_TOP_M))
+    top_solid = np.maximum(p90_all, plane_top)
+    top_deck = np.where(plane_floor > 0, plane_floor, p50_all)
     looked = (ground_all > 0) | (bgrid(np.ones(len(BE), bool)) > 0)
     if any(Ps):
         print(f"  ARCORE'S SURFACES: {pstat['walls']} walls, {pstat['walls kept']} of them along built things the labels saw (the rest, a fence or a hedge, left out); {pstat['floors']} floors off the ground of 16 sq ft or more, {pstat['floors kept']} where the labels saw a floor; {pstat['ceilings']} ceilings over 6 ft.")
     print(f"  BUILT THINGS: {len(BE):,} cells off the ground ({int((BK == 8).sum()):,} walls, pillars, doors; {int((BK == 9).sum()):,} floors, steps, railings; {int((BK == 10).sum()):,} roofs seen from under); "
           f"SOLID {int(solid_sq.sum() * SQ):,} sq ft (of it under a roof seen from below {int((roofed_sq & solid_sq).sum() * SQ):,}), OPEN (a deck's boards) {int(deck_sq.sum() * SQ):,} sq ft.")
+    print(f"  BUILT, WHAT WAS LEFT OUT: cells the phone's own label says are sky, a tree, terrain, a car or a person {int(veto_lab.sum()):,}; "
+          f"cells a picture saw from further than {BUILT_MAX_M * FT:.0f} ft {int((veto_far & ~veto_lab).sum()):,}; squares on one source only {int(bstat.get('one source', 0) * SQ):,} sq ft; "
+          f"a wall's smear (a fifth or less of the cells of the densest square within 2 ft) {int(bstat.get('smear', 0) * SQ):,} sq ft; small pieces standing alone lower than 4 ft {int(bstat.get('low lone', 0) * SQ):,} sq ft; "
+          f"flat pieces smaller than {DECK_MIN_SQFT} sq ft {int(bstat.get('small flat', 0) * SQ):,} sq ft. Lying flat {DECK_M[0] * FT:.0f}-{DECK_M[1] * FT:.0f} ft up (a deck's boards, by shape): {int(bstat.get('flat', 0) * SQ):,} sq ft.")
     if len(Bs) > 1:
         per_b = [built_of(BW == q, [q])[:2] for q in range(len(Bs))]
         for q in range(len(per_b)):
