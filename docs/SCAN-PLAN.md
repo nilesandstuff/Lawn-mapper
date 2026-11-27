@@ -5609,3 +5609,24 @@ HARD:
 SPECULATION: 39-46 sq ft is still small for "the large deck in the back"; the walks saw its boards in patches (187 sq
 ft lying flat in all, most of it in pieces under 16 sq ft). The owner's eyes say whether it is placed right; a walk
 on app 1.28 gives ARCore's floor planes, which fill a deck's outline whole.
+
+## 89. The owner's eyes on section 88's map (2026-11-27, about 2:10 am Fri Eastern)
+
+HARD (the owner):
+  - "the purple shapes are roughly right, besides the deck, pool, and hot tub".
+  - "the actual position of the colors is pretty chaotic. For the most part they bulge out from the true building.
+    There's one spot where the building exists but is absent from the colors around it, basically a false hole."
+    (A screenshot of the true shapes was meant to come with it, the building yellow, the deck red, the hot tub blue,
+    the pool light blue. It did not reach the session.)
+  - "I don't think the dimension based rules for what is deck will work. My deck has 2 levels, one that's about 5 feet
+    off the ground and another that's about 10 feet off the ground. Then there's a wooden staircase off a seperate
+    covered deck (the staircase is not under the covered portion) that starts at 10 feet off the ground and leads to
+    ground level... So I think it needs vision labels to determine what is deck. And we'll need more labels for objects
+    around yards to see whether they fall into solid or open (for example, a transformer box and raised garden planter
+    are solid, a sandbox is open. And fences are their own things with only a couple inches of depth)."
+  - The hot tub is solid, and mostly marked solid correctly.
+
+THEN (this commit), for the bulge: a wall moves a lidar shape's edge OUT by 1 ft at most and IN by 4 ft at most (it
+moved out up to 6 ft before: 395 sq ft added outside the lidar's edge); and a walk whose corners agree no better than
+12 in gives no built things (the newest walk's two corners agreed within 37 in). The deck rule by height (DECK_M,
+DECK_TOP_M) is the owner's "will not work": the next step is labels (section 90).

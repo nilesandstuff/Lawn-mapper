@@ -213,6 +213,9 @@ HALO_SHARE = 0.2       # a solid square holds at least this share of the most ce
 # fuzziness at edges, lidar doesn't actually know how far in the walls sit, and it can get confused when trees touch the
 # building"): surfaces.py --lidar
 LIDAR_BAND_FT = 6      # the walks' walls within this of a lidar shape's edge, in or out, are that shape's walls
+WALL_OUT_MAX_FT = 1    # but a wall moves the edge OUT by no more than this (the lidar's outline is good; the bulges were walls seen out of place)
+WALL_IN_MAX_FT = 4     # and IN by no more than this (eaves)
+BUILT_FIT_M = 0.3      # a walk whose corners agree no better than this gives no built things
 WALL_NEAR_FT = 4       # an edge square takes the walls within this of it
 WALL_SPREAD_FT = 8     # an edge square with no walls near takes the offset of the edge within this that has one
 WALL_INSET_FT = 2      # walls stand 2 ft in from a roof's edge where the walks did not see them (structures.js WALL_INSET_M)
@@ -421,6 +424,14 @@ def load_walk(d):
     if pj is not None:
         note += f"; ARCore's surfaces: {sum(1 for p_ in planes if p_[0] == 2)} walls, {sum(1 for p_ in planes if p_[0] == 0)} facing up, {sum(1 for p_ in planes if p_[0] == 1)} facing down"
     planes = [(k_, cth * px - sth * (-pz) + T["tx"], sth * px + cth * (-pz) + T["ty"], ph) for k_, px, pz, ph in planes]
+    # A WALK THAT IS NOT IN PLACE PUTS ITS WALLS IN THE WRONG PLACE (the owner, 2026-11-27: "the actual position of the
+    # colors is pretty chaotic. For the most part they bulge out from the true building"; the S4 runs of that night had
+    # the newest walk's corners agreeing only within 37 in, and two walks sitting 6 ft north of it): its built things
+    # are left out when its corners agree no better than BUILT_FIT_M
+    worst = float(fit.get("worstM") or 0)
+    if worst > BUILT_FIT_M:
+        built = tuple(a_[:0] for a_ in built); planes = []
+        note += f"; ITS BUILT THINGS LEFT OUT (its corners agree only within {worst * 39.37:.0f} in)"
     return E, N, L, K, C, A, Src, Rg, built, planes, note + f"; its {fit.get('n')} corners agree within {(fit.get('worstM') or 0) * 39.37:.0f} in."
 
 
@@ -880,6 +891,7 @@ def main():
                         off[q_] = float(np.median(off[has][nb])) if nb else default
                 else:
                     off[:] = default
+                off = np.clip(off, -WALL_OUT_MAX_FT, WALL_IN_MAX_FT)
                 if wall_share >= CONFIRM_SHARE:
                     verdict["confirmed"].append(float(np.median(off[has])))
                     offs_all += list(off[has])
