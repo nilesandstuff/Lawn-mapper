@@ -5457,3 +5457,25 @@ HARD (six walks asked for by hand; five put on the map, the 17-picture walk havi
 SPECULATION: that 5,765 sq ft of solid is too much. It holds the neighbours' houses across the yard as well as the
 owner's, and walls seen from 30-39 ft away smear by a foot or two. The owner's eyes on the map will say; the lidar's
 buildings would measure it (fuse-check has them).
+
+## 82. Section 81 run again with its fixes (S4, 9:42-10:24 pm Thu Eastern, head 9996fe8)
+
+Deployed first: the main site (9:11-9:20 pm, fusing 5 with it, no database warning) and the scan site (9:21 pm).
+A sequencing slip, for the record: the site's own after-walk run (6a419cf, 9:01-9:41 pm) was still going while the two
+deploys ran; it ended well. The S4 run waited for it.
+
+HARD (the same six walks; five on the map, as before):
+
+  BUILT: the same as 81 (SOLID 5,765 sq ft, OPEN 39). This time the built things WERE put with the map's plants
+    (2 files, 16 KB): the surfaces-keep fix works. The record gets them when the scan page next opens the map.
+  FAR SPECKS: turf 108 sq ft, paving 12; 42% on one source (17% of all); 23 ft against 7 ft. Taken away as resting on
+    one source: 51 sq ft, so a little under half of them. Turf inside paving: 1 sq ft made paving.
+  THE FILL, held out: turf, of 649 squares hidden, 70% put back turf, 0% as paving, 30% left empty (81: 69/1/30);
+    paving, of 95 hidden, 46% put back paving, 3% as turf, 51% left empty (81: 90/0/10). Filled: turf 1,434 sq ft,
+    paving 281 sq ft, as GUESSED (the same as 81).
+  By the owner's erasures: of 1,581 squares erased as turf, 230 would still be called turf.
+
+SPECULATION: the paving holdout's fall from 90% to 46% is a sample of about ten 3 ft blocks; four or five of them
+landing next to a square the one-source rule just emptied (so the hidden gap opens onto more nothing, and its rim is
+less than half called) would make the whole difference. Turf, with seventy blocks, did not move. Not yet a reason to
+change the rule; a larger paving sample (more walks over the drive) would tell.
