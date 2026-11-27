@@ -5709,3 +5709,19 @@ added outside the lidar's edge 319 sq ft (was 395, the clamp at 1 ft); 25 sq ft 
 sq ft, all from the lidar's shapes; OPEN 53 sq ft (48 inside shapes). The newest walk's built things were left out by
 section 89's 12 in rule (its own two corners at 37 in, though the reference placed it): undone in section 92 for a
 walk placed through the reference. The site's own after-walk runs go at about :21 past each hour.
+
+## 94. ARCore's wall planes in the lidar check (Fri 2026-11-27, about 1 pm Eastern)
+
+HARD (the owner): "Did we ever end up incorporating the planes from arcore? It seems like that's pretty good at
+finding smooth flat walls, which I would think would be making smoother walls than were getting. That seems like it
+would make walk alignment more reliable too."
+  The answer: app 1.28 (bridge 10, android run 45920907442, 8:09 pm Thu) keeps them with every walk, and the
+  walks-alone rule of section 80 uses them. But NO walk of the six run since is from 1.28, so none has planes; and the
+  lidar check of section 86 did not read them.
+BUILT (this commit): in the lidar check each walk's wall planes (the line along a plane at least 0.5 m tall) are walls
+of that walk. Where two plane squares or more lie on an edge stretch's own face within 4 ft, the stretch takes its
+offset from the planes alone, not the cells. So the walks-against-each-other line counts them too, a walk's plane
+against another walk's plane on the same face. Counted in "SHAPES MADE AGAIN" (edge squares placed by ARCore's wall
+planes). The self-test's house face is placed by its plane.
+NEXT: the reference's own placement of a walk (twin-onref.mjs, refkeep.js placeOnShape) matches the walk's points to
+the reference's. Planes matched to planes would be a sharper hold, once walks on 1.28 exist to test it.

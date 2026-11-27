@@ -901,9 +901,18 @@ def main():
         new_add = 0
         align_rows = {}                        # walk -> [(outward directions, how far its walls sit out from the others')]
         wall_q = []                            # each walk's own walls
+        plane_q = []                           # each walk's ARCore wall planes (app 1.28): one smooth surface, not scattered cells
         for q in range(len(Bs)):
             nq_, p10q, _p50q, p90q, _nsq = sq_stats(cw_ & (BW == q))
-            wall_q.append((nq_ >= MIN_PTS) & (p90q - p10q >= STAND_M) & (p90q >= STAND_TOP_M))
+            pq_ = np.zeros((H, W), bool)
+            for m_, _top in (PM[q][0] if q < len(PM) else []):
+                pq_ |= m_
+            plane_q.append(pq_)
+            wall_q.append(((nq_ >= MIN_PTS) & (p90q - p10q >= STAND_M) & (p90q >= STAND_TOP_M)) | pq_)
+        plane_all = np.zeros((H, W), bool)
+        for pq_ in plane_q:
+            plane_all |= pq_
+        n_plane_edges = 0
         shapes_info = []                       # (lidar kind, footprint, its corner, the verdict) for the yard labels' study
         verdict = {"confirmed": [], "deck": 0, "tree": 0, "unseen": 0, "nothing": 0}
         offs_all, trimmed_tree, moved_in, moved_out = [], 0, 0, 0
@@ -921,7 +930,8 @@ def main():
                 d_in, d_out = ndimage.distance_transform_edt(fp), ndimage.distance_transform_edt(~fp)
                 sd = np.where(fp, d_in - 0.5, -(d_out - 0.5)) * ft_sq          # ft, + inside the lidar's edge
                 band = np.abs(sd) <= LIDAR_BAND_FT
-                walls = wall_w[y0:y1, x0:x1] & band
+                walls = (wall_w[y0:y1, x0:x1] | plane_all[y0:y1, x0:x1]) & band
+                is_plane = plane_all[y0:y1, x0:x1]
                 edge = fp & (d_in <= 1)
                 ey, ex = np.nonzero(edge)
                 seen_e = near_look[y0:y1, x0:x1][edge]
@@ -953,12 +963,16 @@ def main():
                     w_face = ne_[w_edge]
                     w_bits = np.zeros(len(wy), np.int64)
                     for q in range(len(Bs)):
-                        w_bits |= wall_q[q][y0:y1, x0:x1][wy, wx].astype(np.int64) << q
+                        w_bits |= (wall_q[q][y0:y1, x0:x1][wy, wx] | plane_q[q][y0:y1, x0:x1][wy, wx]).astype(np.int64) << q
                     tw = cKDTree(np.c_[wy, wx].astype(float))
                     for q_, (yy, xx) in enumerate(zip(ey, ex)):
                         nb = np.asarray(tw.query_ball_point([yy, xx], WALL_NEAR_FT / ft_sq), int)
                         if len(nb):
                             nb = nb[(w_face[nb] @ ne_[q_]) > 0.7]
+                        # an ARCore plane on this face says where the wall is better than the cells do: it alone, if there
+                        if len(nb) and is_plane[wy[nb], wx[nb]].sum() >= 2:
+                            nb = nb[is_plane[wy[nb], wx[nb]]]
+                            n_plane_edges += 1
                         if len(nb) >= 2:
                             off[q_] = float(np.median(sd[wy[nb], wx[nb]]))
                             bits = int(np.bitwise_or.reduce(w_bits[nb]))
@@ -1071,7 +1085,7 @@ def main():
               f"confirmed with their walls placed {len(cf)}" + (f" (the walls, by stretches, in the middle {np.median(offs_all):+.1f} ft from the lidar's edge, inward +, from {np.percentile(offs_all, 10):+.1f} to {np.percentile(offs_all, 90):+.1f})" if offs_all else "")
               + f"; a deck, not a building {verdict['deck']} (and decks inside a shape {int(deck_part * SQ):,} sq ft); a tree, not a structure {verdict['tree']}; looked round but no wall found {verdict['nothing']} (kept, walls {WALL_INSET_FT} ft in); not looked at enough to judge {verdict['unseen']} (kept so).")
         print(f"     THE SHAPES MADE AGAIN: {int(moved_in * SQ):,} sq ft of the lidar's shapes outside their walls taken off, {int(moved_out * SQ):,} sq ft added where the walls stand outside the lidar's edge; "
-              f"{int(trimmed_tree * SQ):,} sq ft cut where a tree touches and no wall was seen; edge squares moved out more than {WALL_OUT_MAX_FT} ft by two walks or more agreeing (an addition since the flight?) {new_add:,}. SOLID {int(solid_sq.sum() * SQ):,} sq ft ({int((l_solid & solid_sq).sum() * SQ):,} from the lidar's shapes, {int(w_solid.sum() * SQ):,} from the walks alone), "
+              f"{int(trimmed_tree * SQ):,} sq ft cut where a tree touches and no wall was seen; edge squares moved out more than {WALL_OUT_MAX_FT} ft by two walks or more agreeing (an addition since the flight?) {new_add:,}; edge squares placed by ARCore's wall planes {n_plane_edges:,}. SOLID {int(solid_sq.sum() * SQ):,} sq ft ({int((l_solid & solid_sq).sum() * SQ):,} from the lidar's shapes, {int(w_solid.sum() * SQ):,} from the walks alone), "
               f"OPEN {int(deck_sq.sum() * SQ):,} sq ft ({int(l_deck.sum() * SQ):,} from the lidar's shapes, {int((w_deck & deck_sq & ~l_deck).sum() * SQ):,} from the walks alone).")
     if any(Ps):
         print(f"  ARCORE'S SURFACES: {pstat['walls']} walls, {pstat['walls kept']} of them along built things the labels saw (the rest, a fence or a hedge, left out); {pstat['floors']} floors off the ground of 16 sq ft or more, {pstat['floors kept']} where the labels saw a floor; {pstat['ceilings']} ceilings over 6 ft.")
