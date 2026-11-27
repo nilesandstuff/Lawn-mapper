@@ -1870,6 +1870,10 @@ saw; 5 clears the opaque cubes and lays the deck's slab. Kind 4 over a lidar roo
 meta.fused notBuilt / toDeck; arrays.walk 6 where a lidar built thing was taken away. Tested on the synthetic lot
 only (a roof's east metre to a shrub's density, its west metre to a deck, a sliver of a verdict ignored).
 NOT MEASURED: any real verdicts; whether borrowing (rather than emptying) is right for an edge past the walls.
+LIVE 2026-11-27, 1:57 am Eastern (core session's deploy). Its fuse-check on the owner's lot (the walks' new structures:
+7 lidar shapes, 3 confirmed with walls a median 0.7 ft inside the lidar's edge, 4 not seen enough to judge; 39 sq ft
+a deck inside a shape, 9 sq ft not built): 242 half-metre cells of structure added, 32 of deck; 1 lidar built cell
+taken away, 20 made a deck. Counts, not a measure of the light.
 
 ## Speculation
 
