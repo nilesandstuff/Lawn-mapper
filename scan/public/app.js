@@ -2117,7 +2117,12 @@ async function handPart(p) {
     r.onerror = () => reject(r.error || new Error('could not read the part'));
     r.readAsDataURL(p.body instanceof Blob ? p.body : new Blob([p.body]));
   });
-  return N.keepPart(partUrl(p), p.type || 'application/octet-stream', b64) ? 'ok' : 'retry';
+  // the one wait left on the page's thread: the app takes the text in and writes the part before it answers; timed,
+  // so the next walk says whether this is where the stalls while sending are (2026-11-27)
+  const t0 = performance.now();
+  const kept = N.keepPart(partUrl(p), p.type || 'application/octet-stream', b64);
+  st.wperf?.time('hand-over to the app (the page waits)', performance.now() - t0);
+  return kept ? 'ok' : 'retry';
 }
 /** The upload's state for the page: the outbox's own, with what the app holds added when the app sends. */
 function uploadsNow() {
