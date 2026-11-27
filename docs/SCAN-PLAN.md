@@ -5742,3 +5742,28 @@ JUDGED: CLIPSeg over-fires. "Garage" for a house (harmless: both solid), "sandbo
 and deck and pool barely where the owner drew them. It is not good enough to say what is a deck.
 SPECULATION: an open-vocabulary DETECTOR (OWLv2 or Grounding DINO, both in transformers itself) scores a word against
 regions, not every pixel against every word, and is far less prone to labelling the whole picture with something.
+
+## 96. The owner names the home walk's things, toward a labeller for the phone (Fri 2026-11-27, about 2 pm Eastern)
+
+HARD (the owner): "Do you remember how i labeled a bunch of pictures for one of the earlier studies? I did it on my
+work walk, which doesn't have a deck or pool. So I could do that again on my home walk... Though I'd prefer not to do
+it for every single picture, just a good representation of the various objects in the yard... Tell me what you need
+and give me the easiest way to do it, and I'll do it." And: "ideally in the end we'll do the labelling on the phone
+after a walk, since live would probably be too heavy. OR we can do it on a machine, but we don't want to spending 15
+minutes running the labeller on every walk, that would be too resource intensive for the live app."
+
+THE PLAN:
+  1. The naming page of section 2026-11-19 (scan/public/name.html), on the home walk 1795728070119 (its corners agree
+     within 6 in; 318 pictures). A name given to a thing goes to that thing in EVERY photo (the shapes matched across
+     photos by the photos' own depth, name_prep.py), so a few dozen names cover the walk. The page now starts a walk
+     not yet named with the map's names as buttons (house, garage, shed, porch, deck, stairs, pool, hot tub, fence,
+     chain-link, planter, utility box, AC unit, retaining wall, pergola, gazebo, sandbox, play set, grass, paving, bare
+     ground, mulch, garden bed, tree, shrub, car, movable thing, sky).
+  2. Its shapes need Segment Anything on Modal (scan-segment.yml, what=shapes, L4): about 40 minutes of GPU for 318
+     pictures at section 29's 7.2 s a picture, about $0.55 of the AR allotment (running total before it: about $0.70).
+     Then scan-deploy task=name makes the page's files.
+  3. The owner's names measure every labeller (the large one, the phone's own, CLIPSeg, OWLv2) kind by kind on the
+     things that matter (deck, pool, hot tub, fence), and teach the phone-sized model (distill_prep.py/distill_modal.py,
+     section S5) the new kinds: a labeller small enough to run on the phone after a walk, or on the free CPU in well
+     under a second a picture. CLIPSeg's 0.5 s a picture (section 90) is the slowest this may cost on a walk; the
+     large ones (OWLv2 8 s on CPU) are for teaching, never for every walk.

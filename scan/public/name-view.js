@@ -16,6 +16,9 @@
 const $ = (s) => document.querySelector(s);
 const walk = new URLSearchParams(location.search).get('walk');
 const part = (name, init) => fetch(`/api/scan/twin?walk=${encodeURIComponent(walk)}&part=${encodeURIComponent(name)}`, { credentials: 'same-origin', ...init });
+const PRESET = ['house', 'garage', 'shed', 'porch', 'deck', 'stairs', 'pool', 'hot tub', 'fence', 'chain-link', 'planter',
+  'utility box', 'AC unit', 'retaining wall', 'pergola', 'gazebo', 'sandbox', 'play set', 'grass', 'paving', 'bare ground',
+  'mulch', 'garden bed', 'tree', 'shrub', 'car', 'movable thing', 'sky'];
 const S = { seg: null, names: {}, shapes: {}, words: [], p: 0, ids: null, w: 0, h: 0, photo: null, pick: null, whole: true, plain: false, dirty: false, timer: 0, token: 0 };
 
 async function main() {
@@ -25,6 +28,9 @@ async function main() {
   if (!r.ok) { $('#status').textContent = 'This walk\'s shapes have not been made ready to name yet (a run does it: task name).'; return; }
   S.seg = await r.json();
   try { const n = await part('seg-names.json'); if (n.ok) { const j = await n.json(); S.names = j.names || {}; S.shapes = j.shapes || {}; S.words = j.words || []; } } catch { /* none yet */ }
+  // A WALK NOT NAMED YET starts with the names the map needs (2026-11-27; the owner's kinds: solid, open, fence its own,
+  // chain-link nothing, the pool its own; a tap instead of typing). The owner's own words are added after them as before.
+  if (!S.words.length) S.words = PRESET.slice();
   $('#at').max = String(S.seg.pictures.length - 1);
   wire();
   await show(0);
