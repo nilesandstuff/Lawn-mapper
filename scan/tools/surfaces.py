@@ -725,11 +725,13 @@ def main():
             solid = solid & ~lone_low
         flat0 = enough & (p90 - p10 < FLAT_M) & (p50 >= DECK_M[0]) & (p50 <= DECK_M[1]) & ~stands0
         flat = flat0 & (ns >= 2)
-        lab_f, nf_ = ndimage.label(flat, structure=np.ones((3, 3)))
+        # flat pieces within 2 ft of each other are one deck (S4 of 10:44 pm Thu: 138 sq ft of 187 lying flat fell in
+        # pieces under 16 sq ft: the boards are seen in patches between railings, chairs and the parts not looked at)
+        lab_f, nf_ = ndimage.label(ndimage.binary_dilation(flat, structure=np.ones((3, 3))) if flat.any() else flat, structure=np.ones((3, 3)))
         deck = flat
         if nf_:
-            szf = np.bincount(lab_f.ravel()); bigf = szf * SQ >= DECK_MIN_SQFT; bigf[0] = False
-            deck = bigf[lab_f]
+            szf = np.bincount(lab_f[flat], minlength=nf_ + 1); bigf = szf * SQ >= DECK_MIN_SQFT; bigf[0] = False
+            deck = flat & bigf[lab_f]
         if say is not None:
             say.update({"one source": int(((stands0 | flat0) & (ns < 2)).sum()), "smear": int(halo.sum()), "low lone": int(lone_low.sum()),
                         "small flat": int((flat & ~deck).sum()), "flat": int(flat.sum())})
@@ -777,7 +779,7 @@ def main():
     print(f"  BUILT, WHAT WAS LEFT OUT: cells the phone's own label says are sky, a tree, terrain, a car or a person {int(veto_lab.sum()):,}; "
           f"cells a picture saw from further than {BUILT_MAX_M * FT:.0f} ft {int((veto_far & ~veto_lab).sum()):,}; squares on one source only {int(bstat.get('one source', 0) * SQ):,} sq ft; "
           f"a wall's smear (a fifth or less of the cells of the densest square within 2 ft) {int(bstat.get('smear', 0) * SQ):,} sq ft; small pieces standing alone lower than 4 ft {int(bstat.get('low lone', 0) * SQ):,} sq ft; "
-          f"flat pieces smaller than {DECK_MIN_SQFT} sq ft {int(bstat.get('small flat', 0) * SQ):,} sq ft. Lying flat {DECK_M[0] * FT:.0f}-{DECK_M[1] * FT:.0f} ft up (a deck's boards, by shape): {int(bstat.get('flat', 0) * SQ):,} sq ft.")
+          f"flat pieces smaller than {DECK_MIN_SQFT} sq ft (those within 2 ft of each other taken as one) {int(bstat.get('small flat', 0) * SQ):,} sq ft. Lying flat {DECK_M[0] * FT:.0f}-{DECK_M[1] * FT:.0f} ft up (a deck's boards, by shape): {int(bstat.get('flat', 0) * SQ):,} sq ft.")
     if len(Bs) > 1:
         per_b = [built_of(BW == q, [q])[:2] for q in range(len(Bs))]
         for q in range(len(per_b)):

@@ -5505,3 +5505,23 @@ THE RULE AGAIN (commit b2db5d0; scan/tools/surfaces.py BUILT_MAX_M and the rest;
 SPECULATION: the deck was called solid because the large labeller calls a deck's boards "wall" or "house" more often
 than "floor" (floors were 5 pictures of the lot, walls 39). The two-source rule may cost thin walls seen once; the
 ARCore wall planes on app 1.28 walks are meant to give those back.
+
+## 84. Section 83's rule on the lot (S4 run 45935925667, 10:44-11:15 pm Thu Eastern, head c645235)
+
+HARD (the same six walks; five put their ground on the map):
+  SOLID 1,029 sq ft (was 5,765), tops 8 ft in the middle (was 11); OPEN 49 sq ft (was 39), boards 2.6 ft up.
+  What each rule took: cells the phone's own label vetoed 203,730; cells seen from further than 16 ft 389,524 (of
+  1,624,143 built cells); squares on one source only 304 sq ft; a wall's smear 581 sq ft; lone low pieces 29 sq ft;
+  flat pieces under 16 sq ft 138 sq ft, of 187 sq ft lying flat 1-6 ft up.
+  Walks two by two: where both call a square built, the same kind on 99-100%; of one walk's built squares 4-56% lie
+  within a foot of the other's (81: 23-77%). Fewer squares, so the overlap is smaller too: each walk saw different
+  walls up close.
+  The ground's lines hardly moved: far specks 130 sq ft, 53 taken away as on one source; fill held out turf 71% right,
+  paving 32% right (65 squares; 81: 90%, 82: 46%); filled turf 1,551 sq ft, paving 294.
+
+THEN (this commit): flat pieces within 2 ft of each other are one deck for the 16 sq ft test, since 138 of the 187
+sq ft lying flat fell in small pieces. Run again: section 85.
+
+SPECULATION: the paving holdout falling run on run (90, 46, 32%) may not be noise. With fewer squares solid, a hidden
+block on a path beside a wall now has empty squares where it had solid ones on its rim, and less than half its rim is
+called, so the fill leaves it. If so the fill should count a built square as part of the rim (called, not paving).
