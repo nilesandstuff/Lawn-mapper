@@ -617,7 +617,7 @@ def main():
             print(f"  Where it looked and saw open air: NOT kept ({sst.get('why') or 'no camera track beside the twin, or too few points'}).")
         with open(mo, "w") as f:
             json.dump(doc, f, separators=(",", ":"))
-        print(f"  ON THE MAP, BY {'THE PHONE' + chr(39) + 'S OWN LABELS' if use_phone else 'THE PICTURES' + chr(39) + ' VOTE (no labels kept with this walk)'}, by its {fit.get('n')} corners' one fit (within {(fit.get('worstM') or 0) * 39.37:.0f} in, the phone's distances scaled {((fit['T'].get('s', 1)) - 1) * 100:.1f}%): {len(ms)} shapes, {len({(b[0], b[1]) for b in boxes}):,} sq ft, {len(boxes):,} boxes, seen up to {max((b[3] for b in boxes), default=0) / 10 * FT:.0f} ft. Kept: plants-map.json ({os.path.getsize(mo) / 1e3:.0f} KB).")
+        print(f"  ON THE MAP, BY {'THE PHONE' + chr(39) + 'S OWN LABELS' if use_phone else 'THE PICTURES' + chr(39) + ' VOTE (no labels kept with this walk)'}, {('through the reference, a stretch at a time (its own ' + str(fit.get('n')) + ' corners agree within ' + format((fit.get('worstM') or 0) * 39.37, '.0f') + ' in)') if fit.get('by') == 'the reference' else ('by its ' + str(fit.get('n')) + ' corners' + chr(39) + ' one fit (within ' + format((fit.get('worstM') or 0) * 39.37, '.0f') + ' in, the phone' + chr(39) + 's distances scaled ' + format(((fit['T'].get('s', 1)) - 1) * 100, '.1f') + '%)')}: {len(ms)} shapes, {len({(b[0], b[1]) for b in boxes}):,} sq ft, {len(boxes):,} boxes, seen up to {max((b[3] for b in boxes), default=0) / 10 * FT:.0f} ft. Kept: plants-map.json ({os.path.getsize(mo) / 1e3:.0f} KB).")
     else:
         print(f"  NOT put on the map: {(fit or {}).get('why') or 'the walk has no fit kept beside it (fit.json)'}.")
     return 0

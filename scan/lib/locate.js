@@ -205,8 +205,15 @@ export function addDepth(L, points, odo, cam = null, { standing = true } = {}) {
     L.cloud.set(key, { u: p.x, v: -p.z, y: p.y, odo, cls, surf, n: (was ? was.n : 0) + 1 });
     kept++;
   }
-  if (L.cloud.size > 8000) for (const [k, p] of L.cloud) if (p.odo < odo - KEEP_M) L.cloud.delete(k);
-  if (L.cols.size > 4000) for (const [k, c] of L.cols) if (c.odo < odo - KEEP_M) L.cols.delete(k);
+  /* THE OLD POINTS DROPPED ONCE A METRE OF WALKING, not on every depth picture (2026-11-27): once the cloud held
+     8,000 points, every picture (up to three a frame) looked at every point to find the old ones, a cost that grew
+     with the walk to a quarter of the time spent taking depth in. A point a metre past KEEP_M is still dropped. */
+  if (!(odo - (L.prunedAt ?? -Infinity) < 1)) {
+    let did = false;
+    if (L.cloud.size > 8000) { did = true; for (const [k, p] of L.cloud) if (p.odo < odo - KEEP_M) L.cloud.delete(k); }
+    if (L.cols.size > 4000) { did = true; for (const [k, c] of L.cols) if (c.odo < odo - KEEP_M) L.cols.delete(k); }
+    if (did) L.prunedAt = odo;
+  }
   return kept;
 }
 
@@ -308,10 +315,15 @@ export function priorFor(L, odo, now = Date.now()) {
 export function nextAsk(L, odo, now = Date.now(), pos = null) {
   if (L.pending) return { why: 'a match is running' };
   if (now - L.lastAsk < ASK_EVERY_MS) return { why: 'too soon' };
+  /* not ready (too few points, no prior): the same answer for half a second, rather than every frame looking through
+     the whole cloud again to give it (2026-11-27) */
+  if (L.notYet && now - L.notYet.at < 500 && now >= L.notYet.at) return { why: L.notYet.why };
+  const no = (why) => { L.notYet = { at: now, why }; return { why }; };
   const { stand, ground, high, surface } = recent(L, odo);
-  if (stand.length + high.length < MIN_STAND) return { why: `the camera has ${stand.length + high.length} points on walls, fences, bushes, trunks or a roof's edge within 25 ft (${MIN_STAND} wanted): look round, or look up at the gutters` };
+  if (stand.length + high.length < MIN_STAND) return no(`the camera has ${stand.length + high.length} points on walls, fences, bushes, trunks or a roof's edge within 25 ft (${MIN_STAND} wanted): look round, or look up at the gutters`);
   const prior = priorFor(L, odo, now);
-  if (!prior) return { why: 'waiting for GPS, Street View or two references to start from' };
+  if (!prior) return no('waiting for GPS, Street View or two references to start from');
+  L.notYet = null;
   const id = L.nextId++;
   L.pending = { id, odo, from: prior.from, at: now, phone: pos ? level(pos) : null, refs: refFit(L, odo), stand: stand.length, ground: ground.length, high: high.length, surface: surface.length };
   L.lastAsk = now; L.asks++;

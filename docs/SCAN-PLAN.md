@@ -5359,3 +5359,34 @@ placeOnShape; the page's worker runs the same code). Now a loop; the two copies 
 The walks two by two agree on 93.3-98.4% of the ground both call; turf 15,060 sq ft called, porous ground 2,717 sq ft
 in patches (B0 off the shelf on the three new walks: the large labeller did not yet run in S4; it does from this
 commit on, section 77's follow-up).
+
+## 79. The large labeller on the five walks, and three costs that grew with the walk (2026-11-27)
+
+HARD (S4 run 17, 6:00-7:06 pm Wed Eastern, head 5bf7021; the map came due on its own after the new walks):
+
+  The large labeller (Mask2Former, classes_cpu.py on the runner's CPU) classed the four walks that had no masks:
+  317, 319, 17 and 255 pictures, 2.1-2.2 s a picture, 1,942 s in all; the two older walks already had theirs. The
+  second labeller then read EVERY picture of all six walks by it (none by SegFormer-B0).
+
+    porous ground by the second labeller, in patches of 4 sq ft or more   3,714 sq ft   (run 16, B0 on the new walks: 2,717)
+    the second labeller's porous in all                                    4,469 sq ft
+    the walks two by two, the second labeller                              84.2-91.7% the same
+    of 1,581 squares the owner erased as turf, still called turf as kept   230           (run 16: 228)
+    of 292 erased as porous, the second labeller says porous               234
+    plants pool                                                            21,194 sq ft
+
+  The 4:27 walk (1795728472189) has only two corners that agree and the 4:33 one (1795728024363, 17 pictures) none;
+  the first was still placed, through the reference (18 of 18 stretches), which is the reference's job. The log said
+  "by its 2 corners' one fit (within 37 in)" there, which read as a two-corner placement: plants.py now says
+  "through the reference" when that is what placed the walk.
+
+  Three costs in the page that grew with the walk, measured in node on a cloud of 20,600 points (a phone is slower):
+  - every depth picture taken in (up to three a frame) looked through the whole cloud for old points to drop, once
+    it held 8,000: now once a metre of walking. 1.66 ms a picture -> 0.88.
+  - with too few standing points or no prior, the match's ask looked through the whole cloud every frame to say so:
+    now the same answer for half a second.
+  - the black and red dots (the phone's points on the lidar or off it) were made again every frame, a disc of 8
+    triangles a point: now made once for each list (the list changes twice a second) and kept on the GPU. The
+    agreement behind them every 0.5 s (was 0.3); the lidar's height under the phone once a second (was twice).
+
+SPECULATION until a walk on the new page: how much of the frame this gives back on the phone.

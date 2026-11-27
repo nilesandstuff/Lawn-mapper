@@ -122,6 +122,7 @@ export function makeDrawer(gl) {
 
   /** Draw with this frame's matrices. Leaves the GL state as found. */
   /** occlusion: { w, h, data: Uint8Array w*h, rows from the screen's top, range (default OCC_RANGE) m per 255 } or null */
+  const dotBufs = new WeakMap(), dotLive = [];
   function draw({ view, proj, viewport, framebuffer = null, items = [], dots = [], statics = [], occlusion = null }) {
     if (!view || !proj || (!items.length && !dots.length && !statics.length)) return;
     const was = {
@@ -184,14 +185,31 @@ export function makeDrawer(gl) {
     gl.uniformMatrix4fv(uMvp, false, vp);
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.vertexAttribPointer(aP, 3, gl.FLOAT, false, 0, 0);
+    /* the dots' discs are made once for each list of points and kept on the GPU while the list is the same one
+       (2026-11-27): the page hands a new list a few times a second, and the frames between drew the same discs made
+       again, a thousand points and more */
     for (const d of dots) {
       if (!d.points?.length) continue;
-      const v = [];
-      for (const p of d.points) ring(p, 0, d.r || 0.03, 8, 0, v);
+      let k = dotBufs.get(d.points);
+      if (!k || k.r !== (d.r || 0.03)) {
+        if (k) gl.deleteBuffer(k.buf);
+        const v = [];
+        for (const p of d.points) ring(p, 0, d.r || 0.03, 8, 0, v);
+        k = { buf: gl.createBuffer(), n: v.length / 3, r: d.r || 0.03 };
+        gl.bindBuffer(gl.ARRAY_BUFFER, k.buf);
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.STATIC_DRAW);
+        dotBufs.set(d.points, k);
+        dotLive.push([d.points, k]);
+      }
       gl.uniform4fv(uC, d.color || [0, 0, 0, 1]);
-      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(v), gl.DYNAMIC_DRAW);
-      gl.drawArrays(gl.TRIANGLES, 0, v.length / 3);
+      gl.bindBuffer(gl.ARRAY_BUFFER, k.buf);
+      gl.vertexAttribPointer(aP, 3, gl.FLOAT, false, 0, 0);
+      gl.drawArrays(gl.TRIANGLES, 0, k.n);
     }
+    // the lists no longer drawn give their buffers back
+    for (let i = dotLive.length - 1; i >= 0; i--) if (!dots.some((d) => d.points === dotLive[i][0])) { gl.deleteBuffer(dotLive[i][1].buf); dotBufs.delete(dotLive[i][0]); dotLive.splice(i, 1); }
+    gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+    gl.vertexAttribPointer(aP, 3, gl.FLOAT, false, 0, 0);
     for (const item of items) {
       gl.uniform4fv(uC, item.color || [1, 1, 1, 1]);
       for (const part of geometry(item)) {

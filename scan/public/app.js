@@ -1542,9 +1542,9 @@ function frameWork(f) {
           if (st.wperf && !st.wperfShapes) { st.wperfShapes = true; pagePerf.stage('lidar shapes drawn'); }
         }
         /* the height: the phone's own ground points against the lidar's ground at their own places (locate.js
-           groundOffset), worked out twice a second and moved only when it changes by more than 10 cm, so a glance
+           groundOffset), worked out once a second and moved only when it changes by more than 10 cm, so a glance
            does not lift the drawing; the crosshair's ground only until there are ground points enough */
-        if (f.t - (st.dyAt || 0) > 500) {
+        if (f.t - (st.dyAt || 0) > 1000) {
           st.dyAt = f.t;
           const g = groundOffset(L, odo, T, (e, n) => demAt(st.lid.overlay.dem1, e, n, NaN));
           if (g != null && (st.dy == null || st.dyFrom !== 'ground' || Math.abs(g - st.dy) > 0.1)) { st.dy = g; st.dyFrom = 'ground'; }
@@ -1561,7 +1561,7 @@ function frameWork(f) {
           statics.push({ mesh: st.lid.meshes.canopy, model, color: [0.3, 0.9, 0.4, 0.12], through: true });
           statics.push({ mesh: st.lid.meshes.roofs, model, color: [1, 0.6, 0.3, 0.14], through: true });
         }
-        if (f.t - (st.agreeAt || 0) > 300) { st.agreeAt = f.t; st.agree = agreement(L, odo, st.lid.overlay.dist); }
+        if (f.t - (st.agreeAt || 0) > 500) { st.agreeAt = f.t; st.agree = agreement(L, odo, st.lid.overlay.dist); }
         if (st.agree) { dots.push({ points: st.agree.on, color: [0, 0, 0, 0.95], r: 0.045 }); dots.push({ points: st.agree.off, color: [1, 0.25, 0.2, 0.7], r: 0.03 }); }
       } else st.agree = null;
       /* WHAT HIDES THE LIDAR (bridge 5, 2026-11-10): ARCore's smoothed depth picture at its own size, about fifteen
