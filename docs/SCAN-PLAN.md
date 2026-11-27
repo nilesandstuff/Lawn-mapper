@@ -5630,3 +5630,21 @@ THEN (this commit), for the bulge: a wall moves a lidar shape's edge OUT by 1 ft
 moved out up to 6 ft before: 395 sq ft added outside the lidar's edge); and a walk whose corners agree no better than
 12 in gives no built things (the newest walk's two corners agreed within 37 in). The deck rule by height (DECK_M,
 DECK_TOP_M) is the owner's "will not work": the next step is labels (section 90).
+
+## 90. The yard's things by name: a labeller told them in words (2026-11-27, 2:40 am Fri Eastern)
+
+BUILT (this commit): scan/tools/yard_labels.py. CLIPSeg (CIDAS/clipseg-rd64-refined, in transformers itself, no
+remote code) is told 18 things in words: house, garage, shed, hot tub, utility box, AC unit, raised planter, retaining
+wall (solid); deck, outdoor wooden stairs, sandbox (open); fence; swimming pool; and lawn, paving, tree, bush and sky
+for it to put the rest on. Each picture gets a label byte per cell of its 72 x 128 depth grid (the highest sigmoid, if
+0.4 or more). A walk's pictures are kept in ONE file, yard-labels.npz, put back with the walk; a walk is labelled once.
+The picture's side of the model runs once for all 18 words. The plain way redid it for every word: 7 s a picture on
+four cores, now about 0.5 s, the same logits to 3e-6.
+  surfaces.py reads it (cells within 8 m, any height to 4 m) and prints, as a STUDY only, for each lidar shape
+  largest first the share of the labelled cells on it and within 2 ft held by each thing, and away from every shape
+  the squares each structure-like thing holds. Nothing on the map changes by it yet. The self-test has the deck
+  labelled "deck" and the house "house".
+  The kinds are the core session's proposal to the owner (pool its own kind? fence its own?); not yet answered.
+
+SPECULATION: CLIPSeg is coarse (352 x 352, one mask per word) and its words are guesses: "a hot tub" against "a
+swimming pool" may be confused, and a deck seen from on top may read as "floor" or "paving". The study is to show it.

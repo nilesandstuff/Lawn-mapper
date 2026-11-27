@@ -79,7 +79,7 @@ jobs:
             echo "MAP $n: walks ${LINE//,/, }" | tee -a after.txt
             for W in ${LINE//,/ }; do
               D="m$n-$W"
-              node scan/tools/twin-r2.mjs parts "$W" "$D" 'cloud-*' 'labels-*' view-kind.bin view-rgb.bin view.json start.json owner-trunks.json live.json meta.json 'track-*' 'keys-*' 'key-*.sem' 'key-*.rdepth' 'key-*.sdepth' 'key-*.jpg' segments-masks.npz planes.json | tail -1 | tee -a after.txt
+              node scan/tools/twin-r2.mjs parts "$W" "$D" 'cloud-*' 'labels-*' view-kind.bin view-rgb.bin view.json start.json owner-trunks.json live.json meta.json 'track-*' 'keys-*' 'key-*.sem' 'key-*.rdepth' 'key-*.sdepth' 'key-*.jpg' segments-masks.npz planes.json yard-labels.npz | tail -1 | tee -a after.txt
               # THE LARGE LABELLER ON EVERY NEW WALK (2026-11-26): Mask2Former on the free CPU (classes_cpu.py, 2-3 s a picture),
               # once a walk; its classes are kept with the walk, so a walk already classed is not classed again. Until now this
               # ran only by hand (scan-deploy task classes), and a walk without it fell back to the small labeller off the shelf.
@@ -111,6 +111,12 @@ jobs:
             # THE SECOND LABELLER (ground_labels.py: SegFormer-B0, small enough for a phone) on the walks' pictures, for the ground
             ADE=""
             if [ "$TORCH" = 1 ] && python scan/tools/ground_labels.py $DIRS | tee -a after.txt; then ADE="--ade"; else echo "  The second labeller: could not be run; the colour alone." | tee -a after.txt; fi
+            # THE YARD'S THINGS BY NAME (2026-11-27; the owner: "it needs vision labels to determine what is deck. And we'll
+            # need more labels for objects around yards"): CLIPSeg told a deck, a hot tub, a fence, a pool... in words, once a
+            # walk (yard-labels.npz kept with it); surfaces.py prints what they say on each lidar shape (a study for now)
+            if [ "$TORCH" = 1 ] && timeout 40m python scan/tools/yard_labels.py $DIRS 2>&1 | grep "YARD'S THINGS" | cut -c1-600 | tee -a after.txt; then
+              for D in $DIRS; do if [ -f "$D/yard-labels.npz" ]; then node scan/tools/twin-r2.mjs put "${D#m$n-}" "$D/yard-labels.npz" > /dev/null || true; fi; done
+            fi
             # turf, paving and porous ground, one kind a square: the ground's own colour tells turf from brown, brown near a
             # plant is fallen leaves and not called, and a plant standing on a square takes it from the ground (surfaces.py)
             # THE LIDAR'S SHAPES for the walks to check (2026-11-27; the owner: "checks on the lidar... 'lidar says there's a
@@ -118,7 +124,7 @@ jobs:
             LIDAR=""
             node scan/tools/lidar-built.mjs "m$n-$FIRST" "m$n-lidar.json" | tee -a after.txt || true
             if [ -f "m$n-lidar.json" ]; then LIDAR="--lidar m$n-lidar.json"; fi
-            python scan/tools/surfaces.py $DIRS --colour --reach 12 --smooth $ADE $LIDAR --plants "m$n-$FIRST/plants-map.json" --edits "m$n-edits.json" --keep "m$n-$FIRST/surfaces-map.json" | grep -E "THE GROUND AS|WALK . AGAINST|THE PHONE'S OWN LABELS|OWN COLOUR|PLANTS ON THE SAME|owner's erasures|SECOND LABELLER|THE COLOUR, WALK|OWNER'S ERASURES|Kept for|BUILT|built things|ARCORE|SPECKS|THE FILL|GAPS FILLED|LIDAR'S SHAPES|SHAPES MADE" | cut -c1-900 | tee -a after.txt || true
+            python scan/tools/surfaces.py $DIRS --colour --reach 12 --smooth $ADE $LIDAR --plants "m$n-$FIRST/plants-map.json" --edits "m$n-edits.json" --keep "m$n-$FIRST/surfaces-map.json" | grep -E "THE GROUND AS|WALK . AGAINST|THE PHONE'S OWN LABELS|OWN COLOUR|PLANTS ON THE SAME|owner's erasures|SECOND LABELLER|THE COLOUR, WALK|OWNER'S ERASURES|Kept for|BUILT|built things|ARCORE|SPECKS|THE FILL|GAPS FILLED|LIDAR'S SHAPES|SHAPES MADE|YARD LABELS|AWAY FROM EVERY" | cut -c1-1500 | tee -a after.txt || true
             # (S3 run 5, 2026-11-26: cast to 12 m with the smoothed depth in the raw one's holes, the two walks both called
             # 3,937 sq ft and agreed on 94.8% of it; as before, 1,128 sq ft and 93.5%. So kept that way. docs/SCAN-PLAN.md 74)
             node scan/tools/surfaces-keep.mjs "$FIRST" "m$n-$FIRST" | tee -a after.txt || true

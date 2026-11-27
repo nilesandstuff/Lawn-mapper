@@ -83,7 +83,7 @@ def make(d):
     # pictures from the lawn at the deck and the wall
     nx, ny = 72, 128
     P = persp()
-    keys, track = [], []
+    keys, track, yard = [], [], {}
     # (since the rule wants two sources for a built square and a picture's built cells only within 5 m: two looks at the
     # deck, and five along the wall from 4.5 m)
     views = [([1.0, 1.5, -2.5], [3.2, 0.3, -5.5]), ([5.5, 1.5, -3.0], [3.2, 0.3, -5.5])]
@@ -94,6 +94,7 @@ def make(d):
         keys.append({"name": name, "t": 1.0 + i, "view": C.T.ravel().tolist(), "proj": P.T.ravel().tolist()})
         track.append([1.0 + i, 0, *eye, 0, 0, 0, 0, 0])
         Pi = np.linalg.inv(P)
+        yi = np.zeros(nx * ny, np.uint8)
         dist = np.zeros(nx * ny); conf = np.zeros(nx * ny); sem = np.zeros(nx * ny, np.uint8); ade = np.zeros(nx * ny, np.uint8)
         for jj in range(ny):
             for ii in range(nx):
@@ -107,13 +108,17 @@ def make(d):
                     continue
                 dist[k], conf[k] = tt, 1.0
                 sem[k] = (6, 7, 2)[what]          # terrain, structure, building
-                ade[k] = (1, 8, 8)[what]          # turf, and the deck's boards labelled "wall" like the wall (the owner's deck, 2026-11-27): the shape must tell them apart
+                ade[k] = (1, 8, 8)[what]
+                yi[k] = (14, 9, 1)[what]          # the yard labeller: lawn, deck, house (yard_labels.THINGS, 1-based)          # turf, and the deck's boards labelled "wall" like the wall (the owner's deck, 2026-11-27): the shape must tell them apart
         r = np.concatenate([[nx, ny], np.round(dist * 1000), np.round(conf * 255)]).astype("<u2")
         r.tofile(os.path.join(d, name.replace(".jpg", ".rdepth")))
         hdr = np.array([nx & 255, nx >> 8, ny & 255, ny >> 8], np.uint8)
         np.concatenate([hdr, sem, np.full(nx * ny, 255, np.uint8)]).tofile(os.path.join(d, name.replace(".jpg", ".sem")))
         np.concatenate([hdr, ade]).tofile(os.path.join(d, name.replace(".jpg", ".ade")))
+        yard[name] = yi.reshape(ny, nx)
     json.dump(keys, open(os.path.join(d, "keys-0.json"), "w"))
+    nm_ = sorted(yard)
+    np.savez_compressed(os.path.join(d, "yard-labels.npz"), version=1, pics=json.dumps(nm_), things="[]", idx=np.stack([yard[n] for n in nm_]), conf=np.stack([yard[n] for n in nm_]))
     # ARCore's surfaces: the whole wall; a fence along the east side (no building seen along it); the deck's boards
     wall = [-6, 0, WALL_Z, 6, 0, WALL_Z, 6, 2.8, WALL_Z, -6, 2.8, WALL_Z]
     fence = [5.8, 0, -9, 5.8, 0, -2, 5.8, 1.2, -2, 5.8, 1.2, -9]
@@ -159,6 +164,8 @@ def main():
         g = check(j, r, tmp)
         c = j["cellM"]
         at = lambda x, z: g[int(np.floor(-z / c)) - j["j0"], int(np.floor(x / c)) - j["i0"]]
+        yl = [l for l in r.stdout.splitlines() if "THE YARD LABELS ON THE LIDAR'S SHAPES" in l]
+        assert yl and "(building, 80 sq ft, confirmed): " in yl[0] and "house 8" in yl[0] and "a deck): " in yl[0] and "deck 3" in yl[0].split("a deck): ")[1], f"the yard labels on the shapes ({yl})"
         assert "THE LIDAR'S SHAPES, CHECKED BY THE WALKS: 2 shapes" in r.stdout and "confirmed with their walls placed 1" in r.stdout and "a deck, not a building 1" in r.stdout, "the shapes' verdicts"
         assert at(0.0, WALL_Z + 0.45) != 4, f"under the eaves, between the roof's edge and the wall: not solid ({at(0.0, WALL_Z + 0.45)})"
         assert at(-5.0, WALL_Z + 0.1) == 4, "the wall, all along the lidar's shape"

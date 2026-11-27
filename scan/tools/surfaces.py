@@ -216,6 +216,9 @@ LIDAR_BAND_FT = 6      # the walks' walls within this of a lidar shape's edge, i
 WALL_OUT_MAX_FT = 1    # but a wall moves the edge OUT by no more than this (the lidar's outline is good; the bulges were walls seen out of place)
 WALL_IN_MAX_FT = 4     # and IN by no more than this (eaves)
 BUILT_FIT_M = 0.3      # a walk whose corners agree no better than this gives no built things
+YARD_MAX_M = 8.0       # the yard labels' cells counted this near the camera
+YARD_CELLS = []        # (x, z session, label) of the walk being read, filled by cast_pictures, moved onto the map by load_walk
+YARD_MAP = []          # (east, north, label) of every walk on the map
 WALL_NEAR_FT = 4       # an edge square takes the walls within this of it
 WALL_SPREAD_FT = 8     # an edge square with no walls near takes the offset of the edge within this that has one
 WALL_INSET_FT = 2      # walls stand 2 ft in from a roof's edge where the walks did not see them (structures.js WALL_INSET_M)
@@ -245,6 +248,14 @@ def cast_pictures(d, cut, gtree, gmed, scale=1.0, reach=None, smooth=False, colo
     X, Z, Lb, Cc, R, Ad, used = [], [], [], [], [], [], 0
     Pn, SX, SZ, SH, SK, SP, SR, SL = [], [], [], [], [], [], [], []   # each ground cell's picture; the built cells (x, z, height, kind, picture, range, the phone's own label)
     reach = CAST_MAX_M if reach is None else reach
+    # THE YARD'S THINGS BY NAME (yard_labels.py, 2026-11-27): each picture's CLIPSeg labels on its depth grid, if the walk has them
+    ylab = {}
+    try:
+        yz = np.load(os.path.join(d, "yard-labels.npz"), allow_pickle=False)
+        ylab = dict(zip(json.loads(str(yz["pics"])), yz["idx"]))
+    except Exception:
+        ylab = {}
+    YX, YZ, YI = [], [], []
     if colour:
         try:
             from PIL import Image
@@ -297,6 +308,11 @@ def cast_pictures(d, cut, gtree, gmed, scale=1.0, reach=None, smooth=False, colo
         # THE BUILT THINGS AT ANY HEIGHT (2026-11-27): the large labeller's walls, pillars, floors off the ground and
         # roofs seen from under, wherever they stand up to STRUCT_TOP_M, put down onto their squares with their height
         sb = ~g & np.isin(ak_all, (8, 9, 10)) & (hgt > -0.5) & (hgt <= STRUCT_TOP_M)
+        if k["name"] in ylab:
+            yi = ylab[k["name"]].ravel()[np.flatnonzero(m)]
+            ys = (yi > 0) & (dist[m] <= YARD_MAX_M) & (hgt > -0.5) & (hgt <= STRUCT_TOP_M)
+            if ys.any():
+                YX.append(P[ys, 0]); YZ.append(P[ys, 2]); YI.append(yi[ys])
         if sb.any():
             SX.append(P[sb, 0]); SZ.append(P[sb, 2]); SH.append(hgt[sb]); SK.append(ak_all[sb]); SP.append(np.full(int(sb.sum()), pic_no, np.int32))
             SR.append(dist[m][sb]); SL.append(lab[m][sb].astype(np.int16))
@@ -315,10 +331,54 @@ def cast_pictures(d, cut, gtree, gmed, scale=1.0, reach=None, smooth=False, colo
                 except Exception:
                     pass
             Cc.append(cc)
+    if YX:
+        YARD_CELLS.append((np.concatenate(YX), np.concatenate(YZ), np.concatenate(YI)))
     if not X:
         return None
     built = tuple(np.concatenate(v) for v in (SX, SZ, SH, SK, SP, SR, SL)) if SX else None
     return np.concatenate(X), np.concatenate(Z), np.concatenate(Lb).astype(np.uint8), used, np.concatenate(Cc), np.concatenate(R), np.concatenate(Ad), np.concatenate(Pn), built
+
+
+def yard_study(shapes_info, H, W, i0, j0, SQ):
+    """THE YARD LABELS ON THE LIDAR'S SHAPES (a study, 2026-11-27): for each lidar shape, largest first, the share of
+    the labelled cells on it and within 2 ft of it that each named thing holds; and away from every shape, the squares
+    each structure-like thing holds. Names and counts only."""
+    if not YARD_MAP:
+        print("  THE YARD LABELS ON THE LIDAR'S SHAPES: none (the walks have no yard-labels.npz yet).")
+        return
+    import yard_labels as YL
+    from scipy import ndimage
+    names = [t[0] for t in YL.THINGS]; kinds = [t[2] for t in YL.THINGS]
+    ye = np.concatenate([a[0] for a in YARD_MAP]); yn = np.concatenate([a[1] for a in YARD_MAP]); yi = np.concatenate([a[2] for a in YARD_MAP]).astype(int)
+    ci_, cj_ = np.floor(ye / CELL).astype(int) - i0, np.floor(yn / CELL).astype(int) - j0
+    ok_ = (ci_ >= 0) & (cj_ >= 0) & (ci_ < W) & (cj_ < H)
+    nT = len(names) + 1
+    cnt = np.zeros((H * W, nT), np.int32)
+    np.add.at(cnt, (cj_[ok_] * W + ci_[ok_], yi[ok_]), 1)
+    cnt = cnt.reshape(H, W, nT)
+    on_any = np.zeros((H, W), bool)
+    lines = []
+    two = max(1, int(round(2 / (CELL * FT))))
+    for q, (lk, fp, y0, x0, v) in enumerate(sorted(shapes_info, key=lambda t: -int(t[1].sum()))):
+        m = np.zeros((H, W), bool); m[y0:y0 + fp.shape[0], x0:x0 + fp.shape[1]] = fp
+        m2 = ndimage.binary_dilation(m, structure=np.ones((3, 3)), iterations=two)
+        on_any |= m2
+        c = cnt[m2].sum(0)[1:]
+        tot = max(1, int(c.sum()))
+        top = np.argsort(-c)[:5]
+        lines.append(f"shape {q + 1} ({'building' if lk == 1 else 'low structure'}, {int(m.sum() * SQ):,} sq ft, {v}): {tot:,} labelled cells, "
+                     + ", ".join(f"{names[t]} {100 * c[t] / tot:.0f}%" for t in top if c[t]))
+    print("  THE YARD LABELS ON THE LIDAR'S SHAPES (the shapes largest first; each, the named things' shares of the labelled cells on it and within 2 ft): " + "; ".join(lines) + ".")
+    away = ~on_any
+    tot_sq = cnt.sum(2)
+    parts = []
+    for t in range(len(names)):
+        if kinds[t] not in ("solid", "open", "fence", "pool"):
+            continue
+        dom = away & (cnt[:, :, t + 1] >= MIN_PTS) & (2 * cnt[:, :, t + 1] >= tot_sq)
+        if dom.any():
+            parts.append(f"{names[t]} {int(dom.sum() * SQ):,} sq ft")
+    print("     AWAY FROM EVERY LIDAR SHAPE, the squares each thing holds (half or more of the labelled cells there): " + (", ".join(parts) if parts else "none") + ".")
 
 
 def load_walk(d):
@@ -429,6 +489,10 @@ def load_walk(d):
     # the newest walk's corners agreeing only within 37 in, and two walks sitting 6 ft north of it): its built things
     # are left out when its corners agree no better than BUILT_FIT_M
     worst = float(fit.get("worstM") or 0)
+    if worst <= BUILT_FIT_M:
+        for yx_, yz_, yi_ in YARD_CELLS:
+            YARD_MAP.append((cth * yx_ - sth * (-yz_) + T["tx"], sth * yx_ + cth * (-yz_) + T["ty"], yi_))
+    YARD_CELLS.clear()
     if worst > BUILT_FIT_M:
         built = tuple(a_[:0] for a_ in built); planes = []
         note += f"; ITS BUILT THINGS LEFT OUT (its corners agree only within {worst * 39.37:.0f} in)"
@@ -833,6 +897,7 @@ def main():
         claimed = np.zeros((H, W), bool)       # a shape's footprint and the band round it: no walls of the walks' own there
         claimed_fp = np.zeros((H, W), bool)    # the footprints alone: no deck of the walks' own there (a deck beside a house is in its band)
         deck_part = 0
+        shapes_info = []                       # (lidar kind, footprint, its corner, the verdict) for the yard labels' study
         verdict = {"confirmed": [], "deck": 0, "tree": 0, "unseen": 0, "nothing": 0}
         offs_all, trimmed_tree, moved_in, moved_out = [], 0, 0, 0
         band_sq = int(np.ceil(LIDAR_BAND_FT / ft_sq))
@@ -864,6 +929,7 @@ def main():
                     claimed[y0:y1, x0:x1] |= fp | band
                     claimed_fp[y0:y1, x0:x1] |= fp | flat_l
                     verdict["deck"] += 1
+                    shapes_info.append((lk_kind, fp, y0, x0, "a deck"))
                     continue
                 # walls along the edge: each edge square takes the median offset of the walls within WALL_NEAR_FT
                 wy, wx = np.nonzero(walls)
@@ -879,6 +945,7 @@ def main():
                 plants_here = plant_any[y0:y1, x0:x1] & fp
                 if seen_share >= SEEN_SHARE and wall_share < 0.05 and looked_fp and plants_here.sum() >= 0.5 * fp.sum():
                     verdict["tree"] += 1          # seen round, no wall anywhere, and a plant over most of it: a tree
+                    shapes_info.append((lk_kind, fp, y0, x0, "a tree"))
                     claimed[y0:y1, x0:x1] |= fp
                     claimed_fp[y0:y1, x0:x1] |= fp
                     nb_ = not_built[y0:y1, x0:x1]; nb_ |= fp
@@ -894,11 +961,14 @@ def main():
                 off = np.clip(off, -WALL_OUT_MAX_FT, WALL_IN_MAX_FT)
                 if wall_share >= CONFIRM_SHARE:
                     verdict["confirmed"].append(float(np.median(off[has])))
+                    shapes_info.append((lk_kind, fp, y0, x0, "confirmed"))
                     offs_all += list(off[has])
                 elif seen_share >= SEEN_SHARE:
                     verdict["nothing"] += 1
+                    shapes_info.append((lk_kind, fp, y0, x0, "looked round, no wall"))
                 else:
                     verdict["unseen"] += 1
+                    shapes_info.append((lk_kind, fp, y0, x0, "not looked at enough"))
                 # the shape again: each square inside the line its nearest edge square's walls make
                 cand = sd >= -LIDAR_BAND_FT
                 cy_, cx_ = np.nonzero(cand)
@@ -942,6 +1012,7 @@ def main():
         solid_sq = (l_solid | w_solid | roofed_l) & ~l_deck
         deck_sq = (l_deck | w_deck) & ~solid_sq
         cf = verdict["confirmed"]
+        yard_study(shapes_info, H, W, i0, j0, SQ)
         print(f"  THE LIDAR'S SHAPES, CHECKED BY THE WALKS: {len(cf) + verdict['deck'] + verdict['tree'] + verdict['nothing'] + verdict['unseen']} shapes (buildings and low structures); "
               f"confirmed with their walls placed {len(cf)}" + (f" (the walls, by stretches, in the middle {np.median(offs_all):+.1f} ft from the lidar's edge, inward +, from {np.percentile(offs_all, 10):+.1f} to {np.percentile(offs_all, 90):+.1f})" if offs_all else "")
               + f"; a deck, not a building {verdict['deck']} (and decks inside a shape {int(deck_part * SQ):,} sq ft); a tree, not a structure {verdict['tree']}; looked round but no wall found {verdict['nothing']} (kept, walls {WALL_INSET_FT} ft in); not looked at enough to judge {verdict['unseen']} (kept so).")
