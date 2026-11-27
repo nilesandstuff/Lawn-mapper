@@ -998,6 +998,30 @@ def main():
                     nb_ = not_built[y0:y1, x0:x1]; nb_ |= fp
                     continue
                 default = WALL_INSET_FT if lk_kind == 1 else 0.0
+                # ONE OFFSET A FACE (S4 run 46051580289: the walks sit within 0.4 ft of each other, but each walk's walls
+                # scatter about 1 ft on a face, and a stretch of 4 ft followed the scatter: the owner's "chaotic", the
+                # bulges and the false hole). A face is a run of edge squares facing the same way (eight ways); it takes
+                # the median of every wall offset found along it, unless two walks agree on more than a foot out there
+                # (an addition: kept to its own stretch)
+                if has.any():
+                    ang = (np.round(np.arctan2(ne_[:, 1], ne_[:, 0]) / (np.pi / 4)).astype(int)) % 8
+                    face_id = np.full(len(ey), -1)
+                    nf = 0
+                    for a_ in range(8):
+                        sel = ang == a_
+                        if not sel.any():
+                            continue
+                        mk = np.zeros(fp.shape, bool); mk[ey[sel], ex[sel]] = True
+                        lab_e, n_e = ndimage.label(mk, structure=np.ones((3, 3)))
+                        face_id[sel] = lab_e[ey[sel], ex[sel]] - 1 + nf
+                        nf += n_e
+                    keep_own = (off < -WALL_OUT_MAX_FT) & (nwalks >= 2) & (spread_q <= ADD_AGREE_FT)
+                    for f_ in range(nf):
+                        mf = face_id == f_
+                        vf = mf & has & ~keep_own
+                        if vf.sum() >= 2:
+                            off[mf & ~keep_own] = float(np.median(off[vf]))
+                            has = has | (mf & ~keep_own)
                 if has.any():
                     te = cKDTree(np.c_[ey[has], ex[has]].astype(float))
                     for q_ in np.flatnonzero(~has):

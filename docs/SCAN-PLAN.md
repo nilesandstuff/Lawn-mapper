@@ -5767,3 +5767,17 @@ THE PLAN:
      section S5) the new kinds: a labeller small enough to run on the phone after a walk, or on the free CPU in well
      under a second a picture. CLIPSeg's 0.5 s a picture (section 90) is the slowest this may cost on a walk; the
      large ones (OWLv2 8 s on CPU) are for teaching, never for every walk.
+
+## 97. The walks are in step; the walls' scatter is the chaos (S4 run 46051580289, 1:43-2:14 pm Fri Eastern, head 15a3ff7)
+
+HARD: THE WALKS' WALLS AGAINST EACH OTHER, on the three confirmed shapes' faces: walk 1 -0.1 ft east, -0.0 north (292
+edge squares; left over 1.0 ft); walk 2 +0.4, +0.2 (236; 1.1); walk 3 +0.0, -0.3 (213; 0.9); walk 4 -0.3, -0.1 (158;
+1.2); walk 5 -0.2, +0.1 (145; 0.9). The five walks placed through the reference sit within half a foot of each
+other. What is left, about 1 ft, is each walk's walls scattering about their face. So the owner's "chaotic" outline and
+its bulges are NOT the walks out of place (section 89's guess, corrected in 92). They are each 4 ft stretch of edge
+following that 1 ft scatter.
+  The yard labels' line as in section 95 (now saying "no labelled cells within 26 ft of a camera" for the five shapes
+  it has none on). No edge placed by a wall plane (no walk from app 1.28).
+BUILT (this commit): ONE OFFSET A FACE. A face is a run of edge squares facing the same one of eight ways; it takes the
+median of every wall offset found along it. A step in the wall is two faces, and the lidar's outline follows the step.
+An edge stretch two walks agree is more than a foot out (an addition) keeps its own.
