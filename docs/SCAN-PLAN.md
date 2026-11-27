@@ -5362,7 +5362,7 @@ commit on, section 77's follow-up).
 
 ## 79. The large labeller on the five walks, and three costs that grew with the walk (2026-11-27)
 
-HARD (S4 run 17, 6:00-7:06 pm Wed Eastern, head 5bf7021; the map came due on its own after the new walks):
+HARD (S4 run 17, 6:00-7:06 pm Thu Eastern, head 5bf7021; the map came due on its own after the new walks):
 
   The large labeller (Mask2Former, classes_cpu.py on the runner's CPU) classed the four walks that had no masks:
   317, 319, 17 and 255 pictures, 2.1-2.2 s a picture, 1,942 s in all; the two older walks already had theirs. The
