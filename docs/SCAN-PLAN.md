@@ -5631,7 +5631,7 @@ moved out up to 6 ft before: 395 sq ft added outside the lidar's edge); and a wa
 12 in gives no built things (the newest walk's two corners agreed within 37 in). The deck rule by height (DECK_M,
 DECK_TOP_M) is the owner's "will not work": the next step is labels (section 90).
 
-## 90. The yard's things by name: a labeller told them in words (2026-11-27, 2:40 am Fri Eastern)
+## 90. The yard's things by name: a labeller told them in words (Fri 2026-11-27, morning Eastern)
 
 BUILT (this commit): scan/tools/yard_labels.py. CLIPSeg (CIDAS/clipseg-rd64-refined, in transformers itself, no
 remote code) is told 18 things in words: house, garage, shed, hot tub, utility box, AC unit, raised planter, retaining
@@ -5649,7 +5649,7 @@ four cores, now about 0.5 s, the same logits to 3e-6.
 SPECULATION: CLIPSeg is coarse (352 x 352, one mask per word) and its words are guesses: "a hot tub" against "a
 swimming pool" may be confused, and a deck seen from on top may read as "floor" or "paving". The study is to show it.
 
-## 91. The owner's picture of the true shapes over section 88's map (2026-11-27, about 2:50 am Fri Eastern)
+## 91. The owner's picture of the true shapes over section 88's map (Fri 2026-11-27, morning Eastern)
 
 HARD (the owner's screenshot of the scan page, "Lidar ground" backdrop, solid and open layers on, with the house drawn
 in yellow and the deck and its stairs in red; the picture is kept out of the repository):
@@ -5665,7 +5665,7 @@ SPECULATION: a wall stretch takes the median offset of the walls within 4 ft. At
 faces mix, which rounds the step off: the outline is filled on one side and cut on the other. Where the lidar's edge
 already follows the step, it is better left alone.
 
-## 92. The owner's kinds, and the walks' alignment measured by their walls (2026-11-27, about 3:20 am Fri Eastern)
+## 92. The owner's kinds, and the walks' alignment measured by their walls (Fri 2026-11-27, late morning Eastern)
 
 HARD (the owner):
   - "pool should be it's own kind since it traps water."
@@ -5700,3 +5700,12 @@ BUILT (this commit):
     fence" (fence), "a chain-link fence" (counts for nothing), the pool its own kind. 21 things.
 NEXT: the first run on the lot of the labels and the walls against each other. If a walk is found off, the fix goes
 where the owner says, at the source: the reference's placement of that walk, not a correction in surfaces.py.
+
+## 93. Section 89's clamp on the lot (S4 run 46036193214, 11:44 am-12:14 pm Fri Eastern, head 07b481d)
+
+(The core session's own clock notes in sections 89-92 said 2-3 am; the runs show it was Friday morning. Fixed above.)
+HARD: 7 shapes, 3 confirmed (walls +0.7 ft in the middle, -0.5 to +2.5). Taken off outside the walls 955 sq ft;
+added outside the lidar's edge 319 sq ft (was 395, the clamp at 1 ft); 25 sq ft cut where a tree touches. SOLID 6,445
+sq ft, all from the lidar's shapes; OPEN 53 sq ft (48 inside shapes). The newest walk's built things were left out by
+section 89's 12 in rule (its own two corners at 37 in, though the reference placed it): undone in section 92 for a
+walk placed through the reference. The site's own after-walk runs go at about :21 past each hour.
