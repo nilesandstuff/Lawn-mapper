@@ -227,11 +227,11 @@ def name_marked(imgs, maps, device="cpu", log=print, model_id=CLIP_BIG):
     return out
 
 
-def tidied(z):
+def tidied(z, depths=None):
     """The kept SAM-objects shapes, tidied as the owner asked (segment_study.tidy_shapes): small shapes folded into
-    what rings them, clouds and sky made one and set aside."""
+    what rings them, clouds and sky made one and set aside (with `depths`, never what the picture's depth measured)."""
     pan_names = [{int(a): b for a, b in nm.items()} for nm in json.loads(str(z["names"]))] if "names" in z else None
-    obj, _, n0, n1 = S.tidy_all(list(z["obj"]), list(z["pan"]) if "pan" in z else None, pan_names)
+    obj, _, n0, n1 = S.tidy_all(list(z["obj"]), list(z["pan"]) if "pan" in z else None, pan_names, depths)
     print(f"Shapes tidied: {n0:,} in the pictures -> {n1:,}.")
     return obj
 

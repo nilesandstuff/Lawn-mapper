@@ -22,6 +22,7 @@ The names the owner gives are kept by the page as seg-names.json. Counts only in
 import json
 import os
 import sys
+import time
 
 import numpy as np
 
@@ -35,17 +36,10 @@ CELLS_MIN = 8    # depth cells two shapes must share to be one thing
 SHARE = 0.5      # ... and this share of what both show of each other
 
 
-def dense_match(sel, obj, depths):
-    """WHICH SHAPES OF DIFFERENT PHOTOS ARE ONE THING, BY THE PHOTOS' OWN DEPTH (2026-11-19). The first matching
-    went by the walk's kept points: on the two app walks only 17 and 22 things were found in more than one photo,
-    of 5,400 and 6,300, because most shapes hold too few kept points. But every photo keeps a depth grid of its own
-    (72 x 128 cells, key-NNNN.depth): each cell is a point in space with a shape under it. A photo's cells are put
-    into each of the REACH photos before and after it; where the other photo's depth agrees the cell is seen in
-    both, and two shapes sharing SHARE of such cells (CELLS_MIN or more) are one thing.
-    -> (off, comp, cells): each photo's first node, node -> thing, depth cells in each node."""
-    K = [int(m.max()) + 1 for m in obj]
-    off = np.concatenate([[0], np.cumsum(K)])
-    parent = np.arange(off[-1])
+def join_things(photo_of, edges):
+    """Shapes (nodes; photo_of[node] its photo) joined into things by matches (share, node, node), strongest first,
+    never two shapes of one photo in one thing. -> (node -> thing, joins refused)."""
+    parent = np.arange(len(photo_of))
 
     def find(a):
         while parent[a] != a:
@@ -53,7 +47,40 @@ def dense_match(sel, obj, depths):
             a = parent[a]
         return a
 
+    photos, refused = {}, 0
+    for _, a, b in sorted(edges, reverse=True):
+        ra, rb = find(a), find(b)
+        if ra == rb:
+            continue
+        pa, pb = photos.get(ra, {int(photo_of[ra])}), photos.get(rb, {int(photo_of[rb])})
+        if pa & pb:
+            refused += 1
+            continue
+        parent[rb] = ra
+        photos[ra] = pa | pb
+        photos.pop(rb, None)
+    return np.array([find(i) for i in range(len(photo_of))]), refused
+
+
+def dense_match(sel, obj, depths):
+    """WHICH SHAPES OF DIFFERENT PHOTOS ARE ONE THING, BY THE PHOTOS' OWN DEPTH (2026-11-19). The first matching
+    went by the walk's kept points: on the two app walks only 17 and 22 things were found in more than one photo,
+    of 5,400 and 6,300, because most shapes hold too few kept points. But every photo keeps a depth grid of its own
+    (72 x 128 cells, key-NNNN.depth): each cell is a point in space with a shape under it. A photo's cells are put
+    into each of the REACH photos before and after it; where the other photo's depth agrees the cell is seen in
+    both, and two shapes sharing SHARE of such cells (CELLS_MIN or more) are one thing.
+    NEVER TWO SHAPES OF ONE PHOTO (2026-11-27, the owner on the naming page: "labels that are connected but shouldn't
+    be... a segmented section of the ground that's mulch, then a clearly seperate section of grass. If i name one
+    section, both get the same name"). Joined pair by pair, matches chain: mulch in one photo meets a shape that took
+    in mulch and grass in the next, which meets grass in the one after, and the two of the first photo, which the
+    cutter itself kept apart, became one thing. So the matches are joined strongest first, and a join that would put
+    two shapes of one photo into one thing is refused: the cutter's own split, in a photo that saw both, outranks a
+    chain of guesses between photos.
+    -> (off, comp, cells): each photo's first node, node -> thing, depth cells in each node."""
+    K = [int(m.max()) + 1 for m in obj]
+    off = np.concatenate([[0], np.cumsum(K)])
     cells = np.zeros(off[-1], np.int64)
+    edges = []                          # (share, node, node): every match, joined strongest first after
     pts, ids = [], []
     # what the matching met, for the log: a walk whose shapes will not match should say why
     D = {"cells": 0, "shaped": 0, "framed": 0, "agree": 0, "both": 0, "pairs": 0}
@@ -112,12 +139,12 @@ def dense_match(sel, obj, depths):
                 np.maximum.at(best, off[p] + ua[big], share[big])
                 np.maximum.at(hold, off[p] + ua[big], (c / na[ua])[big])
                 good = big & (share >= SHARE)
-                for x, y in zip(ua[good], ub[good]):
-                    rx, ry = find(off[p] + x), find(off[q] + y)
-                    if rx != ry:
-                        parent[ry] = rx
+                for x, y, sh in zip(ua[good], ub[good], share[good]):
+                    edges.append((float(sh), int(off[p] + x), int(off[q] + y)))
     finally:
         S.RANGE = was
+    comp, refused = join_things(np.repeat(np.arange(len(K)), K), edges)
+    D["refused"] = refused
     present = np.zeros(off[-1], bool)
     for p, m in enumerate(obj):
         present[off[p] + np.unique(m[m > 0])] = True
@@ -128,7 +155,47 @@ def dense_match(sel, obj, depths):
     print(f"  Of the {n:,} shapes with {CELLS_MIN} cells or more: best share with a shape of another photo {SHARE:g} or more: {100 * (best[has] >= SHARE).sum() / n:.0f}%; 0.3-{SHARE:g}: {100 * ((best[has] >= 0.3) & (best[has] < SHARE)).sum() / n:.0f}%; "
           f"under 0.3: {100 * ((best[has] > 0) & (best[has] < 0.3)).sum() / n:.0f}%; met no shape: {100 * (best[has] == 0).sum() / n:.0f}%. Lying 70% or more inside one shape of another photo: {100 * (hold[has] >= 0.7).sum() / n:.0f}%. "
           f"Shapes under {CELLS_MIN} cells (too small or no depth under them): {int((present & ~has).sum()):,}.")
-    return off, np.array([find(i) for i in range(off[-1])]), cells
+    print(f"  Joins refused because they would make two shapes of one photo one thing: {D['refused']:,}.")
+    return off, comp, cells
+
+
+def carry_names(d, old_seg, old, pictures):
+    """THE OWNER'S NAMES, CARRIED ONTO THINGS MADE AGAIN. A shape keeps its id in its photo; its thing may not. A name
+    goes to a new thing only where the thing is the same (all its shapes were one old thing, and that old thing is
+    now this one alone), or where the owner tapped a shape in it (seg-names.json picked, kept since 2026-11-27). A
+    name on a thing that was split is dropped, so the pieces come back unnamed: which piece the owner meant is not
+    known. Names given to one shape in one photo stay as they were. Rewrites seg-names.json; prints counts."""
+    names, picked = old.get("names") or {}, old.get("picked") or {}
+    o_of, n_of = {}, {}
+    for p, pic in enumerate(old_seg.get("pictures") or []):
+        for sid, v in (pic.get("shapes") or {}).items():
+            o_of[f"{p}:{sid}"] = str(v[0])
+    for p, pic in enumerate(pictures):
+        for sid, v in pic["shapes"].items():
+            n_of[f"{p}:{sid}"] = str(v[0])
+    olds, news = {}, {}
+    for k, nt in n_of.items():
+        ot = o_of.get(k)
+        olds.setdefault(nt, set()).add(ot)
+        if ot is not None:
+            news.setdefault(ot, set()).add(nt)
+    out, kept, dropped = {}, 0, 0
+    for k, nm in picked.items():
+        if k in n_of and nm:
+            out[n_of[k]] = nm
+    for ot, nm in names.items():
+        nts = news.get(str(ot), set())
+        if len(nts) == 1 and olds.get(next(iter(nts))) == {str(ot)}:
+            out.setdefault(next(iter(nts)), nm)
+            kept += 1
+        elif not any(o_of.get(k) == str(ot) and k in n_of for k in picked):
+            dropped += 1
+    old = dict(old, names=out, picked={k: v for k, v in picked.items() if k in n_of}, remade=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+    with open(os.path.join(d, "seg-names.json"), "w") as f:
+        json.dump(old, f)
+    print(f"The owner's names carried over: {kept} things unchanged kept their names, {len(picked)} tapped shapes kept theirs, "
+          f"{dropped} names were on things now split and are dropped (the pieces come back unnamed); "
+          f"{len(old.get('shapes') or {})} names on one shape in one photo kept.")
 
 
 def main():
@@ -141,9 +208,15 @@ def main():
     w = T.load(d)
     z = np.load(mf, allow_pickle=False)
     sel = [w["keys"][i] for i in z["pics"]]
-    obj = T.tidied(z)
-    cams = np.array([k["c2w"][:3, 3] for k in sel])
     depths = [T.read_depth(p) if os.path.exists(p) else None for p in (os.path.join(d, k["name"].replace(".jpg", ".depth")) for k in sel)]
+    obj = T.tidied(z, depths)           # nothing the photo's own depth measured is sky (the owner's wall, 2026-11-27)
+    cams = np.array([k["c2w"][:3, 3] for k in sel])
+    old_seg, old_names = None, None
+    try:
+        old_seg = json.load(open(os.path.join(d, "seg.json")))
+        old_names = json.load(open(os.path.join(d, "seg-names.json")))
+    except Exception:
+        pass
     by_depth = sum(x is not None for x in depths) >= 0.8 * len(sel)
     if by_depth:
         off, comp, cells = dense_match(sel, obj, depths)
@@ -174,6 +247,8 @@ def main():
         pictures.append({"photo": k["name"], "t": k["t"], "shapes": shapes})
     with open(os.path.join(d, "seg.json"), "w") as f:
         json.dump({"pictures": pictures, "things": {str(k): v for k, v in things.items()}, "lift": "by each photo's own depth, against the six photos before and after it" if by_depth else "by the walk's kept points, 26 ft"}, f)
+    if old_seg and old_names:
+        carry_names(d, old_seg, old_names, pictures)
     many = [t for t in things.values() if t["photos"] > 1]
     n_shapes = sum(len(p["shapes"]) for p in pictures)
     in_many = sum(t["photos"] for t in many)

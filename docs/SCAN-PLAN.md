@@ -5815,3 +5815,19 @@ after the scan deploy is the test.
 MODAL (the AR allotment, $15 of 2026-11-20): the naming page's SAM shapes on walk 1795728070119 (run 46057798039),
 1,835 s on the L4 for 319 pictures (82 SAM shapes a picture), about $0.45. Running total
 about $1.15.
+
+## 100. The naming page: things that should not be joined, and a wall with no shape (Fri 2026-11-27, about 5:30 pm Eastern)
+
+HARD (the owner, on the home walk's naming page, with a screenshot): "labels that are connected but shouldn't be...
+a segmented section of the ground that's mulch, then a clearly seperate section of grass. If i name one section, both
+get the same name" ("same one I ran into last time"). And: "there's no segment for the wall."
+FOUND: (1) name_prep.py joined shapes of neighbouring photos pair by pair, so the joins chained: mulch in one photo
+meets a shape that took in mulch and grass in another, which meets grass in a third, and two shapes the cutter kept
+apart IN ONE PHOTO became one thing. (2) The wall, plain and pale, was called sky by the whole-picture model and made
+sky (segment_study.tidy_shapes, SKY_SHARE), and sky is set aside with no shape.
+BUILT: (1) name_prep.join_things: matches joined strongest first, and a join that would put two shapes of one photo
+into one thing is refused (the log counts them). (2) tidy_shapes(near=): a shape the photo's own depth measured over
+SKY_NEAR_SHARE (0.3) of, nearer than 30 m, is never sky; only the naming prep passes the depth so far (the other
+studies are as they were). (3) The owner's names carry onto the things made again where a thing is unchanged; a name
+on a thing now split is dropped (which piece was meant is not known); the page now keeps which shape a name was
+given on (picked), so from here a name follows the shape tapped. name_prep_selftest.py covers all three.

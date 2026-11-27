@@ -496,8 +496,10 @@ jobs:
           pip install --quiet pillow numpy scipy
           node scan/tools/twin-r2.mjs get "$WALK" twin | tee name.txt
           node scan/tools/disagree.mjs twin > /dev/null || true
+          python scan/tools/name_prep_selftest.py | tail -1 | tee -a name.txt
           python scan/tools/name_prep.py twin 2>&1 | tee -a name.txt
-          node scan/tools/twin-r2.mjs put "$WALK" twin/seg.json twin/seg-[0-9]*.png > put.txt || true
+          # the owner's names, carried onto the things made again (name_prep.py carry_names), go back with them
+          node scan/tools/twin-r2.mjs put "$WALK" twin/seg.json twin/seg-[0-9]*.png $(ls twin/seg-names.json 2>/dev/null) > put.txt || true
           echo "Parts kept: $(grep -c ': kept (' put.txt), not kept: $(grep -c 'NOT kept' put.txt) $(grep 'NOT kept' put.txt | sed 's/.*NOT kept//' | sort | uniq -c | tr '\n' ' ')" | tee -a name.txt
           ! grep -q 'NOT kept' put.txt
 

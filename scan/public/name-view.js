@@ -11,6 +11,7 @@
  * it there: the list of those is the list of the lift's mistakes.
  *
  * Kept beside the walk as seg-names.json: { names: { thing: name }, shapes: { "photo index:shape id": name | "" },
+ * picked: { "photo index:shape id": the name given to its whole thing there },
  * words: [the owner's names, in the order first used], at }. Admin only.
  */
 const $ = (s) => document.querySelector(s);
@@ -19,7 +20,7 @@ const part = (name, init) => fetch(`/api/scan/twin?walk=${encodeURIComponent(wal
 const PRESET = ['house', 'garage', 'shed', 'porch', 'deck', 'stairs', 'pool', 'hot tub', 'fence', 'chain-link', 'planter',
   'utility box', 'AC unit', 'retaining wall', 'pergola', 'gazebo', 'sandbox', 'play set', 'grass', 'paving', 'bare ground',
   'mulch', 'garden bed', 'tree', 'shrub', 'car', 'movable thing', 'sky'];
-const S = { seg: null, names: {}, shapes: {}, words: [], p: 0, ids: null, w: 0, h: 0, photo: null, pick: null, whole: true, plain: false, dirty: false, timer: 0, token: 0 };
+const S = { seg: null, names: {}, shapes: {}, picked: {}, words: [], p: 0, ids: null, w: 0, h: 0, photo: null, pick: null, whole: true, plain: false, dirty: false, timer: 0, token: 0 };
 
 async function main() {
   if (!walk) { $('#status').textContent = 'Which walk? Open this from a walk\'s twin page.'; return; }
@@ -27,7 +28,7 @@ async function main() {
   const r = await part('seg.json');
   if (!r.ok) { $('#status').textContent = 'This walk\'s shapes have not been made ready to name yet (a run does it: task name).'; return; }
   S.seg = await r.json();
-  try { const n = await part('seg-names.json'); if (n.ok) { const j = await n.json(); S.names = j.names || {}; S.shapes = j.shapes || {}; S.words = j.words || []; } } catch { /* none yet */ }
+  try { const n = await part('seg-names.json'); if (n.ok) { const j = await n.json(); S.names = j.names || {}; S.shapes = j.shapes || {}; S.picked = j.picked || {}; S.words = j.words || []; } } catch { /* none yet */ }
   // A WALK NOT NAMED YET starts with the names the map needs (2026-11-27; the owner's kinds: solid, open, fence its own,
   // chain-link nothing, the pool its own; a tap instead of typing). The owner's own words are added after them as before.
   if (!S.words.length) S.words = PRESET.slice();
@@ -104,7 +105,8 @@ function give(name) {
   if (S.pick == null) return;
   name = String(name || '').trim().slice(0, 40);
   const thing = S.seg.pictures[S.p].shapes[S.pick]?.[0], k = `${S.p}:${S.pick}`;
-  if (S.whole) { if (name) S.names[thing] = name; else delete S.names[thing]; delete S.shapes[k]; }
+  // which shape the name was given on (2026-11-27): when the things are made again, a name follows the shape tapped
+  if (S.whole) { if (name) { S.names[thing] = name; S.picked[k] = name; } else { delete S.names[thing]; delete S.picked[k]; } delete S.shapes[k]; }
   else S.shapes[k] = name;                      // "" here says: this shape is NOT what its thing was named
   if (name && !S.words.includes(name)) S.words.push(name);
   S.dirty = true; clearTimeout(S.timer); S.timer = setTimeout(save, 3000);
@@ -114,7 +116,7 @@ async function save() {
   if (!S.dirty) return;
   $('#saved').textContent = 'saving…';
   try {
-    const r = await part('seg-names.json', { method: 'PUT', body: JSON.stringify({ names: S.names, shapes: S.shapes, words: S.words, at: new Date().toISOString() }) });
+    const r = await part('seg-names.json', { method: 'PUT', body: JSON.stringify({ names: S.names, shapes: S.shapes, picked: S.picked, words: S.words, at: new Date().toISOString() }) });
     if (!r.ok) throw new Error(String(r.status));
     S.dirty = false; $('#saved').textContent = 'saved';
   } catch (e) { $('#saved').textContent = `NOT saved (${e.message}); it will be tried again`; S.timer = setTimeout(save, 8000); }

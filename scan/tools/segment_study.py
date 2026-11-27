@@ -505,9 +505,23 @@ def name_by_vote(maps, name_maps, names):
 FOLD_AREA = 0.005   # of the picture: a shape smaller than this, ringed by one other shape, is folded into it
 FOLD_RING = 0.6     # ... when that one shape (or the unshaped ground) is this share of what touches it
 SKY_SHARE = 0.8     # a shape this much sky by the whole-picture model is sky: clouds are not things
+SKY_NEAR_SHARE = 0.3   # ... unless this share of it was measured by the picture's own depth (a wall is; the sky never)
+SKY_DEPTH_M = 30.0     # a depth this near is something there
 
 
-def tidy_shapes(m, pan=None, pan_names=None):
+def near_mask(dg, shape):
+    """A picture's own depth grid (metres, 0 none) on its shape map's pixels: True where the phone measured something
+    nearer than SKY_DEPTH_M. The sky is never measured; a wall is."""
+    if dg is None:
+        return None
+    h, w = shape
+    jj = np.clip(((np.arange(h) + 0.5) * dg.shape[0] / h).astype(int), 0, dg.shape[0] - 1)
+    ii = np.clip(((np.arange(w) + 0.5) * dg.shape[1] / w).astype(int), 0, dg.shape[1] - 1)
+    g = (dg > 0) & (dg < SKY_DEPTH_M)
+    return g[jj][:, ii]
+
+
+def tidy_shapes(m, pan=None, pan_names=None, near=None):
     """THE OWNER, LOOKING AT THE SHEETS (2026-11-19): "Clouds, rocks, and non-uniform patches of turf are all segmented
     separately... we should fold in shapes of a certain size, when they're surrounded by a bigger shape. Size
     measured in pixels. So it would only segment a rock if it's a big rock or if you're really close to it. (...
@@ -517,6 +531,9 @@ def tidy_shapes(m, pan=None, pan_names=None):
     made ONE sky shape, so a cloud is sky and a tree against the sky stays a tree; (2) each small shape (under
     FOLD_AREA of the picture) folded into whatever rings it, when one neighbour is FOLD_RING of its edge: a bigger
     shape, or nothing (ground the cut left unshaped). Smallest first, so a pebble on a rock on gravel goes all the way.
+    THE OWNER'S WALL (2026-11-27, the naming page): a plain pale wall the whole-picture model called sky was made sky and
+    set aside, so it had no shape to name. With `near` (near_mask: where the picture's own depth measured something),
+    a shape on which SKY_NEAR_SHARE of its pixels or more were measured is not sky, whatever the model says.
     -> (map, sky id or 0, shapes folded)."""
     from scipy import ndimage
     m = m.astype(np.int32).copy()
@@ -529,10 +546,11 @@ def tidy_shapes(m, pan=None, pan_names=None):
                 ids, cnt = np.unique(m[m > 0], return_counts=True)
                 in_sky = np.bincount(m[sky & (m > 0)], minlength=int(m.max()) + 1)
                 sky_id = int(m.max()) + 1
-                hit = [int(i) for i, c in zip(ids, cnt) if in_sky[i] >= SKY_SHARE * c]
+                seen = np.bincount(m[near & (m > 0)], minlength=int(m.max()) + 1) if near is not None else None
+                hit = [int(i) for i, c in zip(ids, cnt) if in_sky[i] >= SKY_SHARE * c and (seen is None or seen[i] < SKY_NEAR_SHARE * c)]
                 if hit:
                     m[np.isin(m, hit)] = sky_id
-                m[sky & (m == 0)] = sky_id
+                m[sky & (m == 0) & (True if near is None else ~near)] = sky_id
     folded = 0
     cap = FOLD_AREA * m.size
     boxes = ndimage.find_objects(m)
@@ -559,12 +577,14 @@ def tidy_shapes(m, pan=None, pan_names=None):
     return m.astype(np.uint16), sky_id, folded
 
 
-def tidy_all(obj, pan, pan_names):
-    """Every picture's shapes tidied (tidy_shapes). -> (maps, [sky id per picture], shapes before, after)."""
+def tidy_all(obj, pan, pan_names, depths=None):
+    """Every picture's shapes tidied (tidy_shapes; with `depths`, each picture's own depth grid or None, nothing the
+    phone measured is sky). -> (maps, [sky id per picture], shapes before, after)."""
     out, skies, before, after = [], [], 0, 0
     for i, m in enumerate(obj):
         before += len(np.unique(m)) - 1
-        t, sky, _ = tidy_shapes(m, pan[i] if pan is not None else None, pan_names[i] if pan_names else None)
+        near = near_mask(depths[i], m.shape) if depths is not None else None
+        t, sky, _ = tidy_shapes(m, pan[i] if pan is not None else None, pan_names[i] if pan_names else None, near)
         if sky:
             t = t.copy()
             t[t == sky] = 0                       # sky is no thing: nothing is lifted from it, nothing named in it
