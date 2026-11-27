@@ -5593,3 +5593,19 @@ it. For the fused model that is kind 5 over a lidar roof: fusing 6 makes it a de
 SPECULATION: the 4 shapes not judged are most likely the neighbours' houses, seen from past 16 ft or not at all. That
 is what the lidar says, and it stays so. The +0.7 ft median is under the 2 ft the shade map assumes (structures.js
 WALL_INSET_M); three houses is too few to change that number.
+
+## 88. Section 87's decks on the lot, and fusing 6 live (1:00-1:59 am Fri Eastern)
+
+HARD:
+  S4 run 45949135371 (head 158b8d7): the same 7 shapes, 3 confirmed with walls at +0.7 ft in the middle. Decks inside
+  a shape: 39 sq ft. OPEN 46 sq ft in all; the walks' own deck lay mostly on the same squares (the line's "39 from
+  the walks alone" counted the overlap twice; fixed to count only what the shapes did not give). SOLID 6,528 sq ft.
+  9 sq ft emitted as kind 6 (not built). A second after-walk run, started by the site itself at 1:01 am, overlapped
+  this one (not dispatched by the core session); it ended at 1:47 am.
+  Main site deployed with fusing 6 (run 45954271122, head fbc2b1d, 1:48-1:57 am, no database warning).
+  fuse-check on the walk's map (run 45955221147, 1:58 am): version 6; 242 cells of structure added, 32 of deck; lidar
+  built cells taken away as not built 1, made a deck 20.
+
+SPECULATION: 39-46 sq ft is still small for "the large deck in the back"; the walks saw its boards in patches (187 sq
+ft lying flat in all, most of it in pieces under 16 sq ft). The owner's eyes say whether it is placed right; a walk
+on app 1.28 gives ARCore's floor planes, which fill a deck's outline whole.

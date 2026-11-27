@@ -935,7 +935,7 @@ def main():
               + f"; a deck, not a building {verdict['deck']} (and decks inside a shape {int(deck_part * SQ):,} sq ft); a tree, not a structure {verdict['tree']}; looked round but no wall found {verdict['nothing']} (kept, walls {WALL_INSET_FT} ft in); not looked at enough to judge {verdict['unseen']} (kept so).")
         print(f"     THE SHAPES MADE AGAIN: {int(moved_in * SQ):,} sq ft of the lidar's shapes outside their walls taken off, {int(moved_out * SQ):,} sq ft added where the walls stand outside the lidar's edge; "
               f"{int(trimmed_tree * SQ):,} sq ft cut where a tree touches and no wall was seen. SOLID {int(solid_sq.sum() * SQ):,} sq ft ({int((l_solid & solid_sq).sum() * SQ):,} from the lidar's shapes, {int(w_solid.sum() * SQ):,} from the walks alone), "
-              f"OPEN {int(deck_sq.sum() * SQ):,} sq ft ({int(l_deck.sum() * SQ):,} from the lidar's shapes, {int((w_deck & deck_sq).sum() * SQ):,} from the walks alone).")
+              f"OPEN {int(deck_sq.sum() * SQ):,} sq ft ({int(l_deck.sum() * SQ):,} from the lidar's shapes, {int((w_deck & deck_sq & ~l_deck).sum() * SQ):,} from the walks alone).")
     if any(Ps):
         print(f"  ARCORE'S SURFACES: {pstat['walls']} walls, {pstat['walls kept']} of them along built things the labels saw (the rest, a fence or a hedge, left out); {pstat['floors']} floors off the ground of 16 sq ft or more, {pstat['floors kept']} where the labels saw a floor; {pstat['ceilings']} ceilings over 6 ft.")
     print(f"  BUILT THINGS: {len(BE):,} cells off the ground ({int((BK == 8).sum()):,} walls, pillars, doors; {int((BK == 9).sum()):,} floors, steps, railings; {int((BK == 10).sum()):,} roofs seen from under); "
