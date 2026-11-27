@@ -124,7 +124,7 @@ jobs:
             LIDAR=""
             node scan/tools/lidar-built.mjs "m$n-$FIRST" "m$n-lidar.json" | tee -a after.txt || true
             if [ -f "m$n-lidar.json" ]; then LIDAR="--lidar m$n-lidar.json"; fi
-            python scan/tools/surfaces.py $DIRS --colour --reach 12 --smooth $ADE $LIDAR --plants "m$n-$FIRST/plants-map.json" --edits "m$n-edits.json" --keep "m$n-$FIRST/surfaces-map.json" | grep -E "THE GROUND AS|WALK . AGAINST|THE PHONE'S OWN LABELS|OWN COLOUR|PLANTS ON THE SAME|owner's erasures|SECOND LABELLER|THE COLOUR, WALK|OWNER'S ERASURES|Kept for|BUILT|built things|ARCORE|SPECKS|THE FILL|GAPS FILLED|LIDAR'S SHAPES|SHAPES MADE|YARD LABELS|AWAY FROM EVERY" | cut -c1-1500 | tee -a after.txt || true
+            python scan/tools/surfaces.py $DIRS --colour --reach 12 --smooth $ADE $LIDAR --plants "m$n-$FIRST/plants-map.json" --edits "m$n-edits.json" --keep "m$n-$FIRST/surfaces-map.json" | grep -E "THE GROUND AS|WALK . AGAINST|THE PHONE'S OWN LABELS|OWN COLOUR|PLANTS ON THE SAME|owner's erasures|SECOND LABELLER|THE COLOUR, WALK|OWNER'S ERASURES|Kept for|BUILT|built things|ARCORE|SPECKS|THE FILL|GAPS FILLED|LIDAR'S SHAPES|SHAPES MADE|YARD LABELS|AWAY FROM EVERY|WALLS AGAINST" | cut -c1-1500 | tee -a after.txt || true
             # (S3 run 5, 2026-11-26: cast to 12 m with the smoothed depth in the raw one's holes, the two walks both called
             # 3,937 sq ft and agreed on 94.8% of it; as before, 1,128 sq ft and 93.5%. So kept that way. docs/SCAN-PLAN.md 74)
             node scan/tools/surfaces-keep.mjs "$FIRST" "m$n-$FIRST" | tee -a after.txt || true

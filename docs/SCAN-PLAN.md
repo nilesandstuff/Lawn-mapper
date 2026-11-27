@@ -5725,3 +5725,20 @@ against another walk's plane on the same face. Counted in "SHAPES MADE AGAIN" (e
 planes). The self-test's house face is placed by its plane.
 NEXT: the reference's own placement of a walk (twin-onref.mjs, refkeep.js placeOnShape) matches the walk's points to
 the reference's. Planes matched to planes would be a sharper hold, once walks on 1.28 exist to test it.
+
+## 95. The yard labels on the lot: CLIPSeg is not good enough (S4 run 46040570557, 12:16-1:26 pm Fri Eastern, head 71384d0)
+
+HARD: every walk's 1,719 pictures labelled (about 70 min with the rest). Pictures holding each thing (1% or more),
+over the five large walks: "garage" 798, "sandbox" 579, house 413, planter 239, stairs 157, hot tub 129, deck 126,
+retaining wall 92, fence 133, shed 123, pool 60.
+  On the lidar's shapes: shape 1 (building, 3,471 sq ft, confirmed) garage 47%, house 15%, sandbox 10%, lawn 8%, shrub
+  7%. Shape 3 (low structure, 943 sq ft, confirmed) lawn 31%, sandbox 10%, paving 9%, deck 8%, fence 8%. The other
+  five shapes had no labelled cells within 26 ft of a camera (the line said "1 labelled cells": a display fault,
+  fixed).
+  Away from every shape: sandbox 785 sq ft, planter 73, garage 63, house 42, fence 32, deck 10, pool 8, hot tub 3.
+  Walls now +1.0 ft in the middle (-1.0 to +2.5). 16 edge squares moved out as an addition (two walks agreeing).
+  The walks-against-each-other line was made but the workflow's filter (grep) left it out of the log: fixed.
+JUDGED: CLIPSeg over-fires. "Garage" for a house (harmless: both solid), "sandbox" for bare ground (harmful: open),
+and deck and pool barely where the owner drew them. It is not good enough to say what is a deck.
+SPECULATION: an open-vocabulary DETECTOR (OWLv2 or Grounding DINO, both in transformers itself) scores a word against
+regions, not every pixel against every word, and is far less prone to labelling the whole picture with something.

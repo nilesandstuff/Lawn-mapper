@@ -365,7 +365,10 @@ def yard_study(shapes_info, H, W, i0, j0, SQ):
         m2 = ndimage.binary_dilation(m, structure=np.ones((3, 3)), iterations=two)
         on_any |= m2
         c = cnt[m2].sum(0)[1:]
-        tot = max(1, int(c.sum()))
+        if not c.sum():
+            lines.append(f"shape {q + 1} ({'building' if lk == 1 else 'low structure'}, {int(m.sum() * SQ):,} sq ft, {v}): no labelled cells within 26 ft of a camera")
+            continue
+        tot = int(c.sum())
         top = np.argsort(-c)[:5]
         lines.append(f"shape {q + 1} ({'building' if lk == 1 else 'low structure'}, {int(m.sum() * SQ):,} sq ft, {v}): {tot:,} labelled cells, "
                      + ", ".join(f"{names[t]} {100 * c[t] / tot:.0f}%" for t in top if c[t]))
@@ -1014,7 +1017,9 @@ def main():
                     # better so we fix the problem at the source"): a walk put d ft off moves its walls by d along each
                     # face's outward direction; the shift that best explains how far its walls sit from the others'
                     for q in range(len(Bs)):
-                        oth = np.nanmedian(np.where(np.arange(len(Bs))[:, None] == q, np.nan, offq), axis=0) if len(Bs) > 1 else np.full(len(ey), np.nan)
+                        with np.errstate(all="ignore"), __import__("warnings").catch_warnings():
+                            __import__("warnings").simplefilter("ignore")
+                            oth = np.nanmedian(np.where(np.arange(len(Bs))[:, None] == q, np.nan, offq), axis=0) if len(Bs) > 1 else np.full(len(ey), np.nan)
                         okq = np.isfinite(offq[q]) & np.isfinite(oth)
                         if okq.any():
                             align_rows.setdefault(q, []).append((ne_[okq], -(offq[q][okq] - oth[okq])))
