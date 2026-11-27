@@ -51,6 +51,7 @@ function main() {
   } catch (err) {
     console.log(`The scan schema did not apply (${String(err.stderr || err.message).split('\n')[0]}).`);
   }
+  console.log(`::add-mask::${id}`); // the later steps print their env; the id is kept out of the public log
   env(`SCAN_D1_ID=${id}`);
 }
 
