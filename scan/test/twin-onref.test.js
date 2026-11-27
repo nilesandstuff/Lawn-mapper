@@ -13,7 +13,11 @@ writeFileSync(join(d, 'track-0000.bin'), Buffer.from(Float32Array.from([1, 5, 1,
 const c2w = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1.5, -2, 1];                 // facing -z, at the camera's place
 const view = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -1, -1.5, 2, 1];               // its inverse: what the app keeps
 writeFileSync(join(d, 'keys-0000.json'), JSON.stringify([{ t: 1, odo: 5, view }]));
+// a wall ARCore found (planes.json, bridge 10): moved like the points
+writeFileSync(join(d, 'planes.json'), JSON.stringify({ v: 1, planes: [[7, 2, 0, [2, 0, -6, 3, 0, -6, 3, 2, -6]]] }));
 const r = moveTwin(d, () => T);
+assert.equal(r.planes, 1, 'the plane moved');
+{ const pl = JSON.parse(readFileSync(join(d, 'planes.json'), 'utf8')).planes[0]; const [pe, pn] = place(T, 2, 6); assert.ok(pl[0] === 7 && pl[1] === 2 && Math.abs(pl[3][0] - pe) < 1e-3 && Math.abs(-pl[3][2] - pn) < 1e-3 && Math.abs(pl[3][7] - 2 * 1.04) < 1e-3, `the plane on the map (${pl[3]})`); }
 assert.equal(r.pts, 1); assert.equal(r.keys, 1); assert.equal(r.appWay, true, 'the app\'s way found from the track');
 const f32 = (f) => { const b = readFileSync(join(d, f)); return new Float32Array(b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength)); };
 const a = f32('cloud-0000.bin');

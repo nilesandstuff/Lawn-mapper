@@ -592,8 +592,14 @@ function drawMap() {
     const S = st.surfaces, c = S.cellM || 0.3048, [oe, on] = Array.isArray(S.origin) ? toLocal(st.origin, S.origin) : [0, 0];
     // turf in light blue-green (the owner, 2026-11-24: the faint green was too near the trees' dark green), each kind
     // switched on and off by its box under the map, all of them as strong as the slider says
-    const A = layerAlpha(), fill = { 1: `rgba(79, 224, 210, ${A})`, 2: `rgba(184, 184, 204, ${A})`, 3: `rgba(192, 132, 74, ${A})` };
-    const on_ = { 1: layerOn('turf'), 2: layerOn('paved'), 3: layerOn('bare') };
+    /* (2026-11-27, the owner: "add structures to the colors... Solid structures, and structures like decks, that water
+       can pass through", and the gaps in turf and paving filled the way the lawn mapper guesses under a tree): solid
+       structure violet, open structure (a deck's boards) amber; a GUESSED square (9 turf, 10 paving: a gap filled, not
+       seen) its kind's colour at half strength, shown with its own box */
+    const A = layerAlpha(), fill = { 1: `rgba(79, 224, 210, ${A})`, 2: `rgba(184, 184, 204, ${A})`, 3: `rgba(192, 132, 74, ${A})`, 4: `rgba(132, 104, 232, ${A})`, 5: `rgba(240, 196, 60, ${A})`,
+      9: `rgba(79, 224, 210, ${A * 0.45})`, 10: `rgba(184, 184, 204, ${A * 0.45})` };
+    const guess = layerOn('guessed');
+    const on_ = { 1: layerOn('turf'), 2: layerOn('paved'), 3: layerOn('bare'), 4: layerOn('solid'), 5: layerOn('open'), 9: guess && layerOn('turf'), 10: guess && layerOn('paved') };
     const er = st.erased, showEr = layerOn('erased') && layers().erased === true;
     for (let r = 0; r < S.h; r++) for (let q = 0; q < S.w; q++) {
       const k = S.kinds[r * S.w + q];
@@ -1003,7 +1009,7 @@ async function startAR(engine, { anyway = false } = {}) {
   st.holdUploads = st.holdLast = !!$('#hold-uploads')?.checked;
   if (st.holdUploads) st.outbox?.hold?.(true);
   tellApp(st.upStatus || { pending: 0 });   // the keep-running service starts now, while the app is in front
-  st.dy = null; st.dyFrom = null; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.occ = null; st.occFull = 0; st.occAt = 0; st.walkGround = new Map(); st.spikes = { pictures: 0, cells: 0, flagged: 0 }; st.walkAsk = null; st.walkAt = 0; st.walkStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null }; st.crumbs = newCrumbs();
+  st.dy = null; st.dyFrom = null; st.planes = null; st.planesSentAt = 0; st.gpsTrail = []; st.anchors = newAnchors(); st.nudge = null; st.depthFill = null; st.geoTrail = []; st.geoSeen = null; st.sem = newSemCount(); st.lastSem = null; st.semDims = null; st.occ = null; st.occFull = 0; st.occAt = 0; st.walkGround = new Map(); st.spikes = { pictures: 0, cells: 0, flagged: 0 }; st.walkAsk = null; st.walkAt = 0; st.walkStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null }; st.crumbs = newCrumbs();
   st.walk.checks = [];
   st.L = newLocate(); st.L.spacing = st.lid.overlay?.picture?.marks?.spacing ?? null; st.sight = null; st.sightPaused = false; st.sightEndedAt = 0; st.roofsDone = null; st.resighted = new Set(); st.resightOf = null; st.rescan = null;
   st.prevStand = new Map(); st.prevGround = new Map(); st.prevAsk = null; st.prevCand = null; st.prevAt = 0; st.prevStats = { asks: 0, ok: 0, lastWhy: null, firstOkM: null, lastMs: null };
@@ -1154,6 +1160,23 @@ function geoSummary() {
   const best = (k) => { const a = tr.map((g) => g[k]).filter(Number.isFinite); return a.length ? +Math.min(...a).toFixed(1) : null; };
   return { n: tr.length, hacc: med('hacc'), yawAcc: med('yawAcc'), bestHacc: best('hacc'), bestYawAcc: best('yawAcc'), firstS: seen?.firstS ?? null, waiting: seen?.waiting ?? 0, states: seen?.states || {}, used: st.L ? (st.L.log || []).filter((e) => /Street View/.test(e.from || '')).length : null };
 }
+/* THE SURFACES ARCORE FOUND (bridge 10, 2026-11-27; the owner: "Perhaps the native ARcore plane surfaces might help a
+   lot with that, atleast for walls. My north wall is a solid wall, the front porch... has pillars that might trick the
+   plane finding so that's a good test"). The app sends every plane it holds every 2 s; the latest set is kept with the
+   walk (planes.json, in the session's own metres, private like the rest of the twin) every 30 s and at the end, for
+   scan/tools/surfaces.py to put walls and floors off the ground on the map. Nothing is drawn from them yet. */
+function notePlanes(list) {
+  if (!Array.isArray(list) || !st.walk) return;
+  st.planes = list;
+  const now = Date.now();
+  if (now - (st.planesSentAt || 0) >= 30000) sendPlanes(now);
+}
+function sendPlanes(now = Date.now()) {
+  if (!st.planes?.length || !st.twin) return;
+  st.planesSentAt = now;
+  const walls = st.planes.filter((p) => p[1] === 2).length;
+  sendTwin([{ name: 'planes.json', type: 'application/json', body: JSON.stringify({ v: 1, at: new Date(now).toISOString(), frame: "the walk's session, metres, y up", record: ['id', 'kind: 0 facing up, 1 facing down, 2 a wall', 'tracking: 0 now, 1 paused', 'outline x, y, z, ...'], walls, planes: st.planes }) }]);
+}
 function noteGeo(f, odo) {
   const g = f.geo;
   if (!g || !f.pose) return;
@@ -1270,6 +1293,7 @@ function frameWork(f) {
   lap('walk step');
   // the depth picture as points round the phone, four times a second; then, when it is time, a match
   if (f.geo) noteGeo(f, odo);
+  if (f.planes) notePlanes(f.planes);
   if (f.sem) st.lastSem = { t: f.t, sem: f.sem };
   // THE DRIFT LOG (bridge 2, semantics.js): an ARCore anchor every 10 m at the camera; how far ARCore has moved each
   // by the walk's end is the drift it corrected
@@ -2066,6 +2090,7 @@ function finish() {
   { const add = {}; document.dispatchEvent(new CustomEvent('yard-walk', { detail: { phase: 'end', walk: s.id, add, map: st.map || null, origin: st.origin || null, lawn: st.lawn || [], ground: st.lid?.overlay?.dem1 || null } })); if (Object.keys(add).length) s.extras = add; }
   try { s.perf = perfOf(st.wperf); st.upPerf = { perf: st.wperf, id: s.id }; } catch (e) { log(`speed numbers: ${e.message}`); }
   if (st.twin) {
+    sendPlanes();
     sendTwin(flush(st.twin, Date.now(), liveOf(L, w, { ended: true, summary: s.id, crumbs: crumbs ? crumbs.list : null, walk: L?.walk?.ok ? { T: L.walk.T, share: L.walk.share, margin: L.walk.margin, walkedM: L.walk.walkedM, from: L.walk.from } : null, recordOnly: !!st.recordOnly, points: pointsKept(), gpsTrail: trailKept(), geoTrail: geoKept(), anchors: st.anchors ? anchorsKept(st.anchors) : null, prev: prevKept() })));
     s.twin = { ...st.twin.counts, camera: st.twin.camera, off: st.twinUp.off };
   }
@@ -2296,7 +2321,8 @@ function eraseAt(m) {
     const c = S.cellM || 0.3048, [oe, on] = Array.isArray(S.origin) ? toLocal(st.origin, S.origin) : [0, 0];
     const q0 = Math.floor((m[0] - R - oe) / c) - S.i0, q1 = Math.floor((m[0] + R - oe) / c) - S.i0;
     const r0 = Math.floor((m[1] - R - on) / c) - S.j0, r1 = Math.floor((m[1] + R - on) / c) - S.j0;
-    const vis = { 1: layerOn('turf'), 2: layerOn('paved'), 3: layerOn('bare') };
+    const guess = layerOn('guessed');
+    const vis = { 1: layerOn('turf'), 2: layerOn('paved'), 3: layerOn('bare'), 4: layerOn('solid'), 5: layerOn('open'), 9: guess && layerOn('turf'), 10: guess && layerOn('paved') };
     for (let r = Math.max(0, r0); r <= Math.min(S.h - 1, r1); r++) for (let q = Math.max(0, q0); q <= Math.min(S.w - 1, q1); q++) {
       const k = S.kinds[r * S.w + q];
       if (!k || !vis[k]) continue;
@@ -2320,7 +2346,7 @@ function undoStroke(keys) { for (const k of keys || []) st.erased?.delete(k); }
 let erasedTimer = null;
 function saveErased() {
   const map = st.map; if (!map || !st.erased) return;
-  const KIND = { 1: 'turf', 2: 'paving', 3: 'porous', plant: 'plant' };
+  const KIND = { 1: 'turf', 2: 'paving', 3: 'porous', 4: 'solid', 5: 'open', 9: 'turf', 10: 'paving', plant: 'plant' };
   const cells = [...st.erased].map(([key, k]) => { const [layer, ij] = key.split(':'); const [i, j] = ij.split(',').map(Number); return [layer, i, j, KIND[k] || String(k)]; });
   const body = JSON.stringify({ v: 1, at: new Date().toISOString(), cellM: st.surfaces?.cellM || 0.3048, plantsCellM: st.plants?.cellM || 0.3048, groundWalk: st.surfaces?.walk || null, plantsAt: st.plants?.at || null, erased: cells });
   const note = $('#eraser-note'); if (note) note.textContent = `${cells.length} square${cells.length === 1 ? '' : 's'} erased`;
@@ -2338,7 +2364,7 @@ async function askErased(map) {
     const r = await fetch(`/api/scan/edits?map=${encodeURIComponent(map)}`, { credentials: 'same-origin' });
     const j = r.ok ? await r.json() : null;
     if (st.map !== map || !j || j.none || !Array.isArray(j.erased)) return;
-    const K = { turf: 1, paving: 2, porous: 3, plant: 'plant' };
+    const K = { turf: 1, paving: 2, porous: 3, solid: 4, open: 5, plant: 'plant' };
     /* PLANT SQUARES ERASED AT ANOTHER SIZE (2026-11-26: erased on 2 ft squares, now drawn a foot a square): each erased
        square becomes the squares it covers now. The size it was erased at: plantsCellM, or for erasures saved before
        that was kept, 2 ft when the plants then were the ones made at 10:39 am 2026-11-26 Eastern or later. */
@@ -2373,9 +2399,9 @@ async function askSurfaces(map) {
     const kinds = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());
     if (kinds.length < j.w * j.h || st.map !== map) return;
     st.surfaces = { ...j, kinds };
-    let paved = 0, grass = 0, bare = 0; for (const k of kinds) { if (k === 2) paved++; else if (k === 1) grass++; else if (k === 3) bare++; }
-    const sq = (n) => Math.round(n * (j.cellM / 0.3048) ** 2).toLocaleString();
-    log(`a walk's ground on the map: ${sq(grass)} sq ft of turf (blue-green), ${sq(paved)} of paving (grey), ${sq(bare)} of porous ground (bare soil, woodchips, moss) in patches of 4 sq ft or more (brown, not counted as turf)`);
+    const n = new Array(11).fill(0); for (const k of kinds) if (k < 11) n[k]++;
+    const sq = (x) => Math.round(x * (j.cellM / 0.3048) ** 2).toLocaleString();
+    log(`a walk's ground on the map: ${sq(n[1])} sq ft of turf (blue-green), ${sq(n[2])} of paving (grey), ${sq(n[3])} of porous ground (bare soil, woodchips, moss) in patches of 4 sq ft or more (brown, not counted as turf), ${sq(n[4])} of solid structure (violet), ${sq(n[5])} of open structure, a deck's boards (amber); guessed, a gap filled: ${sq(n[9])} turf, ${sq(n[10])} paving (the same colours, paler)`);
     drawMap();
   } catch { /* nothing drawn */ }
 }

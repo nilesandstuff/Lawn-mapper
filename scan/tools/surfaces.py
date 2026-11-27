@@ -195,6 +195,7 @@ def colour_class(rgb):
 REACH, SMOOTH, COLOUR, ADE = 8.0, False, False, False   # set from the command line in main()
 CAST_MAX_M = 8.0       # m: a picture's depth cell is cast onto the ground only this near (the depth is off 3-6% of the distance)
 CAST_CONF = 0.3        # the least depth confidence for a cast cell
+STRUCT_TOP_M = 4.0     # m: built cells this high over the ground at most are put down onto their squares
 
 
 def cast_pictures(d, cut, gtree, gmed, scale=1.0, reach=None, smooth=False, colour=False):
@@ -214,13 +215,14 @@ def cast_pictures(d, cut, gtree, gmed, scale=1.0, reach=None, smooth=False, colo
     import segment_study as SS
     SS.pose_keys(keys, SS.read_track(d))
     X, Z, Lb, Cc, R, Ad, used = [], [], [], [], [], [], 0
+    Pn, SX, SZ, SH, SK, SP = [], [], [], [], [], []   # each ground cell's picture; the built cells (x, z, height, kind, picture)
     reach = CAST_MAX_M if reach is None else reach
     if colour:
         try:
             from PIL import Image
         except Exception:
             colour = False
-    for k in keys:
+    for pic_no, k in enumerate(keys):
         if k.get("t", 0) < cut:
             continue
         fs, fr = os.path.join(d, k["name"].replace(".jpg", ".sem")), os.path.join(d, k["name"].replace(".jpg", ".rdepth"))
@@ -256,16 +258,23 @@ def cast_pictures(d, cut, gtree, gmed, scale=1.0, reach=None, smooth=False, colo
         dw /= np.linalg.norm(dw, axis=1, keepdims=True)
         P = V[:3, 3][None, :] + dw * dist[m][:, None]
         _, near = gtree.query(np.floor(P[:, [0, 2]]))
-        g = np.abs(P[:, 1] - gmed[near]) <= GROUND_M
+        hgt = P[:, 1] - gmed[near]
+        g = np.abs(hgt) <= GROUND_M
+        fa = os.path.join(d, k["name"].replace(".jpg", ".ade"))
+        ak_all = np.zeros(len(P), np.uint8)
+        if ADE and os.path.exists(fa):
+            ab = np.fromfile(fa, dtype=np.uint8)
+            if len(ab) >= 4 + nx * ny and (int(ab[0]) | (int(ab[1]) << 8)) == nx:
+                ak_all = ab[4:4 + nx * ny][np.flatnonzero(m)]
+        # THE BUILT THINGS AT ANY HEIGHT (2026-11-27): the large labeller's walls, pillars, floors off the ground and
+        # roofs seen from under, wherever they stand up to STRUCT_TOP_M, put down onto their squares with their height
+        sb = ~g & np.isin(ak_all, (8, 9, 10)) & (hgt > -0.5) & (hgt <= STRUCT_TOP_M)
+        if sb.any():
+            SX.append(P[sb, 0]); SZ.append(P[sb, 2]); SH.append(hgt[sb]); SK.append(ak_all[sb]); SP.append(np.full(int(sb.sum()), pic_no, np.int32))
         if g.any():
             X.append(P[g, 0]); Z.append(P[g, 2]); Lb.append(lab[m][g] + 1); R.append(dist[m][g]); used += 1
-            fa = os.path.join(d, k["name"].replace(".jpg", ".ade"))
-            ak = np.zeros(int(g.sum()), np.uint8)
-            if ADE and os.path.exists(fa):
-                ab = np.fromfile(fa, dtype=np.uint8)
-                if len(ab) >= 4 + nx * ny and (int(ab[0]) | (int(ab[1]) << 8)) == nx:
-                    ak = ab[4:4 + nx * ny][np.flatnonzero(m)][g]
-            Ad.append(ak)
+            ak = ak_all[g]
+            Ad.append(ak); Pn.append(np.full(int(g.sum()), pic_no, np.int32))
             cc = np.zeros(int(g.sum()), np.uint8)
             fj = os.path.join(d, k["name"])
             if colour and os.path.exists(fj):
@@ -279,7 +288,8 @@ def cast_pictures(d, cut, gtree, gmed, scale=1.0, reach=None, smooth=False, colo
             Cc.append(cc)
     if not X:
         return None
-    return np.concatenate(X), np.concatenate(Z), np.concatenate(Lb).astype(np.uint8), used, np.concatenate(Cc), np.concatenate(R), np.concatenate(Ad)
+    built = (np.concatenate(SX), np.concatenate(SZ), np.concatenate(SH), np.concatenate(SK), np.concatenate(SP)) if SX else None
+    return np.concatenate(X), np.concatenate(Z), np.concatenate(Lb).astype(np.uint8), used, np.concatenate(Cc), np.concatenate(R), np.concatenate(Ad), np.concatenate(Pn), built
 
 
 def load_walk(d):
@@ -325,6 +335,12 @@ def load_walk(d):
             q = rgb[:4 * len(recs)].reshape(-1, 4)[ok]
             C = np.where(q[:, 3] > 0, colour_class(q[:, :3]), COLOUR_UNKNOWN).astype(np.uint8)
     note = f"{name}: {int(ok.sum()):,} kept ground points"
+    Src = np.full(len(X), -1, np.int32)          # the picture a ground point came from; -1 the walk's kept points
+    Rg = np.full(len(X), np.nan)                 # how far the camera was from it (kept points: not known here)
+    # the walk's kept points on built things, off the ground: the phone's "building" label or the pictures' vote's "built"
+    hk = y_ - g_
+    sk = fin & (hk > 0.3) & (hk <= STRUCT_TOP_M) & ((lab == 3) | ((kind == TR.KINDS.index("built")) if kind is not None else False))
+    BX, BZ, BH, BK, BP = [x_[sk]], [z_[sk]], [hk[sk]], [np.full(int(sk.sum()), 8, np.uint8)], [np.full(int(sk.sum()), -1, np.int32)]
     # the pictures' own ground, where the walk kept their label grids
     if fin.sum() > 100:
         from scipy.spatial import cKDTree
@@ -334,9 +350,12 @@ def load_walk(d):
         gmed = np.array([np.median(gy[p:q]) for p, q in zip(brk, np.r_[brk[1:], len(gy)])])
         cast = cast_pictures(d, cut, cKDTree(gs[brk].astype(np.float64)), gmed, float(fit.get("castScale") or 1.0), REACH, SMOOTH, COLOUR)
         if cast is not None:
-            cx, cz, cl, used, ccol, crange, cade = cast
+            cx, cz, cl, used, ccol, crange, cade, cpic, cbuilt = cast
+            if cbuilt is not None:
+                BX.append(cbuilt[0]); BZ.append(cbuilt[1]); BH.append(cbuilt[2]); BK.append(cbuilt[3]); BP.append(cbuilt[4])
             if "--nocast" not in sys.argv:
                 X, Z, L, C, A = np.r_[X, cx], np.r_[Z, cz], np.r_[L, cl], np.r_[C, ccol], np.r_[A, cade]
+                Src, Rg = np.r_[Src, cpic], np.r_[Rg, crange]
                 if K is not None:
                     K = np.r_[K, np.zeros(len(cx), K.dtype)]
             note += f" and {len(cx):,} ground cells from {used} pictures' own depth and labels (within {REACH * FT:.0f} ft{', and the smoothed depth where the raw has none' if SMOOTH else ''})" + (" (counted, NOT used)" if "--nocast" in sys.argv else "")
@@ -346,7 +365,27 @@ def load_walk(d):
     cth, sth = np.cos(th) * s_, np.sin(th) * s_
     E = cth * X - sth * (-Z) + T["tx"]
     N = sth * X + cth * (-Z) + T["ty"]
-    return E, N, L, K, C, A, note + f"; its {fit.get('n')} corners agree within {(fit.get('worstM') or 0) * 39.37:.0f} in."
+    # THE SURFACES ARCORE FOUND (planes.json, bridge 10, 2026-11-27): each plane's outline with its height over the
+    # walk's ground under it (the 1 m cells' median, as for the pictures' cells)
+    planes = []
+    try:
+        pj = json.load(open(os.path.join(d, "planes.json")))
+    except Exception:
+        pj = None
+    if pj and fin.sum() > 100:
+        for pl in pj.get("planes") or []:
+            xyz = np.asarray(pl[3], np.float64).reshape(-1, 3) if len(pl) > 3 and len(pl[3]) >= 9 else None
+            if xyz is None or not np.isfinite(xyz).all():
+                continue
+            _, nn = cKDTree(gs[brk].astype(np.float64)).query(np.floor(xyz[:, [0, 2]]))
+            planes.append((int(pl[1]), xyz[:, 0], xyz[:, 2], xyz[:, 1] - gmed[nn]))
+    bx, bz = np.concatenate(BX), np.concatenate(BZ)
+    built = (cth * bx - sth * (-bz) + T["tx"], sth * bx + cth * (-bz) + T["ty"], np.concatenate(BH), np.concatenate(BK), np.concatenate(BP))
+    note += f"; {len(bx):,} cells on built things off the ground"
+    if pj is not None:
+        note += f"; ARCore's surfaces: {sum(1 for p_ in planes if p_[0] == 2)} walls, {sum(1 for p_ in planes if p_[0] == 0)} facing up, {sum(1 for p_ in planes if p_[0] == 1)} facing down"
+    planes = [(k_, cth * px - sth * (-pz) + T["tx"], sth * px + cth * (-pz) + T["ty"], ph) for k_, px, pz, ph in planes]
+    return E, N, L, K, C, A, Src, Rg, built, planes, note + f"; its {fit.get('n')} corners agree within {(fit.get('worstM') or 0) * 39.37:.0f} in."
 
 
 def main():
@@ -380,12 +419,16 @@ def main():
     # SEVERAL WALKS TOGETHER (the owner, 2026-11-25: "that's how this will be intended to function, the walks are
     # cumulative"): each walk's ground put on the map by its OWN corners' fit, then pooled square by square.
     Es, Ns, Ls, Ks, Cs, As, said, have_vote = [], [], [], [], [], [], [], True
+    Ss, Rs, Bs, Ps = [], [], [], []
     for d in a:
         got = load_walk(d)
         if got is None:
             continue
-        e_, n_, l_, k_, c_, a_, note = got
+        e_, n_, l_, k_, c_, a_, src_, rg_, b_, pl_, note = got
+        Ps.append(pl_)
         Es.append(e_); Ns.append(n_); Ls.append(l_); Cs.append(c_); As.append(a_); said.append(note)
+        # one id for each source of a ground point: a walk's picture, or that walk's kept points as one
+        Ss.append(len(Ss) * 100000 + np.where(src_ >= 0, src_, 99999)); Rs.append(rg_); Bs.append(b_)
         if k_ is None:
             have_vote = False
         Ks.append(k_ if k_ is not None else np.zeros(len(e_), np.uint8))
@@ -554,6 +597,109 @@ def main():
                 ag, _ = ade_grids(np.ones(len(E), bool))
                 parts.append("the second labeller calls " + ", ".join(f"{int(v[rr, cc].sum()):,} {k}" for k, v in ag.items()))
             print("  JUDGED BY THE OWNER'S ERASURES: " + "; ".join(parts) + ".")
+    # BUILT THINGS ON THE MAP (2026-11-27; the owner: "add structures to the colors... There's 2 types of structures
+    # really. Solid structures, and structures like decks, that water can pass through"). From every walk: the large
+    # labeller's walls, pillars and doors, the phone's "building" and the pictures' vote's "built" off the ground (SOLID);
+    # its floors off the ground, steps and railings (OPEN: a deck's boards let rain through); and its roofs seen from
+    # under (a porch's ceiling): what stands under a roof is SOLID, for rain does not reach it, whatever it is made of.
+    SRC, RNG = np.concatenate(Ss), np.concatenate(Rs)
+    WI = np.repeat(np.arange(len(Es)), [len(e) for e in Es])      # each ground point's walk
+    BE = np.concatenate([b[0] for b in Bs]); BN = np.concatenate([b[1] for b in Bs]); BH = np.concatenate([b[2] for b in Bs])
+    BK = np.concatenate([b[3] for b in Bs]); BW = np.concatenate([np.full(len(b[0]), q, np.int32) for q, b in enumerate(Bs)])
+    bci, bcj = np.floor(BE / CELL).astype(int) - i0, np.floor(BN / CELL).astype(int) - j0
+    bin_ = (bci >= 0) & (bcj >= 0) & (bci < W) & (bcj < H)
+    bkey = np.where(bin_, bcj * W + bci, 0)
+
+    def bgrid(m):
+        return np.bincount(bkey[m & bin_], minlength=W * H).reshape(H, W)
+    ground_all = np.bincount(key, minlength=W * H).reshape(H, W)
+
+    # ARCORE'S SURFACES, ON THE SQUARES (bridge 10): a wall's line, a floor's or a ceiling's outline, for each walk
+    cxs, cys = (np.arange(W) + i0 + 0.5) * CELL, (np.arange(H) + j0 + 0.5) * CELL
+    pstat = {"walls": 0, "walls kept": 0, "floors": 0, "floors kept": 0, "ceilings": 0}
+
+    def plane_masks(q):
+        wl, fl_, ce = [], [], []
+        for kind_, pe, pn, ph in Ps[q]:
+            if kind_ == 2:
+                # a wall: the line along its outline's long axis on the ground, if it stands half a metre or more
+                if ph.max() < 0.5 or ph.max() - ph.min() < 0.5:
+                    continue
+                xy = np.stack([pe, pn], 1); mu = xy.mean(0)
+                w_, v_ = np.linalg.eigh(np.cov((xy - mu).T)) if len(xy) > 2 else (None, None)
+                if v_ is None:
+                    continue
+                ax = v_[:, np.argmax(w_)]; t_ = (xy - mu) @ ax
+                if t_.max() - t_.min() < 0.6:
+                    continue
+                ts = np.arange(t_.min(), t_.max(), CELL / 3)
+                c_ = np.floor((mu[0] + ts * ax[0]) / CELL).astype(int) - i0; r_ = np.floor((mu[1] + ts * ax[1]) / CELL).astype(int) - j0
+                ok_ = (c_ >= 0) & (r_ >= 0) & (c_ < W) & (r_ < H)
+                m_ = np.zeros((H, W), bool); m_[r_[ok_], c_[ok_]] = True
+                wl.append(m_)
+            elif kind_ in (0, 1):
+                hm = float(np.median(ph))
+                if (kind_ == 0 and not (0.15 < hm < 1.8)) or (kind_ == 1 and hm < 1.8):
+                    continue
+                c0, c1 = max(0, int(np.floor(pe.min() / CELL)) - i0), min(W, int(np.floor(pe.max() / CELL)) - i0 + 1)
+                r0, r1 = max(0, int(np.floor(pn.min() / CELL)) - j0), min(H, int(np.floor(pn.max() / CELL)) - j0 + 1)
+                if c1 <= c0 or r1 <= r0:
+                    continue
+                gx, gy = np.meshgrid(cxs[c0:c1], cys[r0:r1])
+                ins = inside([np.stack([pe, pn], 1)], gx.ravel(), gy.ravel()).reshape(gy.shape)
+                if ins.sum() * SQ < (16 if kind_ == 0 else 8):
+                    continue     # a table, a car's hood: a deck or a porch's floor is bigger
+                m_ = np.zeros((H, W), bool); m_[r0:r1, c0:c1] = ins
+                (fl_ if kind_ == 0 else ce).append(m_)
+        return wl, fl_, ce
+    PM = [plane_masks(q) for q in range(len(Ps))]
+
+    def built_of(sel, walks):
+        so, fl, rf = bgrid(sel & (BK == 8) & (BH > 0.15)), bgrid(sel & (BK == 9) & (BH > 0.15) & (BH < 1.8)), bgrid(sel & (BK == 10) & (BH > 1.8))
+        solid = (so >= MIN_PTS) & (2 * so >= ground_all)
+        deck = (fl >= MIN_PTS) & (fl >= so) & (2 * fl >= ground_all) & ~solid
+        # a wall ARCore found, along a built thing the labels saw for 30% of its length or more, is a wall all along:
+        # the gaps between what the labels saw filled (a fence's plane, with no building seen along it, is not)
+        near1 = ndimage.binary_dilation(solid, structure=np.ones((3, 3)), iterations=1) if solid.any() else solid
+        add_w = np.zeros_like(solid)
+        for q in walks:
+            for m_ in PM[q][0]:
+                pstat["walls"] += 1
+                if (m_ & near1).sum() >= 0.3 * m_.sum():
+                    add_w |= m_; pstat["walls kept"] += 1
+        solid = solid | add_w
+        # a floor ARCore found off the ground, where the labels saw a floor on a fifth of it or more, is a floor all over
+        add_f = np.zeros_like(solid)
+        for q in walks:
+            for m_ in PM[q][1]:
+                pstat["floors"] += 1
+                if ((fl > 0) & m_).sum() >= 0.2 * m_.sum():
+                    add_f |= m_; pstat["floors kept"] += 1
+        deck = (deck | add_f) & ~solid
+        near_solid = ndimage.binary_dilation(solid, structure=np.ones((3, 3)), iterations=max(1, int(round(12 / (CELL * FT))))) if solid.any() else solid
+        ceil = np.zeros_like(solid)
+        for q in walks:
+            for m_ in PM[q][2]:
+                pstat["ceilings"] += 1; ceil |= m_
+        roofed = ((rf >= MIN_PTS) | ceil) & near_solid
+        return solid | roofed | (deck & roofed), deck & ~roofed, roofed
+    solid_sq, deck_sq, roofed_sq = built_of(np.ones(len(BE), bool), range(len(Ps)))
+    if any(Ps):
+        print(f"  ARCORE'S SURFACES: {pstat['walls']} walls, {pstat['walls kept']} of them along built things the labels saw (the rest, a fence or a hedge, left out); {pstat['floors']} floors off the ground of 16 sq ft or more, {pstat['floors kept']} where the labels saw a floor; {pstat['ceilings']} ceilings over 6 ft.")
+    print(f"  BUILT THINGS: {len(BE):,} cells off the ground ({int((BK == 8).sum()):,} walls, pillars, doors; {int((BK == 9).sum()):,} floors, steps, railings; {int((BK == 10).sum()):,} roofs seen from under); "
+          f"SOLID {int(solid_sq.sum() * SQ):,} sq ft (of it under a roof seen from below {int((roofed_sq & solid_sq).sum() * SQ):,}), OPEN (a deck's boards) {int(deck_sq.sum() * SQ):,} sq ft.")
+    if len(Bs) > 1:
+        per_b = [built_of(BW == q, [q])[:2] for q in range(len(Bs))]
+        for q in range(len(per_b)):
+            for r in range(q + 1, len(per_b)):
+                (s1, d1), (s2, d2) = per_b[q], per_b[r]
+                both = (s1 | d1) & (s2 | d2); same = (s1 & s2) | (d1 & d2)
+                near = ndimage.binary_dilation(s2 | d2, structure=np.ones((3, 3)), iterations=1)
+                print(f"  BUILT, WALK {q + 1} AGAINST WALK {r + 1}: both call {int(both.sum() * SQ):,} sq ft built; the same kind on {100 * same.sum() / max(1, both.sum()):.0f}% of it; of walk {q + 1}'s built squares, {100 * ((s1 | d1) & near).sum() / max(1, (s1 | d1).sum()):.0f}% within a foot of walk {r + 1}'s.")
+    # HOW MANY SOURCES SPEAK FOR A SQUARE (the root of the specks, 2026-11-27): a source is one picture, or one walk's
+    # kept points; a square called by one source alone rests on one look
+    pairs = np.unique(key.astype(np.int64) * 10000000 + SRC.astype(np.int64))
+    nsrc = np.bincount((pairs // 10000000).astype(np.int64), minlength=W * H).reshape(H, W)
     if plants:
         print(f"  THE PLANTS ON THE SAME SQUARES: {int(plant_any.sum() * (CELL * FT) ** 2):,} sq ft under a plant; {int(plant_ground.sum() * (CELL * FT) ** 2):,} where it stands within {PLANT_GROUND_DM * 4} in of the ground, so no ground is called there.")
     for name, (pav, gra) in ways.items():
@@ -563,7 +709,8 @@ def main():
         if COLOUR and name == "THE PHONE'S OWN LABELS":
             # terrain that is brown is not grass: porous ground away from plants, leaves near them; a square with no colour keeps the label's word
             grass0 = grass0 & ~(brown_sq & ~((Gc + Bc) < MIN_PTS))
-        grass = grass0 & ~big_bare & ~(big_porous if COLOUR else False) & ~(leaves if COLOUR else False)
+        none_ = np.zeros_like(grass0, dtype=bool)   # (not False: ~False is -1, and a mask of ints indexes rows)
+        grass = grass0 & ~big_bare & ~(big_porous if COLOUR else none_) & ~(leaves if COLOUR else none_)
         if ADE and name == "THE PHONE'S OWN LABELS":
             # A SECOND WITNESS CAN SAY NO (S3 run 10: of the 1,581 squares the owner erased as turf, the colour had called
             # 483 green and none brown; the second labeller called 367 turf, 44 low plants and 534 porous). Turf is not
@@ -646,24 +793,67 @@ def main():
             g8[(big_bare | (big_porous if COLOUR else False) | ade_porous) & ~paved] = 3
             g8[paved] = 2
             g8[plant_ground] = 0
+            # the built things over all of it: a deck's boards (5), and walls, pillars and what stands under a roof (4)
+            g8[deck_sq] = 5
+            g8[solid_sq] = 4
             # THE OWNER'S ERASURES of the ground, at the size they were erased at (edits' cellM)
+            erased_sq = np.zeros((H, W), bool)
             if edits and isinstance(edits.get("erased"), list):
                 f = max(1, int(round(float(edits.get("cellM") or CELL) / CELL)))
                 gone = 0
                 # only where the square is still the kind the owner erased: a square erased as turf that is now called
                 # porous ground is not taken away (the owner erased the turf, not the ground)
-                KV = {"turf": 1, "paving": 2, "porous": 3}
+                KV = {"turf": 1, "paving": 2, "porous": 3, "solid": 4, "open": 5}
                 for e in edits["erased"]:
                     if len(e) >= 3 and e[0] == "g":
                         want = KV.get(str(e[3])) if len(e) >= 4 else None
                         for da in range(f):
                             for db in range(f):
                                 c_, r_ = int(e[1]) * f + da - i0, int(e[2]) * f + db - j0
+                                if 0 <= c_ < W and 0 <= r_ < H:
+                                    erased_sq[r_, c_] = True        # never filled by a guess, whatever it holds now
                                 if 0 <= c_ < W and 0 <= r_ < H and g8[r_, c_] and (want is None or g8[r_, c_] == want):
                                     g8[r_, c_] = 0; gone += 1
                 print(f"     The owner's erasures: {gone:,} ground squares left out.")
+            import ground_fill as GF
+            # THE SPECKS (the owner: "there won't ever be a 0-6 sqft patch of grass surrounded by pavement"), and first
+            # what they rest on: a speck far from its kind, against every square, by how many sources speak for it
+            far = {}
+            for kk, nm_ in ((1, "turf"), (2, "paving")):
+                lab_k, nk = ndimage.label(g8 == kk, structure=np.ones((3, 3)))
+                if not nk:
+                    continue
+                szk = np.bincount(lab_k.ravel()); szk[0] = 0
+                bigk = np.isin(lab_k, np.flatnonzero(szk * SQ >= 50))
+                nearbig = ndimage.distance_transform_edt(~bigk) * CELL * FT <= 10 if bigk.any() else np.zeros_like(bigk)
+                speck = (lab_k > 0) & (szk[lab_k] * SQ <= GF.SPECK_SQFT) & ~nearbig
+                far[nm_] = speck
+            called = np.isin(g8, (1, 2, 3))
+            one = called & (nsrc <= 1)
+            if far:
+                sp = np.zeros((H, W), bool)
+                for v in far.values():
+                    sp |= v
+                rg_all = RNG[np.isfinite(RNG)]
+                spk = sp[cj, ci] & np.isfinite(RNG)
+                print(f"     THE SPECKS FAR FROM THEIR KIND (a piece of {GF.SPECK_SQFT} sq ft or less with none of its kind of 50 sq ft within 10 ft): "
+                      + ", ".join(f"{k} {int(v.sum() * SQ):,} sq ft" for k, v in far.items())
+                      + f"; of their squares {100 * (sp & (nsrc <= 1)).sum() / max(1, sp.sum()):.0f}% rest on ONE source (a picture or a walk's kept points), of all ground called {100 * one.sum() / max(1, called.sum()):.0f}%"
+                      + (f"; the pictures' cells in them seen from {np.median(RNG[spk]) * FT:.0f} ft in the middle (all: {np.median(rg_all) * FT:.0f} ft)" if spk.any() and len(rg_all) else "")
+                      + "; by walk, of their points: " + ", ".join(f"walk {q + 1} {100 * (sp[cj, ci] & (WI == q)).sum() / max(1, sp[cj, ci].sum()):.0f}%" for q in range(len(Es))) + ".")
+            g8, ch, pcs = GF.despeckle(g8, SQ)
+            print(f"     SPECKS OF TURF INSIDE PAVING (a patch of {GF.SPECK_SQFT} sq ft or less, {100 * GF.SURROUND:.0f}% of what is called round it paving): {pcs:,} patches, {int(ch * SQ):,} sq ft, made paving.")
+            # THE GAPS FILLED (the lawn mapper's rules under a tree, public/lib/stage3.js: bridge and reach), never into an
+            # erased square, a plant standing on the ground or a built thing; first held out to see how right it is
+            blocked = erased_sq | plant_ground | np.isin(g8, (4, 5))
+            ho = GF.holdout(g8, SQ, CELL * FT, blocked)
+            for kk, nm_ in ((1, "turf"), (2, "paving")):
+                hd, same, other, left = ho[kk]
+                print(f"     THE FILL HELD OUT ({nm_}): of {hd:,} squares called {nm_} and hidden in 3 ft blocks, put back {nm_} {100 * same / max(1, hd):.0f}%, as the other kind {100 * other / max(1, hd):.0f}%, left empty {100 * left / max(1, hd):.0f}%.")
+            g8, got = GF.fill(g8, SQ, CELL * FT, blocked)
+            print(f"     THE GAPS FILLED (bridge: a gap {100 * GF.BRIDGE_SHARE:.0f}% one kind round it; reach: turf {GF.REACH_FT[1]:.0f} ft, paving {GF.REACH_FT[2]:.0f} ft from where it was seen; gaps of {GF.MAX_GAP_SQFT} sq ft or less): turf {int(got[1] * SQ):,} sq ft, paving {int(got[2] * SQ):,} sq ft, kept as GUESSED.")
             json.dump({"v": 1, "cellM": CELL, "i0": i0, "j0": j0, "w": int(W), "h": int(H), "from": "the walk's ground points by the phone's own labels",
-                       "what": "one byte a square, rows south to north: 0 not called, 1 grass, 2 paved, 3 porous ground: bare soil, woodchips, moss (a patch of 4 sq ft or more)", "enc": "zlib+base64",
+                       "what": "one byte a square, rows south to north: 0 not called, 1 grass, 2 paved, 3 porous ground: bare soil, woodchips, moss (a patch of 4 sq ft or more), 4 solid structure (walls, pillars, what stands under a roof), 5 open structure (a deck's boards: rain passes through); 9 grass and 10 paved GUESSED (a gap filled, not seen)", "enc": "zlib+base64",
                        "kinds": base64.b64encode(zlib.compress(g8.tobytes(), 9)).decode()}, open(keep, "w"))
             print(f"     Kept for the start page's map: {os.path.basename(keep)} ({os.path.getsize(keep) / 1e3:.0f} KB).")
     return 0

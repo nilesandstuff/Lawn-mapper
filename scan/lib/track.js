@@ -394,7 +394,7 @@ export function nativeInfo() {
 
 /** What the app is asked for (Bridge.start): the picture's width and quality, how often depth, pictures, Geospatial. */
 // rgbaStep (bridge 9): the app hands over every 8th pixel of every 8th row of the picture's RGBA (pictureOf)
-export const NATIVE_OPTIONS = { grabW: 480, jpegQ: 80, rgbaStep: 8, depthEveryMs: 200, pictureEveryMs: 700, geoEveryMs: 1000, semEveryMs: 500, anchorsEveryMs: 1000, depth: true, geospatial: true, semantics: true, planes: true, streetscape: false };
+export const NATIVE_OPTIONS = { grabW: 480, jpegQ: 80, rgbaStep: 8, depthEveryMs: 200, pictureEveryMs: 700, geoEveryMs: 1000, semEveryMs: 500, anchorsEveryMs: 1000, planesEveryMs: 2000, depth: true, geospatial: true, semantics: true, planes: true, streetscape: false };
 /* GEOSPATIAL DEPTH OFF (streetscape: false, 2026-11-20). With it on, ARCore draws Street View's building and
    terrain meshes INTO its depth pictures. Measured on the owner's-lot walk of 2026-11-19 (docs/SCAN-PLAN.md 39): the
    smoothed depth kept beside 587 photos read 125-150 ft nearly everywhere (4% of it within 39 ft), 279,659 of the
@@ -557,6 +557,7 @@ async function startNative({ canvas, onFrame, onEvent, nativeOptions = {}, nativ
       view: fr.view ? new Float32Array(fr.view) : null, proj: fr.proj ? new Float32Array(fr.proj) : null,
       geo: fr.geo || null,
       sem: fr.sem || null, // bridge 2: the share of the picture under each label
+      planes: fr.planes || null, // bridge 10: every plane ARCore holds, every 2 s (app.js notePlanes)
       events: fr.events || null, // bridge 3: on a replay, what the page did at this frame of the recorded walk
       grab: () => grabNative(N),
     });

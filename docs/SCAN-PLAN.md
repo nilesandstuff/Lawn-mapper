@@ -5390,3 +5390,44 @@ HARD (S4 run 17, 6:00-7:06 pm Thu Eastern, head 5bf7021; the map came due on its
     agreement behind them every 0.5 s (was 0.3); the lidar's height under the phone once a second (was twice).
 
 SPECULATION until a walk on the new page: how much of the frame this gives back on the phone.
+
+## 80. Structures in the colours, the gaps filled, the specks, and ARCore's walls (2026-11-27)
+
+The owner, 2026-11-27: "add structures to the colors (and fused maps). There's 2 types of structures really. Solid
+structures, and structures like decks, that water can pass through"; "filling gaps in turf, pavement... similar rules
+to how the lawnmapper guesses turf under canopy"; "there won't ever be a 0-6 sqft patch of grass surrounded by
+pavement"; "Perhaps the native ARcore plane surfaces might help a lot with that, atleast for walls. My north wall is a
+solid wall, the front porch (east side...) has pillars that might trick the plane finding so that's a good test."
+
+BUILT (scan/tools/surfaces.py, ground_labels.py, ground_fill.py; the map's byte a square, surfaces-map.json):
+  0 not called, 1 turf, 2 paving, 3 porous ground, 4 SOLID STRUCTURE, 5 OPEN STRUCTURE, 9 turf GUESSED, 10 paving GUESSED.
+  - The names are the core session's: SOLID (walls, a house, pillars, and anything under a roof, for rain does not
+    reach it) and OPEN (a deck's boards off the ground with no roof over them: rain passes through). How they are told
+    apart: the large labeller's classes at ANY height now (walls, building, house, column, door, windowpane = built;
+    floor, stairs, step, pier, stage, railing = a floor off the ground, 0.15-1.8 m up; ceiling, awning = a roof seen
+    from under, 1.8 m up or more); the phone's "building" label and the pictures' vote's "built" off the ground. A
+    square is solid with 3 built cells or more and at least half as many as its ground points; open with 3 floor cells
+    off the ground likewise; under a roof seen from below, within 12 ft of a solid square, it is solid.
+  - Specks: a turf piece of 6 sq ft or less with 75% of the called squares round it paving is paving. Before that, a
+    line on what the specks FAR from their kind rest on (one source, a picture or a walk's kept points, against all
+    squares; the range the pictures' cells were seen from; which walk), for the root cause.
+  - Gaps: the lawn mapper's stage 3 rules (public/lib/stage3.js), bridge and reach: a gap of 400 sq ft or less, not
+    open to the unseen, whose called rim is 60% one kind and called for half its length, is that kind as far as 6 ft
+    (turf) or 4 ft (paving) from where it was seen; never into an erased square, a plant standing on the ground or a
+    built thing. Held out first: blocks of 3 ft of called squares hidden and put back, the share right printed.
+  - ARCore's planes (app 1.28, bridge 10): every 2 s the app sends each plane it holds (kind, outline in session
+    metres); the page keeps the latest set as planes.json with the walk every 30 s and at the end; twin-onref.mjs
+    moves it onto the map with the points. A WALL plane along which the labels saw a built thing for 30% of its length
+    or more is solid all along (the gaps between what the labels saw filled; a fence's or a hedge's plane, with no
+    building along it, is not). A FLOOR plane 0.15-1.8 m up of 16 sq ft or more, with a floor seen by the labels on a
+    fifth of it, is open all over; a CEILING plane over 6 ft, near a solid square, roofs what is under it.
+  Checked on a drawn walk (scan/tools/surfaces_selftest.py): the speck made paving, the lawn's hole guessed turf, the
+  deck open, the wall solid, its east end by the plane alone, the fence's plane not a wall. And a bug found on the way:
+  without --colour, surfaces.py's turf mask was a mask of ints (~False is -1) and indexed rows; S4 always runs with it.
+
+SPECULATION until a run on the owner's walks: every number above (3 cells, 30%, a fifth, 6 ft, 4 ft, 60%); whether the
+large labeller says "floor" for a deck; and the porch: its pillars may give ARCore a plane across the gaps between
+them, which would be taken for a wall if the labels saw the pillars along 30% of it.
+
+THE FUSED MODEL: the walk's built things are not in it yet. Roofs and low structures are the lidar's alone by a light
+rule the features session holds (docs/MAPS.md), so it is asked first.

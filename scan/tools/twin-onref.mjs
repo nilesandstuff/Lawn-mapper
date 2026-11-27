@@ -117,7 +117,30 @@ export function moveTwin(dir, at) {
     }
     writeFileSync(join(dir, f), JSON.stringify(list));
   }
-  return { pts, dropped, keys, appWay };
+  // THE SURFACES ARCORE FOUND (planes.json, bridge 10): each plane by the moment of the walk nearest it, the track's
+  // point nearest its middle (a plane has no moment of its own: ARCore keeps moving it as it sees more)
+  let planes = 0;
+  const pj = readJson(dir, 'planes.json');
+  if (pj && Array.isArray(pj.planes) && track.length) {
+    const kept = [];
+    for (const pl of pj.planes) {
+      const xyz = pl[3];
+      if (!Array.isArray(xyz) || xyz.length < 9) continue;
+      let cx = 0, cz = 0; const nv = Math.floor(xyz.length / 3);
+      for (let i = 0; i < nv; i++) { cx += xyz[3 * i]; cz += xyz[3 * i + 2]; }
+      cx /= nv; cz /= nv;
+      let best = null, bd = Infinity;
+      for (const r of track) { const d = (r[2] - cx) ** 2 + (r[4] - cz) ** 2; if (d < bd) { bd = d; best = r; } }
+      const T = best ? at(best[1]) : null;
+      if (!T) continue;
+      const s = T.s ?? 1, out = [];
+      for (let i = 0; i < nv; i++) { const [e, n] = place(T, xyz[3 * i], -xyz[3 * i + 2]); out.push(+e.toFixed(3), +(xyz[3 * i + 1] * s).toFixed(3), +(-n).toFixed(3)); }
+      kept.push([pl[0], pl[1], pl[2], out]);
+    }
+    writeFileSync(join(dir, 'planes.json'), JSON.stringify({ ...pj, moved: 'onto the map by the reference', planes: kept }));
+    planes = kept.length;
+  }
+  return { pts, dropped, keys, appWay, planes };
 }
 
 async function main() {

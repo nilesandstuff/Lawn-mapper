@@ -25,10 +25,18 @@ from PIL import Image
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 SEG_MODEL = "nvidia/segformer-b0-finetuned-ade-512-512"
-# our kinds: 0 none, 1 turf, 2 low plants (beds, ground cover), 3 porous (earth, sand, dirt), 4 paved, 5 rock, 6 tree, 7 other
+# our kinds: 0 none, 1 turf, 2 low plants (beds, ground cover), 3 porous (earth, sand, dirt), 4 paved, 5 rock, 6 tree, 7 other,
+# and since 2026-11-27 (the owner: "add structures to the colors... Solid structures, and structures like decks, that water
+# can pass through"): 8 built solid (walls, a house, pillars, doors), 9 a floor off the ground (a deck's or a porch's
+# boards, steps, railings), 10 a roof seen from under it (a porch's ceiling, an awning): surfaces.py reads them at any height
 KIND_OF = {"grass": 1, "field": 1, "plant": 2, "flower": 2, "earth": 3, "sand": 3, "dirt track": 3, "land": 3,
-           "road": 4, "sidewalk": 4, "path": 4, "runway": 4, "rock": 5, "stone": 5, "tree": 6, "palm": 6}
-KIND_NAMES = ["none", "turf", "low plants", "porous", "paved", "rock", "tree", "other"]
+           "road": 4, "sidewalk": 4, "path": 4, "runway": 4, "rock": 5, "stone": 5, "tree": 6, "palm": 6,
+           "wall": 8, "building": 8, "house": 8, "column": 8, "door": 8, "windowpane": 8, "skyscraper": 8, "hovel": 8,
+           "tower": 8, "double door": 8, "screen door": 8,
+           "floor": 9, "stairs": 9, "step": 9, "stairway": 9, "pier": 9, "stage": 9, "railing": 9, "bannister": 9,
+           "ceiling": 10, "awning": 10}
+KIND_NAMES = ["none", "turf", "low plants", "porous", "paved", "rock", "tree", "other", "built", "floor", "roof from under"]
+NK = len(KIND_NAMES)
 
 
 def main():
@@ -46,7 +54,8 @@ def main():
         keys = []
         for n in sorted(x for x in os.listdir(d) if re.fullmatch(r"keys-\d+\.json", x)):
             keys += json.load(open(os.path.join(d, n)))
-        done, tally = 0, np.zeros(8, np.int64)
+        done, tally = 0, np.zeros(NK, np.int64)
+        names_seen = {}
         # THE LARGE LABELLER FIRST (2026-11-26): where the walk has the panoptic model's classes (segments-masks.npz:
         # Mask2Former, ADE20K, measured on the owner's own names at 97% / 89%; classes_cpu.py on the free runner),
         # its class at each cell; SegFormer-B0 only for the pictures it did not label
@@ -65,6 +74,8 @@ def main():
                                 lt[int(i)] = KIND_OF.get(str(name).lower().split(",")[0].strip(), 7)
                         lt[0] = 0
                         big[tkeys[int(pi)]["name"]] = lt[m]
+                        for nm_ in set(str(x).lower().split(",")[0].strip() for x in nm.values()):
+                            names_seen[nm_] = names_seen.get(nm_, 0) + 1
             except Exception as e:
                 print(f"  The large labeller's classes could not be read ({e}); the small one alone.")
         n_big = 0
@@ -87,11 +98,16 @@ def main():
                 cls = lut[lab[np.clip(((jj + 0.5) / ny * h).astype(int), 0, h - 1), np.clip(((ii + 0.5) / nx * w).astype(int), 0, w - 1)]]
             out = np.concatenate([np.array([nx & 255, nx >> 8, ny & 255, ny >> 8], np.uint8), cls.ravel().astype(np.uint8)])
             out.tofile(fj.replace(".jpg", ".ade"))
-            tally += np.bincount(cls.ravel(), minlength=8)
+            tally += np.bincount(cls.ravel(), minlength=NK)[:NK]
             done += 1
         tot = max(1, int(tally.sum()))
         print(f"  The second labeller on {os.path.basename(os.path.normpath(d))}: {done} pictures ({n_big} by the large panoptic model, {done - n_big} by SegFormer-B0); their cells "
-              + ", ".join(f"{KIND_NAMES[i]} {100 * tally[i] / tot:.0f}%" for i in range(1, 8)) + ".")
+              + ", ".join(f"{KIND_NAMES[i]} {100 * tally[i] / tot:.0f}%" for i in range(1, NK)) + ".")
+        if names_seen:
+            # which of the large labeller's classes the pictures hold, most first (names and counts only): what a
+            # structure is called by it on this lot
+            top = sorted(names_seen.items(), key=lambda x: -x[1])[:25]
+            print("    its classes, by pictures that hold them: " + ", ".join(f"{k} {v}" for k, v in top) + ".")
     return 0
 
 

@@ -35,7 +35,7 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
     class Options(
         var grabW: Int = 480, var jpegQ: Int = 80, var rgbaStep: Int = 1, var near: Float = 0.05f, var far: Float = 300f,
         var depthEveryMs: Long = 200, var pictureEveryMs: Long = 700, var geoEveryMs: Long = 1000,
-        var semEveryMs: Long = 500, var anchorsEveryMs: Long = 1000,
+        var semEveryMs: Long = 500, var anchorsEveryMs: Long = 1000, var planesEveryMs: Long = 0,
     )
 
     @Volatile var session: Session? = null
@@ -86,7 +86,7 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
     }
     fun dropAnchor(id: Int) { anchorDrops.add(id) }
     /** A new session: the old one's anchors died with it. */
-    fun reset() { anchors.clear(); anchorAsks.clear(); anchorDrops.clear(); lastRawImageTs = 0L; depthRaw = null; depthSmooth = null; toRecord.clear(); replayed.setLength(0); playbackEnded = false }
+    fun reset() { planeIds.clear(); anchors.clear(); anchorAsks.clear(); anchorDrops.clear(); lastRawImageTs = 0L; depthRaw = null; depthSmooth = null; toRecord.clear(); replayed.setLength(0); playbackEnded = false }
 
     private val bg = BackgroundRenderer()
     private val worker = Executors.newSingleThreadExecutor()
@@ -149,6 +149,7 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
         if (semOn && now - lastSem >= options.semEveryMs) { lastSem = now; semJson = semShares(frame) }
         if (tracking) anchorWork(s)
         if ((anchors.isNotEmpty()) && now - lastAnchors >= options.anchorsEveryMs) { lastAnchors = now; anchorsJson = anchorPoses() }
+        if (tracking && options.planesEveryMs > 0 && now - lastPlanes >= options.planesEveryMs) { lastPlanes = now; planesJson = try { planes(s) } catch (_: Exception) { null } }
         if (inFlight) return
         inFlight = true
         send(frameJson(frame, tracking))
@@ -175,6 +176,7 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
         geoJson?.let { sb.append(",\"geo\":").append(it); geoJson = null }
         semJson?.let { sb.append(",\"sem\":").append(it); semJson = null }
         anchorsJson?.let { sb.append(",\"anchors\":").append(it); anchorsJson = null }
+        planesJson?.let { sb.append(",\"planes\":").append(it); planesJson = null }
         if (replayed.isNotEmpty()) { sb.append(",\"events\":[").append(replayed).append(']'); replayed.setLength(0) }
         sb.append('}')
         return sb.toString()
@@ -284,6 +286,42 @@ class ArEngine(private val send: (String) -> Unit) : GLSurfaceView.Renderer {
             anchors.remove(id)?.let { try { it.detach() } catch (_: Exception) { } }
         }
     }
+
+    /* THE SURFACES ARCORE FOUND (bridge 10, 2026-11-27; the owner: "Perhaps the native ARcore plane surfaces might help
+       a lot with that, atleast for walls"). Every planesEveryMs, each plane ARCore holds and has not merged into
+       another: [id, kind (0 floor-like, facing up; 1 ceiling-like, facing down; 2 a wall), tracking (0 now, 1 paused),
+       [its outline in session metres, x, y, z, ...]]. The id is this session's own count; a plane's outline grows and
+       moves as ARCore sees more of it, so the latest outline of an id is the one to keep. */
+    private val planeIds = HashMap<Plane, Int>()
+    private var lastPlanes = 0L
+    @Volatile private var planesJson: String? = null
+    private fun planes(s: Session): String {
+        val sb = StringBuilder("[")
+        val pt = FloatArray(3)
+        for (pl in s.getAllTrackables(Plane::class.java)) {
+            if (pl.subsumedBy != null || pl.trackingState == TrackingState.STOPPED) continue
+            val id = planeIds.getOrPut(pl) { planeIds.size + 1 }
+            val kind = when (pl.type) { Plane.Type.HORIZONTAL_UPWARD_FACING -> 0; Plane.Type.HORIZONTAL_DOWNWARD_FACING -> 1; else -> 2 }
+            val poly = pl.polygon; poly.rewind()
+            val n = poly.remaining() / 2
+            if (n < 3) continue
+            val c = pl.centerPose
+            if (sb.length > 1) sb.append(',')
+            sb.append('[').append(id).append(',').append(kind).append(',').append(if (pl.trackingState == TrackingState.TRACKING) 0 else 1).append(",[")
+            val step = maxOf(1, n / 32)   // at most 32 corners an outline
+            var first = true
+            var i = 0
+            while (i < n) {
+                c.transformPoint(floatArrayOf(poly.get(2 * i), 0f, poly.get(2 * i + 1)), 0, pt, 0)
+                if (!first) sb.append(',')
+                sb.append(r2(pt[0])).append(',').append(r2(pt[1])).append(',').append(r2(pt[2]))
+                first = false; i += step
+            }
+            sb.append("]]")
+        }
+        return sb.append(']').toString()
+    }
+    private fun r2(v: Float) = Math.round(v * 100) / 100.0
 
     /** [[id, x, y, z, state], ...]: state 0 tracking, 1 paused, 2 stopped for good. */
     private fun anchorPoses(): String {

@@ -21,7 +21,7 @@ import { decodeThings, encodeThings } from '../lib/things.js';
 const json = (o, status = 200) => new Response(JSON.stringify(o), { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } });
 
 export const MAX_PART = 8 * 1024 * 1024;
-export const PART = /^(meta|live|end|splat|fixed|inspect|consensus|thermal-notes|thermal-placement|thermal-snap|view|seg|seg-names|mend|trunks|plants|plants-phone|built|start|owner-trunks|onref|mapwalks)\.json$|^(inspect-points|view-rgb|view-kind|view-dense|view-mended|erased)\.bin$|^(cloud|track|labels|weak|weaklabels)-\d{4}\.bin$|^keys-\d{4}\.json$|^key-\d{4}\.(jpg|depth|sdepth|rdepth|sem)$|^splat\.splat$|^splat-compare\.jpg$|^mesh\.bin$|^seg-\d{4}\.png$|^segments-[a-z-]{1,40}\.(png|jpg)$|^study-[a-z0-9]{1,24}(\.json|-[a-z0-9-]{1,60}\.(png|jpg))$/;
+export const PART = /^(meta|live|end|splat|fixed|inspect|consensus|thermal-notes|thermal-placement|thermal-snap|view|seg|seg-names|mend|trunks|plants|plants-phone|built|start|owner-trunks|onref|mapwalks|planes)\.json$|^(inspect-points|view-rgb|view-kind|view-dense|view-mended|erased)\.bin$|^(cloud|track|labels|weak|weaklabels)-\d{4}\.bin$|^keys-\d{4}\.json$|^key-\d{4}\.(jpg|depth|sdepth|rdepth|sem)$|^splat\.splat$|^splat-compare\.jpg$|^mesh\.bin$|^seg-\d{4}\.png$|^segments-[a-z-]{1,40}\.(png|jpg)$|^study-[a-z0-9]{1,24}(\.json|-[a-z0-9-]{1,60}\.(png|jpg))$/;
 export const WALK = /^[0-9a-zA-Z_-]{1,40}$/;
 const TYPES = { json: 'application/json', bin: 'application/octet-stream', jpg: 'image/jpeg', png: 'image/png' };
 export const typeOf = (part) => TYPES[part.split('.').pop()] || 'application/octet-stream';
