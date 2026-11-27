@@ -2360,13 +2360,37 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   check('fuse: a wall the walk saw stands from the ground to its top and stops its share of the half-metre cell\'s light; a deck is a slab of boards at its surface; both take a built kind, and the walk array says so',
     wallShare > 0.5 && wallShare <= 1 && Math.abs(bm[wallF * nz + L(0.5)] - Math.min(SMU, wallShare * SMU)) < 1e-4 && bm[wallF * nz + L(1.5)] > 0 && bm[wallF * nz + L(2.5)] === 0
       && bk[wallF] === 4 && bw[wallF] === 4 && bk[deckF] === OPEN_STRUCTURE && bw[deckF] === 5 && Math.abs(bm[deckF * nz + L(0.5)] + Math.log(1 - DECK_STOP) / dz) < 1e-4 && bm[deckF * nz + L(1.5)] === 0
-      && !solidAtGrass(solidModel, deckF) && bo.meta.fused.structuresAdded > 0 && bo.meta.fused.decksAdded > 0 && bo.meta.fused.version === 5,
+      && !solidAtGrass(solidModel, deckF) && bo.meta.fused.structuresAdded > 0 && bo.meta.fused.decksAdded > 0 && bo.meta.fused.version >= 5,
     `wall share ${wallShare.toFixed(2)}, mu ${bm[wallF * nz + L(0.5)]}/${bm[wallF * nz + L(1.5)]}/${bm[wallF * nz + L(2.5)]}, kind ${bk[wallF]}, walk ${bw[wallF]}; deck mu ${bm[deckF * nz + L(0.5)]}, kind ${bk[deckF]}; added ${bo.meta.fused.structuresAdded}/${bo.meta.fused.decksAdded}`);
   check('fuse: the walk never changes a lidar roof; under a crown the wall fills only its own height and the crown keeps the kind; a square with no top is left out; with no structures the file is as before',
     Math.abs(bm[roofF * nz + L(2)] - 4.6) < 1e-3 && bk[roofF] === 1 && bw[roofF] !== 4
       && bm[crownF * nz + L(0.5)] > 0 && bm[crownF * nz + L(6)] === 1 && (bk[crownF] === 2 || bk[crownF] === 3) && bw[crownF] === 4
       && bw[noTopF] === 0 && bm[noTopF * nz + L(0.5)] === 0 && fuseModel(lidar, { cellM: cm, boxes: [] }, origin).arrays.mu.every((v, i) => v === fuseModel(lidar, { cellM: cm, boxes: [] }, origin, { built: { solid: new Float32Array(w * w), solidTop: new Float32Array(w * w), open: new Float32Array(w * w), openTop: new Float32Array(w * w) } }).arrays.mu[i]),
     `roof ${bm[roofF * nz + L(2)]}/${bk[roofF]}; crown low ${bm[crownF * nz + L(0.5)]}, high ${bm[crownF * nz + L(6)]}, kind ${bk[crownF]}; no top ${bw[noTopF]}`);
+
+  /* THE WALKS' VERDICT ON THE LIDAR'S BUILT SHAPES (fusing 6): the lidar roof's east metre "not built here" (a tree
+     read as a building) -> tree density (none to borrow within 2 m: a shrub's), its kind a tree; its west metre "a
+     deck, not a building" -> the roof's cubes cleared and a deck's slab at 0.6 m; a verdict covering under half a cell
+     changes nothing; the rest of the roof stands. */
+  const vk = new Uint8Array(sw2 * sh3), vt = new Uint8Array(sw2 * sh3);
+  for (let r = 0; r < sh3; r++) for (let c = 0; c < sw2; c++) {
+    const e = (c + 0.5) * sk, n = (r + 0.5) * sk, q = r * sw2 + c;
+    if (e > 25 && e < 26 && n > 3 && n < 9) vk[q] = 6;
+    if (e > 20 && e < 21 && n > 3 && n < 9) { vk[q] = 5; vt[q] = 6; }
+    if (e > 23 && e < 23.2 && n > 3 && n < 9) vk[q] = 6; // a sliver
+  }
+  const vst = { ...stc, kinds: zdef2(Buffer.from(vk)).toString('base64'), tops: zdef2(Buffer.from(vt)).toString('base64') };
+  const vb = await structuresFromWalk(vst, origin, fusedGridH(lidar.meta));
+  const vo = fuseModel(lidar, { cellM: cm, boxes: [], walk: Date.UTC(2025, 6, 20) }, origin, { built: vb });
+  const vm = vo.arrays.mu, vkd = vo.arrays.kind, vw = vo.arrays.walk;
+  const eastF = fAt(25.25, 5.25), westF = fAt(20.25, 5.25), midF = fAt(22.25, 5.25), sliverF = fAt(23.25, 5.25);
+  const colOf = (f) => Array.from({ length: nz }, (_, l) => +vm[f * nz + l].toFixed(3));
+  check('fuse: the walks\' verdict "not built here" turns a lidar roof cell to tree density and kind; "a deck, not a building" clears it and lays a deck; a sliver of a verdict, and the rest of the roof, stand',
+    (vkd[eastF] === 2) && vw[eastF] === 6 && Math.abs(vm[eastF * nz + L(2)] - PLANT_MU) < 1e-4 && colOf(eastF).every((v) => v < 4.5)
+      && vkd[westF] === OPEN_STRUCTURE && vw[westF] === 5 && vb.open[westF] >= 0.5 && Math.abs(vm[westF * nz + L(0.5)] + vb.open[westF] * Math.log(1 - DECK_STOP) / dz) < 1e-4 && vm[westF * nz + L(3)] === 0
+      && vkd[midF] === 1 && Math.abs(vm[midF * nz + L(2)] - 4.6) < 1e-3 && vkd[sliverF] === 1 && Math.abs(vm[sliverF * nz + L(2)] - 4.6) < 1e-3
+      && vo.meta.fused.notBuilt > 0 && vo.meta.fused.toDeck > 0 && vo.meta.fused.version === 6,
+    `east kind ${vkd[eastF]} walk ${vw[eastF]} col ${colOf(eastF)}; west kind ${vkd[westF]} col ${colOf(westF)}; mid ${vkd[midF]}; sliver ${vkd[sliverF]} share ${vb.notBuilt[sliverF].toFixed(2)}; ${vo.meta.fused.notBuilt}/${vo.meta.fused.toDeck}`);
 
   /* WHERE THE WALK SAW OPEN AIR (plants.seen): the lidar's skirt under the tree, 1.5-2.5 m up on its east side, seen open
      to 2.4 m -> emptied there; a cube seen open in half its cells keeps its density in the other half. */

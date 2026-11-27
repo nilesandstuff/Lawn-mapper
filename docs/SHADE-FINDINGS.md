@@ -1853,6 +1853,23 @@ rain passes), where no crown stands over it; under a crown the crown keeps the k
 the walk built. Only added: a lidar roof or structure is never changed or removed by one walk's labels. A square
 with no top is left out. Tested on the synthetic lot only. NOT MEASURED: any real walk's squares; the 95% is a
 guess at boards with their gaps.
+LIVE 2026-11-26 evening Eastern (main and scan sites deployed by the core session). Its fuse-check on the owner's
+lot with the first plants.structures (6 walks pooled): 954 half-metre cells of structure added, 61 of deck. The
+owner found the walk's solid squares too many (a wood line, trees, most of the back deck, a bulge round walls, patches
+in the lawn and drive); the core session tightened how they are found (b2db5d0, scan/tools/surfaces.py), the format
+and this fusing unchanged. These first counts are not a measure of the rule here.
+
+2026-11-27 (FUSE_VERSION 6). The owner turned the walk's structures from point-by-point mapping into checks on the
+lidar's shapes ("'lidar says there's a building here. Yup there is, but the shape is a bit off' or 'it's a deck, not
+a building'... lidar doesn't actually know how far in the walls sit, and it can get confused when trees touch the
+building"); the core session judges each lidar shape from the pooled walks and writes kind 6 ("not built here") and
+kind 5 (a deck) over lidar built cells. Where they cover half or more of a half-metre lidar roof or structure cell:
+6 makes the cell unbuilt, its opaque cubes (>= 0.99 SOLID_MU: the built thing) taking the nearest non-opaque lidar
+canopy's density at that height within 2 m, else PLANT_MU, and the refine then trims or moves it by what the walk
+saw; 5 clears the opaque cubes and lays the deck's slab. Kind 4 over a lidar roof changes nothing (eaves are roof).
+meta.fused notBuilt / toDeck; arrays.walk 6 where a lidar built thing was taken away. Tested on the synthetic lot
+only (a roof's east metre to a shrub's density, its west metre to a deck, a sliver of a verdict ignored).
+NOT MEASURED: any real verdicts; whether borrowing (rather than emptying) is right for an edge past the walls.
 
 ## Speculation
 
