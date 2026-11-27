@@ -5648,3 +5648,19 @@ four cores, now about 0.5 s, the same logits to 3e-6.
 
 SPECULATION: CLIPSeg is coarse (352 x 352, one mask per word) and its words are guesses: "a hot tub" against "a
 swimming pool" may be confused, and a deck seen from on top may read as "floor" or "paving". The study is to show it.
+
+## 91. The owner's picture of the true shapes over section 88's map (2026-11-27, about 2:50 am Fri Eastern)
+
+HARD (the owner's screenshot of the scan page, "Lidar ground" backdrop, solid and open layers on, with the house drawn
+in yellow and the deck and its stairs in red; the picture is kept out of the repository):
+  - The house's solid is close to the drawn outline over most of its length: the lidar's shape is right.
+  - The deck (two pieces on the house's west side, and the stairs, a narrow strip to the north-west) is almost all
+    solid, with a few open squares scattered on it: the lidar takes the deck in as part of the house.
+  - On the east side the drawn wall steps out twice. Near the north end the solid stops short of the outward step
+    (the "false hole"). Further south the solid runs past the two steps back in (a bulge). The west side's inner
+    corner is filled where the wall jogs in.
+  These are the stretches where the walks' walls moved the lidar's edge: section 89's clamp (out 1 ft at most) is
+  being measured.
+SPECULATION: a wall stretch takes the median offset of the walls within 4 ft. At a step in the wall, walls from both
+faces mix, which rounds the step off: the outline is filled on one side and cut on the other. Where the lidar's edge
+already follows the step, it is better left alone.
