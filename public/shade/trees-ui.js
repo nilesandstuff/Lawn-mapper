@@ -37,8 +37,8 @@ export const BANDS = [
 const MIN_MU = 0.01; // a cube passing over 99% a meter is drawn as air
 /* Dark and apart from each other, to stand out on a sunny photo (owner, 2026-10-14: "I can hardly see any of them"). */
 /* Buildings black (owner, 2026-10-29), apart from every tree. */
-export const KIND_COLOR = { walk: '#7cc242', roof: '#0a0a0a', structure: '#4a4a4a', unknown: '#8a7560', evergreen: '#0d3b8c', deciduous: '#1b6e20', filled: '#7a5c00', other: '#1b6e20' };
-export const KIND_NAME = { walk: 'seen on your yard walk (the walk says where, the lidar how dense)', roof: 'building (or a crown nothing got through)', structure: 'low structure: a shed, a wall, a vehicle (every pulse came back once)', unknown: 'unknown: the laser hit something here no rule could name; it stops light exactly as the laser measured it', evergreen: 'evergreen: as the laser saw it, all year', deciduous: 'deciduous', filled: 'deciduous, leaves filled in where the laser found a gap', other: 'tree, in leaf as the laser saw it (no leaves added)' };
+export const KIND_COLOR = { walk: '#7cc242', deck: '#9a6b3f', roof: '#0a0a0a', structure: '#4a4a4a', unknown: '#8a7560', evergreen: '#0d3b8c', deciduous: '#1b6e20', filled: '#7a5c00', other: '#1b6e20' };
+export const KIND_NAME = { walk: 'seen on your yard walk (the walk says where, the lidar how dense)', deck: 'a deck your yard walk saw (rain passes through)', roof: 'building (or a crown nothing got through)', structure: 'low structure: a shed, a wall, a vehicle (every pulse came back once)', unknown: 'unknown: the laser hit something here no rule could name; it stops light exactly as the laser measured it', evergreen: 'evergreen: as the laser saw it, all year', deciduous: 'deciduous', filled: 'deciduous, leaves filled in where the laser found a gap', other: 'tree, in leaf as the laser saw it (no leaves added)' };
 
 /** 0-based day of the year, 29 Feb folded onto 28 Feb (as the light worker). */
 export function dayOfYear(ms) {
@@ -249,6 +249,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
     const colourOf = (f, c, r) => {
       if (fk[f] === 1) return 'roof';
       if (fk[f] === 4) return 'structure';
+      if (fk[f] === 6) return 'deck'; // a deck the walk saw (fuse.js OPEN_STRUCTURE); under a crown the crown's colour
       if (walk?.[f] === 1) return 'walk';
       const k = ((r / S) | 0) * grid.w + ((c / S) | 0);
       return k >= 0 && k < grid.w * grid.h ? kindOf(season, k, !!leafyCol[k]) : 'deciduous';
@@ -366,7 +367,7 @@ export async function startTrees({ map, site, cols, box, shift, season: flight, 
   }
   try { const v = localStorage.getItem('lawnmapper.shade.treesSolid'); if (v) $('#tr-solid').value = v; } catch { /* not kept */ }
   $('#tr-solid').oninput = () => { applySolid(); try { localStorage.setItem('lawnmapper.shade.treesSolid', $('#tr-solid').value); } catch { /* not kept */ } };
-  $('#tr-legend').innerHTML = Object.entries(KIND_COLOR).filter(([k]) => k !== 'walk').filter(([k]) => (leafOff ? k !== 'other' || season.inLeafColumns > 0 : k === 'other' || k === 'roof' || k === 'structure' || k === 'unknown'))
+  $('#tr-legend').innerHTML = Object.entries(KIND_COLOR).filter(([k]) => k !== 'walk' && k !== 'deck').filter(([k]) => (leafOff ? k !== 'other' || season.inLeafColumns > 0 : k === 'other' || k === 'roof' || k === 'structure' || k === 'unknown'))
     .map(([k, c]) => `<span class="sw" style="background:${c}"></span>${KIND_NAME[k]}`).join('<br>')
     + `<br><span class="dim">Faint to solid: ${BANDS.map((b) => b.name).join('; ')}.</span>`;
 

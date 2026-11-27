@@ -53,7 +53,7 @@ import { treesModel } from './trees-model.js';
 import { Erased } from './erase.js';
 import { readSurround } from './surround.js';
 import { finishedModel, modelFiles, putModelFiles } from './model-out.js';
-import { fuseModel, openFromSeen, openHighFromSeen, fusedGrid, FUSE_VERSION } from './fuse.js';
+import { fuseModel, openFromSeen, openHighFromSeen, structuresFromWalk, fusedGrid, FUSE_VERSION } from './fuse.js';
 import { lazDecoder, browserFactory } from './laz.js';
 import { nad83Correction } from './datum.js';
 import { alignToPhoto } from './align.js';
@@ -212,10 +212,11 @@ export async function rebuildModel(mapId, { onProgress = () => {}, signal = null
         const open = plants.seen ? await openFromSeen(plants.seen, origin, fusedGrid(fin.meta)).catch(() => null) : null;
         const openHigh = plants.seenHigh ? await openHighFromSeen(plants.seenHigh, origin, fusedGrid(fin.meta)).catch(() => null) : null;
         const openBare = plants.clearHigh ? await openHighFromSeen(plants.clearHigh, origin, fusedGrid(fin.meta)).catch(() => null) : null; // the air seen empty in any season
-        const fused = fuseModel(fin, plants, origin, { open, openHigh, openBare });
+        const built = plants.structures ? await structuresFromWalk(plants.structures, origin, fusedGrid(fin.meta)).catch(() => null) : null; // the walls and decks the walks saw
+        const fused = fuseModel(fin, plants, origin, { open, openHigh, openBare, built });
         const madeFrom = put.at ? `${put.at}|${plants.at}|${FUSE_VERSION}` : null;
         const fp = await putModelFiles(fetchFn, base, mapId, await modelFiles(fused), 'fused', { madeFrom });
-        fusedInfo = { ok: fp.ok, walkAt: plants.at ?? null, version: FUSE_VERSION, refined: fused.meta.fused.refined, added: fused.meta.fused.added, trimmed: fused.meta.fused.trimmed, trimmedBare: fused.meta.fused.trimmedBare, moved: fused.meta.fused.moved.length, removed: fused.meta.fused.removed.length };
+        fusedInfo = { ok: fp.ok, walkAt: plants.at ?? null, version: FUSE_VERSION, refined: fused.meta.fused.refined, added: fused.meta.fused.added, trimmed: fused.meta.fused.trimmed, trimmedBare: fused.meta.fused.trimmedBare, moved: fused.meta.fused.moved.length, removed: fused.meta.fused.removed.length, structuresAdded: fused.meta.fused.structuresAdded, decksAdded: fused.meta.fused.decksAdded };
       } catch (e) { fusedInfo = { ok: false, why: String(e?.message || e).slice(0, 120) }; }
     }
     /* A first build keeps its lidar and line-up in the map's shade part, as the page does (shade.js shadePart), so

@@ -33,7 +33,7 @@ import { flightOf } from './shade/find.js';
 import { onePass } from './shade/passes.js';
 import { flagStrays } from './shade/structures.js';
 import { finishedModel, modelFiles, putModelFiles } from './shade/model-out.js';
-import { fuseModel, openFromSeen, openHighFromSeen, fusedGrid, FUSE_VERSION } from './shade/fuse.js';
+import { fuseModel, openFromSeen, openHighFromSeen, structuresFromWalk, fusedGrid, FUSE_VERSION } from './shade/fuse.js';
 import { readSurround } from './shade/surround.js';
 import { siteFromSave, siteBounds, partFits, asFeature } from './shade/site.js';
 import { MARGIN_M, alignFrame, lotOf, lotDensity as densityOver, modelBox, fitFrom, shiftFrom, MIN_DENSITY } from './shade/lineup.js';
@@ -224,12 +224,13 @@ async function saveFusedFile(site, fin, lidarAt = null) {
     const open = plants.seen ? await openFromSeen(plants.seen, origin, fusedGrid(fin.meta)).catch(() => null) : null;
     const openHigh = plants.seenHigh ? await openHighFromSeen(plants.seenHigh, origin, fusedGrid(fin.meta)).catch(() => null) : null;
     const openBare = plants.clearHigh ? await openHighFromSeen(plants.clearHigh, origin, fusedGrid(fin.meta)).catch(() => null) : null; // the air seen empty in any season
-    const fused = fuseModel(fin, plants, origin, { open, openHigh, openBare });
+    const built = plants.structures ? await structuresFromWalk(plants.structures, origin, fusedGrid(fin.meta)).catch(() => null) : null; // the walls and decks the walks saw
+    const fused = fuseModel(fin, plants, origin, { open, openHigh, openBare, built });
     view.fused = fused;
     const f = fused.meta.fused;
-    track('fused', `${f.refined} refined, ${f.added} added, ${f.trimmed} trimmed (${f.trimmedBare} by air seen empty in any season), ${f.moved.length} trees moved, ${f.removed.length} gone`);
+    track('fused', `${f.refined} refined, ${f.added} added, ${f.trimmed} trimmed (${f.trimmedBare} by air seen empty in any season), ${f.moved.length} trees moved, ${f.removed.length} gone, ${f.structuresAdded} structure and ${f.decksAdded} deck blocks added`);
     const day = Number.isFinite(Number(plants.walk)) ? new Date(Number(plants.walk)).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : null;
-    walkNote(`Refined by your yard walk${day ? ` of ${day}` : ''}${plants.borrowed ? ', made on another of your maps of this lot' : ''}${f.walkInLeaf ? '' : ' (made with the leaves off, so bare crowns keep the lidar\'s density except where the walk saw clean through them)'}: ${f.refined.toLocaleString()} half-meter blocks reshaped, ${f.added.toLocaleString()} added, ${f.trimmed.toLocaleString()} trimmed where the walk saw open air, ${f.moved.length} tree${f.moved.length === 1 ? '' : 's'} moved${f.removed?.length ? `, ${f.removed.length} lidar tree${f.removed.length === 1 ? '' : 's'} taken away (the walk saw clean through where ${f.removed.length === 1 ? 'it' : 'they'} stood, and no plant there)` : ''}.`);
+    walkNote(`Refined by your yard walk${day ? ` of ${day}` : ''}${plants.borrowed ? ', made on another of your maps of this lot' : ''}${f.walkInLeaf ? '' : ' (made with the leaves off, so bare crowns keep the lidar\'s density except where the walk saw clean through them)'}: ${f.refined.toLocaleString()} half-meter blocks reshaped, ${f.added.toLocaleString()} added, ${f.trimmed.toLocaleString()} trimmed where the walk saw open air, ${f.moved.length} tree${f.moved.length === 1 ? '' : 's'} moved${f.removed?.length ? `, ${f.removed.length} lidar tree${f.removed.length === 1 ? '' : 's'} taken away (the walk saw clean through where ${f.removed.length === 1 ? 'it' : 'they'} stood, and no plant there)` : ''}${f.structuresAdded ? `, ${f.structuresAdded.toLocaleString()} half-meter blocks of walls or sheds the lidar missed` : ''}${f.decksAdded ? `, ${f.decksAdded.toLocaleString()} of deck` : ''}.`);
     view.sun?.setFused(fused);
     view.trees?.setFused?.(fused);
     /* WHAT IT WAS MADE FROM (docs/MAPS.md, the fused model; the same rule as the scan page's fuse-walk.js madeFromOf):

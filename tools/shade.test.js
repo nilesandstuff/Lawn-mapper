@@ -2315,7 +2315,7 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
   const bareNov = fuseModel(decidL, { cellM: cm, boxes: [], walk: Date.UTC(2025, 10, 20) }, origin, { openHigh, openBare });
   check('fuse: air seen empty in any season (clearHigh, 3-5 m up) trims a deciduous crown after a leaf-off walk too (seenHigh alone does not); above it the lidar stands; so small a part takes no tree away',
     Math.abs(openBare.lo[fAt(8, 15)] - 3) < 1e-6 && at4(bareNov).every((v) => v === 0) && at4(hiNov).every((v) => v === 1) && bareNov.arrays.mu[fAt(8.25, 15.25) * nz + L(6.5)] === 1
-      && bareNov.meta.fused.trimmedBare > 0 && bareNov.meta.fused.removed.length === 0 && bareNov.meta.fused.seenOpenBare === true && bareNov.meta.fused.version === 4 && bareNov.arrays.walk[fAt(8.25, 15.25)] === 2,
+      && bareNov.meta.fused.trimmedBare > 0 && bareNov.meta.fused.removed.length === 0 && bareNov.meta.fused.seenOpenBare === true && bareNov.meta.fused.version >= 4 && bareNov.arrays.walk[fAt(8.25, 15.25)] === 2,
     `bare ${at4(bareNov)}; seenHigh alone ${at4(hiNov)}; trimmedBare ${bareNov.meta.fused.trimmedBare}; removed ${bareNov.meta.fused.removed.length}`);
   /* A TREE GONE (the owner, 2026-11-24): its whole crown from 8 to 30 ft seen empty and no plant seen in its footprint
      -> taken away, every layer (the 1.5 m layer under the band too); the roof is the lidar's. With one plant seen in
@@ -2335,6 +2335,38 @@ check('mercator units: the origin is the middle of the world', mercUnits(0, 0).e
       && measured.clumps.mostlyClear.length === 1 && Math.abs(goneOut.arrays.mu[fAt(22, 5) * nz + L(2)] - 4.6) < 1e-3
       && plantIn.meta.fused.removed.length === 0 && treeLeft(plantIn) > 0 && woodline.meta.fused.removed.length === 0 && woodline.arrays.mu[fAt(16.25, 15.25) * nz + L(5)] === 1,
     `removed ${JSON.stringify(goneOut.meta.fused.removed)}; left ${treeLeft(goneOut)}; clear-measure ${measured.clumps.mostlyClear.length}; with a plant ${plantIn.meta.fused.removed.length}; woodline ${woodline.meta.fused.removed.length}`);
+
+  /* BUILT THINGS THE WALKS SAW (plants.structures, fusing 5): a wall 1 ft thick and 2 m tall in open lawn, a deck
+     3 m square 0.6 m up, a wall square under the lidar roof (left as the roof), a wall under the tree's crown (the
+     crown keeps the kind), and a square with no top (left out). */
+  const { structuresFromWalk, OPEN_STRUCTURE, DECK_STOP } = await import('../public/shade/fuse.js');
+  const { SOLID_MU: SMU, solidAtGrass } = await import('../public/shade/canopy.js');
+  const sk = 0.3048, sw2 = 100, sh3 = 100, kb = new Uint8Array(sw2 * sh3), tb = new Uint8Array(sw2 * sh3);
+  for (let r = 0; r < sh3; r++) for (let c = 0; c < sw2; c++) {
+    const e = (c + 0.5) * sk, n = (r + 0.5) * sk, q = r * sw2 + c;
+    if (Math.abs(e - 18.15) < 0.15 && n > 20 && n < 26) { kb[q] = 4; tb[q] = 20; }       // the wall, one square wide, 2 m
+    if (e > 14 && e < 17 && n > 24 && n < 27) { kb[q] = 5; tb[q] = 6; }                    // the deck, 0.6 m up
+    if (e > 22 && e < 24 && n > 5 && n < 7) { kb[q] = 4; tb[q] = 30; }                     // under the lidar roof
+    if (e > 9.5 && e < 10.5 && n > 14.5 && n < 15.5) { kb[q] = 4; tb[q] = 10; }            // under the tree's crown
+    if (e > 2 && e < 3 && n > 2 && n < 3) { kb[q] = 4; tb[q] = 0; }                        // no top
+  }
+  const stc = { cellM: sk, i0: 0, j0: 0, w: sw2, h: sh3, enc: 'zlib+base64', notSeen: 255, unitDm: 1, kinds: zdef2(Buffer.from(kb)).toString('base64'), tops: zdef2(Buffer.from(tb)).toString('base64') };
+  const built = await structuresFromWalk(stc, origin, fusedGridH(lidar.meta));
+  const bo = fuseModel(lidar, { cellM: cm, boxes: [], walk: Date.UTC(2025, 6, 20) }, origin, { built });
+  const bm = bo.arrays.mu, bk = bo.arrays.kind, bw = bo.arrays.walk;
+  const wallF = fAt(18.25, 23.25), deckF = fAt(15.25, 25.25), roofF = fAt(23.25, 6.25), crownF = fAt(10.25, 15.25), noTopF = fAt(2.25, 2.25);
+  const wallShare = built.solid[wallF];
+  const solidModel = { ground: bo.arrays.ground, mu: bm, z0, dz, nz };
+  check('fuse: a wall the walk saw stands from the ground to its top and stops its share of the half-metre cell\'s light; a deck is a slab of boards at its surface; both take a built kind, and the walk array says so',
+    wallShare > 0.5 && wallShare <= 1 && Math.abs(bm[wallF * nz + L(0.5)] - Math.min(SMU, wallShare * SMU)) < 1e-4 && bm[wallF * nz + L(1.5)] > 0 && bm[wallF * nz + L(2.5)] === 0
+      && bk[wallF] === 4 && bw[wallF] === 4 && bk[deckF] === OPEN_STRUCTURE && bw[deckF] === 5 && Math.abs(bm[deckF * nz + L(0.5)] + Math.log(1 - DECK_STOP) / dz) < 1e-4 && bm[deckF * nz + L(1.5)] === 0
+      && !solidAtGrass(solidModel, deckF) && bo.meta.fused.structuresAdded > 0 && bo.meta.fused.decksAdded > 0 && bo.meta.fused.version === 5,
+    `wall share ${wallShare.toFixed(2)}, mu ${bm[wallF * nz + L(0.5)]}/${bm[wallF * nz + L(1.5)]}/${bm[wallF * nz + L(2.5)]}, kind ${bk[wallF]}, walk ${bw[wallF]}; deck mu ${bm[deckF * nz + L(0.5)]}, kind ${bk[deckF]}; added ${bo.meta.fused.structuresAdded}/${bo.meta.fused.decksAdded}`);
+  check('fuse: the walk never changes a lidar roof; under a crown the wall fills only its own height and the crown keeps the kind; a square with no top is left out; with no structures the file is as before',
+    Math.abs(bm[roofF * nz + L(2)] - 4.6) < 1e-3 && bk[roofF] === 1 && bw[roofF] !== 4
+      && bm[crownF * nz + L(0.5)] > 0 && bm[crownF * nz + L(6)] === 1 && (bk[crownF] === 2 || bk[crownF] === 3) && bw[crownF] === 4
+      && bw[noTopF] === 0 && bm[noTopF * nz + L(0.5)] === 0 && fuseModel(lidar, { cellM: cm, boxes: [] }, origin).arrays.mu.every((v, i) => v === fuseModel(lidar, { cellM: cm, boxes: [] }, origin, { built: { solid: new Float32Array(w * w), solidTop: new Float32Array(w * w), open: new Float32Array(w * w), openTop: new Float32Array(w * w) } }).arrays.mu[i]),
+    `roof ${bm[roofF * nz + L(2)]}/${bk[roofF]}; crown low ${bm[crownF * nz + L(0.5)]}, high ${bm[crownF * nz + L(6)]}, kind ${bk[crownF]}; no top ${bw[noTopF]}`);
 
   /* WHERE THE WALK SAW OPEN AIR (plants.seen): the lidar's skirt under the tree, 1.5-2.5 m up on its east side, seen open
      to 2.4 m -> emptied there; a cube seen open in half its cells keeps its density in the other half. */
