@@ -5813,5 +5813,5 @@ walk's planes.json held only what was alive at its end. Fixed in the page (no ne
 mergePlanes keeps every id the walk saw, at its latest outline; one no longer held is marked tracking 2. The next walk
 after the scan deploy is the test.
 MODAL (the AR allotment, $15 of 2026-11-20): the naming page's SAM shapes on walk 1795728070119 (run 46057798039),
-1,835 s on the L4 for 319 pictures (82 s of SAM a picture... the whole run's GPU time), about $0.45. Running total
+1,835 s on the L4 for 319 pictures (82 SAM shapes a picture), about $0.45. Running total
 about $1.15.
