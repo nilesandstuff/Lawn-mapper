@@ -5479,3 +5479,29 @@ SPECULATION: the paving holdout's fall from 90% to 46% is a sample of about ten 
 landing next to a square the one-source rule just emptied (so the hidden gap opens onto more nothing, and its rim is
 less than half called) would make the whole difference. Turf, with seventy blocks, did not move. Not yet a reason to
 change the rule; a larger paving sample (more walks over the drive) would tell.
+
+## 83. The owner's eyes on the solid squares, and the rule made again (2026-11-27, 10:45 pm Thu Eastern)
+
+HARD (the owner, looking at section 82's map): the solid structure "is indeed too much". It falsely counts as solid:
+a wood line; some trees, tree trunks maybe; most of the large deck in the back (none of it called open structure); a
+fairly wide area bulging out from real walls; random small patches in the middle of the lawn and driveway.
+
+The fusing on that map (fuse-check, 10:41 pm, the plants the workflow kept): version 5, 954 cells of structure added
+and 61 of deck. Sent to the features session.
+
+THE RULE AGAIN (commit b2db5d0; scan/tools/surfaces.py BUILT_MAX_M and the rest; the self-test has the deck labelled
+"wall" and a trunk the phone alone called building):
+  - two witnesses on a cell: the phone's own label vetoes "built" where it says sky, tree, terrain, car or person;
+    the walk's kept points need the phone's "building" without the vote saying tree, plant or grass, or the vote's
+    "built" without the phone saying one of those;
+  - range: a picture's built cell counts only within 5 m (16 ft);
+  - SOLID by shape: the cells over a square span 0.4 m of height and reach 0.6 m, on TWO sources or more (as for the far
+    specks), holding a fifth or more of the cells of the densest square within 2 ft (else a wall's smear); a lone piece
+    of 6 sq ft or less that does not reach 4 ft is dropped (a pillar does reach);
+  - OPEN by shape: cells lying flat (spanning under 0.4 m) 1-6 ft up, on two sources, in pieces of 16 sq ft or more,
+    whatever the label calls them; an ARCore floor plane is taken where a fifth of it lies flat or was labelled floor.
+  Each rule's take is printed ("BUILT, WHAT WAS LEFT OUT"). What it gives on the lot: section 84.
+
+SPECULATION: the deck was called solid because the large labeller calls a deck's boards "wall" or "house" more often
+than "floor" (floors were 5 pictures of the lot, walls 39). The two-source rule may cost thin walls seen once; the
+ARCore wall planes on app 1.28 walks are meant to give those back.
