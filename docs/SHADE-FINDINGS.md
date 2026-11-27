@@ -1842,6 +1842,18 @@ on a 502 x 344 half-metre grid; 916 cubes refined, 2,957 added, 475 trimmed, of 
 season; 6 trees moved; no tree taken away, agreeing with clear-measure.js (no clump over half its 8-30 ft crown in
 that air).
 
+2026-11-27 (FUSE_VERSION 5; the owner: "add structures to the colors (and fused maps). There's 2 types of structures
+really. Solid structures, and structures like decks, that water can pass through"; the walk's side is the core
+session's plants.structures, docs/MAPS.md). Where the lidar has no roof or low structure, a SOLID square the walks saw
+stands from the ground to its top, its density SOLID_MU over the share of the half-metre cell it covers (the plants'
+area rule: a 1 ft wall in a 0.5 m cell stops its share of the light, the light worker's grass test still drops a
+cell the wall fills); an OPEN square (a deck) is a slab in the layer under its walking surface stopping DECK_STOP 95%
+straight down, the ground under it left as it is. Kinds: 4 STRUCTURE, or 6 OPEN_STRUCTURE (the fused file's only;
+rain passes), where no crown stands over it; under a crown the crown keeps the kind and arrays.walk (4, 5) says what
+the walk built. Only added: a lidar roof or structure is never changed or removed by one walk's labels. A square
+with no top is left out. Tested on the synthetic lot only. NOT MEASURED: any real walk's squares; the 95% is a
+guess at boards with their gaps.
+
 ## Speculation
 
 - FENCES (2026-10-27, IN USE, unmeasured; fences.js): drawn by the visitor

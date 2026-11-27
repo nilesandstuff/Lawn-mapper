@@ -62,6 +62,17 @@
  *   copy muOn denser than mu) the density stays the lidar's, evenly, after such a walk; the walk may still move the
  *   tree and add plant the lidar did not have. A walk in leaf, or an evergreen, refines at every height.
  *
+ *   BUILT THINGS THE WALKS SAW (plants.structures, the core session's, 2026-11-27; the owner: "add structures to the
+ *   colors (and fused maps). There's 2 types of structures really. Solid structures, and structures like decks, that
+ *   water can pass through"; structuresFromWalk): where the lidar has no roof or low structure, a SOLID square (a
+ *   wall, a shed, a pillar) stands from the ground to the walk's top and stops all light over the share of the
+ *   half-metre cell it covers (the area rule the plants use); a deck (OPEN) is a slab of boards at its walking surface
+ *   stopping DECK_STOP of the light through it, and the ground under it is left as it is. Only ADDED: one walk's
+ *   labels have not earned the right to remove a lidar roof or structure (the owner: overwrite only "if there's a high
+ *   degree of confidence"). A cell takes the kind STRUCTURE (4), or OPEN_STRUCTURE (6, the fused file's only: rain
+ *   passes) where no crown stands over it; under a crown the crown keeps the kind, and arrays.walk (4 a structure
+ *   added, 5 a deck added) says what the walk put there either way.
+ *
  * muOn (the summer copy) is fused the same way; plant added from the walk gets the same density in both.
  */
 import { toMerc, mercScale } from './ept.js';
@@ -69,7 +80,7 @@ import { leafOfMs, LEAF_ON } from './las.js';
 import { SOLID_MU } from './canopy.js';
 
 /** The fusing's own build, written into meta.fused.version: bump it whenever what fuseModel makes changes. */
-export const FUSE_VERSION = 4; // 2: no height cap; a deciduous crown's density kept even after a leaf-off walk. 3: open air above 8 ft (seenHigh). 4: air seen empty in any season (clearHigh), and a tree gone
+export const FUSE_VERSION = 5; // 2: no height cap; a deciduous crown's density kept even after a leaf-off walk. 3: open air above 8 ft (seenHigh). 4: air seen empty in any season (clearHigh), and a tree gone. 5: the walks' walls and decks (plants.structures)
 export const FUSE_SUB = 2;            // half-metre cells per lidar metre
 export const PLANT_TRUST_M = Infinity; // no cap on the walk's heights (the owner, 2026-11-23)
 export const PLANT_MU = 2.3;          // a cube of plant the lidar did not see: stops 90% of the light a metre
@@ -81,6 +92,8 @@ export const CLUMP_MIN_CELLS = 12;    // half-metre cells of the walk's plant in
 export const GONE_BAND_FT = [8, 30];  // a tree gone: judged on its crown in these heights (the walk's clearHigh reach)
 export const GONE_SHARE = 0.9;        // ...this much of it in air the walk saw empty in any season
 export const GONE_MIN_CELLS = 8;      // ...out of this many half-metre cells of crown in the band, at the least
+export const OPEN_STRUCTURE = 6;      // the fused file's kind for a deck: built, off the ground, rain passes (lidar files: 0-5)
+export const DECK_STOP = 0.95;        // the share of the light a deck's boards stop (the gaps between boards pass the rest)
 const R_EARTH = 6378137;              // scan/lib/frames.js: the walk's local frame is a sphere of this radius
 
 /** A walk's local metres east/north of `origin` [lng, lat] -> [lng, lat] (scan/lib/frames.js fromLocal). */
@@ -175,6 +188,45 @@ export async function openHighFromSeen(seenHigh, origin, grid, { inflate = null 
   return { lo, hi };
 }
 
+/**
+ * The built things the walks saw (plants.structures, docs/MAPS.md) on the fused grid: per half-metre cell the share
+ * (0..1) of it a SOLID square covers and the tallest such square's top (metres over the ground), the same for OPEN
+ * squares (a deck: its walking surface). A square with no top (0) is left out: there is no height to stand it to.
+ * Async: the bytes are deflated (zlib).
+ */
+export async function structuresFromWalk(structures, origin, grid, { inflate = null } = {}) {
+  const n = grid.w * grid.h;
+  const out = { solid: new Float32Array(n), solidTop: new Float32Array(n), open: new Float32Array(n), openTop: new Float32Array(n), squares: 0 };
+  const st = structures;
+  if (!st?.kinds || !st?.tops || !(st.w > 0) || !(st.h > 0)) return out;
+  const unpack = async (b64) => {
+    const raw = Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0));
+    return inflate ? inflate(raw) : new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate'))).arrayBuffer());
+  };
+  const kinds = await unpack(st.kinds), tops = await unpack(st.tops);
+  if (kinds.length < st.w * st.h || tops.length < st.w * st.h) return out;
+  const cm = st.cellM || 0.3048, unit = (st.unitDm ?? 1) / 10, cy = grid.cellY || grid.cell, cellArea = grid.cell * cy;
+  for (let r = 0; r < st.h; r++) for (let c = 0; c < st.w; c++) {
+    const q = r * st.w + c, k = kinds[q], t = tops[q] * unit;
+    if (!(k === 4 || k === 5) || !(t > 0)) continue;
+    out.squares++;
+    const [x0, y0] = toMerc(fromLocal(origin, [(st.i0 + c) * cm, (st.j0 + r) * cm]));
+    const [x1, y1] = toMerc(fromLocal(origin, [(st.i0 + c + 1) * cm, (st.j0 + r + 1) * cm]));
+    const c0 = Math.floor((x0 - grid.x0) / grid.cell), c1 = Math.floor((x1 - grid.x0) / grid.cell);
+    const r0 = Math.floor((grid.y1 - y1) / cy), r1 = Math.floor((grid.y1 - y0) / cy);
+    const share = k === 4 ? out.solid : out.open, top = k === 4 ? out.solidTop : out.openTop;
+    for (let rr = Math.max(0, r0); rr <= Math.min(grid.h - 1, r1); rr++) for (let cc = Math.max(0, c0); cc <= Math.min(grid.w - 1, c1); cc++) {
+      const ox = Math.min(x1, grid.x0 + (cc + 1) * grid.cell) - Math.max(x0, grid.x0 + cc * grid.cell);
+      const oy = Math.min(y1, grid.y1 - rr * cy) - Math.max(y0, grid.y1 - (rr + 1) * cy);
+      if (!(ox > 0 && oy > 0)) continue;
+      const f = rr * grid.w + cc;
+      share[f] = Math.min(1, share[f] + (ox * oy) / cellArea);
+      if (t > top[f]) top[f] = t;
+    }
+  }
+  return out;
+}
+
 /** The fused grid for a lidar file (the same corner, FUSE_SUB cells to the lidar's metre). */
 export function fusedGrid(meta) {
   const G = meta.grid;
@@ -207,7 +259,7 @@ function clumpsOf(kind, w, h) {
  * read ({ meta, arrays }, joined with any overflow), `plants` the scan tool's record, `origin` the map's [lng, lat]
  * (the point the walk's metres are measured from).
  */
-export function fuseModel(lidar, plants, origin, { now = new Date(), open = null, openHigh = null, openBare = null } = {}) {
+export function fuseModel(lidar, plants, origin, { now = new Date(), open = null, openHigh = null, openBare = null, built = null } = {}) {
   const { meta, arrays } = lidar;
   const G = meta.grid, { z0, dz, nz } = meta.layers;
   const W = G.w, H = G.h, S = FUSE_SUB, w = W * S, h = H * S;
@@ -385,6 +437,40 @@ export function fuseModel(lidar, plants, origin, { now = new Date(), open = null
   };
   const mu = refine(muL), muOn = refine(muOnL);
 
+  /* 5. BUILT THINGS THE WALKS SAW: walls and decks added where the lidar has no roof or structure (only added). */
+  const builtKind = new Uint8Array(w * h);
+  let structuresAdded = 0, decksAdded = 0;
+  if (built) {
+    const deckMu = -Math.log(1 - DECK_STOP) / dz; // a layer's mean density that lets 1 - DECK_STOP through it straight down
+    const crownOver = (f, zm) => { for (let l = 0; l < nz; l++) if (z0 + l * dz >= ground[f] + zm - 1e-6 && mu[f * nz + l] > 0) return true; return false; };
+    for (let f = 0; f < w * h; f++) {
+      if (hard(f)) continue; // the lidar's roof or structure stands as it is
+      const g = ground[f];
+      const s = built.solid[f], t = built.solidTop[f];
+      if (s > 0 && t > 0) {
+        const over = crownOver(f, t);
+        for (let l = 0; l < nz; l++) {
+          const fz = (Math.min(z0 + (l + 1) * dz, g + t) - Math.max(z0 + l * dz, g)) / dz;
+          if (!(fz > 0)) continue;
+          const a = s * fz;
+          for (const arr of [mu, muOn]) if (arr) arr[f * nz + l] = Math.min(SOLID_MU, a * SOLID_MU + (1 - a) * arr[f * nz + l]);
+        }
+        structuresAdded++;
+        builtKind[f] = over ? 104 : 4; // under a crown the crown keeps the kind
+      }
+      const so = built.open[f], to = built.openTop[f];
+      if (so > 0 && to > 0) {
+        const l = Math.floor((g + to - 0.01 - z0) / dz); // the boards, just under the walking surface
+        if (l >= 0 && l < nz) {
+          const over = crownOver(f, to);
+          for (const arr of [mu, muOn]) if (arr) arr[f * nz + l] = Math.min(SOLID_MU, arr[f * nz + l] + so * deckMu);
+          decksAdded++;
+          if (!builtKind[f]) builtKind[f] = over ? 106 : OPEN_STRUCTURE;
+        }
+      }
+    }
+  }
+
   /* The fine grid's kinds and tops, from the lidar's (as placed) and the walk's plant. */
   const kindF = Uint8Array.from(placed), top = new Float32Array(w * h).fill(NaN);
   for (let f = 0; f < w * h; f++) {
@@ -392,6 +478,7 @@ export function fuseModel(lidar, plants, origin, { now = new Date(), open = null
     for (let l = nz - 1; l >= 0; l--) if (mu[f * nz + l] > 0) { hi = l; break; }
     if (hi >= 0) { top[f] = z0 + (hi + 1) * dz - ground[f]; if (!kindF[f]) kindF[f] = 2; }
     else if (kindF[f] === 2 || kindF[f] === 3) kindF[f] = 0;
+    if (builtKind[f] === 4 || builtKind[f] === OPEN_STRUCTURE) kindF[f] = builtKind[f];
   }
   /* Per half-metre cell, what the walk did there: 1 it saw plant, 2 it saw open air and the lidar was trimmed, 3 a
      lidar tree stood here and is gone. */
@@ -399,11 +486,12 @@ export function fuseModel(lidar, plants, origin, { now = new Date(), open = null
   for (let f = 0; f < w * h; f++) for (let l = 0; l < nz; l++) if (share[f * nz + l] > 0) { walk[f] = 1; break; }
   const claims = (f) => (open && open[f] > 0) || (openHigh && openHigh.hi[f] > openHigh.lo[f]) || (openBare && openBare.hi[f] > openBare.lo[f]);
   if (muL) for (let f = 0; f < w * h; f++) if (!walk[f] && claims(f)) { for (let l = 0; l < nz; l++) if (muL[f * nz + l] > 0 && mu[f * nz + l] === 0) { walk[f] = 2; break; } }
+  for (let f = 0; f < w * h; f++) if (builtKind[f]) walk[f] = builtKind[f] % 100 === 4 ? 4 : 5; // what the walk built here
   if (removed.length) for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) { const f = r * w + c; if (!walk[f] && isGone(parent(c, r)) && Number.isNaN(top[f])) walk[f] = 3; }
   const out = {
     meta: {
       v: meta.v, tool: 'shade', build: meta.build, at: now.toISOString(), basedOn: meta.basedOn || null,
-      fused: { version: FUSE_VERSION, from: 'the shade map\'s lidar model and one yard walk\'s plants (fuse.js)', lidarAt: meta.at, walk: plants.walk ?? null, walkAt: plants.at ?? null, walkFit: plants.fit || null, sub: S, walkInLeaf, refined, added, trimmed, trimmedBare, seenOpen: !!open, seenOpenHigh: !!openHigh, seenOpenBare: !!openBare, moved, removed },
+      fused: { version: FUSE_VERSION, from: 'the shade map\'s lidar model and one yard walk\'s plants (fuse.js)', lidarAt: meta.at, walk: plants.walk ?? null, walkAt: plants.at ?? null, walkFit: plants.fit || null, sub: S, walkInLeaf, refined, added, trimmed, trimmedBare, seenOpen: !!open, seenOpenHigh: !!openHigh, seenOpenBare: !!openBare, moved, removed, built: !!built, structuresAdded, decksAdded },
       fences: meta.fences || [], grid, layers: { z0, dz, nz }, lidar: meta.lidar || null, photo: meta.photo || null, rule: meta.rule, leaves: meta.leaves,
     },
     arrays: { ground, kind: kindF, top, mu, walk },
