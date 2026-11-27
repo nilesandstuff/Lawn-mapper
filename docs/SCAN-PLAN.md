@@ -5781,3 +5781,15 @@ following that 1 ft scatter.
 BUILT (this commit): ONE OFFSET A FACE. A face is a run of edge squares facing the same one of eight ways; it takes the
 median of every wall offset found along it. A step in the wall is two faces, and the lidar's outline follows the step.
 An edge stretch two walks agree is more than a foot out (an addition) keeps its own.
+
+## 98. Two walks on app 1.28, and the performance question queued (Fri 2026-11-27, afternoon Eastern)
+
+HARD (the owner): "I just did 2 walks on 1.28. so you can use that with the planes thing." And: "add to the list,
+after we work through everything we're currently doing, is to diagnose the continued performance issues. This might
+require some research to figure out if we're doing something fundamentally wrong with how the app/page relationship
+behaves."
+QUEUED, in order: the naming chain (section 96); the first S4 with the 1.28 walks (planes in the lidar check, and in
+the walks-against-each-other line); the owner's naming of the home walk and what it says of the labellers; THEN the
+performance diagnosis: the app (Kotlin, ARCore) hands frames to a web page in a WebView over a bridge. The question
+for that work is whether that shape itself is the cost (copies across the bridge, the page's main thread, the
+WebView's own compositor) rather than any one step in it, and what apps doing AR with a web view do instead.
