@@ -799,6 +799,7 @@ def main():
     # from the lidar's edge, a stretch at a time); a deck; a tree, not a structure; or not looked at (kept, walls 2 ft
     # in). The lidar is the second witness, so a wall on ONE source counts beside a lidar edge. Solid and open then come
     # from the shapes, and from the walks alone only in pieces of WALK_ONLY_SQFT or more away from any shape.
+    not_built = np.zeros((H, W), bool)     # lidar built squares the walks say are not built (a tree read as one; where a tree touches)
     if lidar_b is not None:
         from scipy.spatial import cKDTree
         lk_ = np.frombuffer(zlib.decompress(base64.b64decode(lidar_b["kinds"])), np.uint8).reshape(lidar_b["h"], lidar_b["w"])
@@ -865,6 +866,7 @@ def main():
                 if seen_share >= SEEN_SHARE and wall_share < 0.05 and looked_fp and plants_here.sum() >= 0.5 * fp.sum():
                     verdict["tree"] += 1          # seen round, no wall anywhere, and a plant over most of it: a tree
                     claimed[y0:y1, x0:x1] |= fp
+                    nb_ = not_built[y0:y1, x0:x1]; nb_ |= fp
                     continue
                 default = WALL_INSET_FT if lk_kind == 1 else 0.0
                 if has.any():
@@ -890,6 +892,7 @@ def main():
                 # where a tree touches: an edge stretch with no wall seen, under a plant standing on the ground, is cut
                 treecut = newfp & plant_ground[y0:y1, x0:x1] & ~ndimage.binary_dilation(walls, structure=np.ones((3, 3)), iterations=int(np.ceil(WALL_NEAR_FT / ft_sq)))
                 newfp &= ~treecut
+                nb_ = not_built[y0:y1, x0:x1]; nb_ |= treecut & fp
                 trimmed_tree += int(treecut.sum())
                 moved_in += int((fp & ~newfp).sum()); moved_out += int((newfp & ~fp).sum())
                 sub = l_solid[y0:y1, x0:x1]; sub |= newfp
@@ -1094,15 +1097,17 @@ def main():
             # kinds 0 no claim, 4 solid, 5 open (a deck), 255 never looked; tops in decimetres over the ground (0 unknown)
             sk_ = np.where(looked, 0, 255).astype(np.uint8)
             sk_[g8 == 4] = 4; sk_[g8 == 5] = 5
+            # 6: the lidar's built thing is not here (agreed with the features session, 2026-11-27: fuse.js 6 takes it away)
+            sk_[not_built & ~np.isin(g8, (4, 5))] = 6
             tp_ = np.zeros((H, W), np.uint8)
             tp_[g8 == 4] = np.clip(np.round(top_solid[g8 == 4] * 10), 0, 254).astype(np.uint8)
             tp_[g8 == 5] = np.clip(np.round(top_deck[g8 == 5] * 10), 0, 254).astype(np.uint8)
             enc_ = lambda a_: base64.b64encode(zlib.compress(a_.tobytes(), 9)).decode()
             sdoc = {"cellM": CELL, "i0": i0, "j0": j0, "w": int(W), "h": int(H), "enc": "zlib+base64", "notSeen": 255,
                     "kinds": enc_(sk_), "tops": enc_(tp_), "unitDm": 1,
-                    "what": "kinds: one byte a square, rows south to north: 0 no claim, 4 solid structure, 5 open structure (a deck's boards), 255 never looked; tops: decimetres over the ground (a solid's top, a deck's walking surface; 0 not known)"}
+                    "what": "kinds: one byte a square, rows south to north: 0 no claim, 4 solid structure, 5 open structure (a deck's boards), 6 the lidar's built thing is not here, 255 never looked; tops: decimetres over the ground (a solid's top, a deck's walking surface; 0 not known)"}
             json.dump(sdoc, open(os.path.join(os.path.dirname(keep) or ".", "structures.json"), "w"))
-            print(f"     The built things for the fused model: {int((sk_ == 4).sum() * SQ):,} sq ft solid (tops in the middle {np.median(tp_[sk_ == 4]) / 10 * FT if (sk_ == 4).any() else 0:.0f} ft), {int((sk_ == 5).sum() * SQ):,} sq ft open (boards in the middle {np.median(tp_[sk_ == 5]) / 10 * FT if (sk_ == 5).any() else 0:.1f} ft up); kept as structures.json ({os.path.getsize(os.path.join(os.path.dirname(keep) or '.', 'structures.json')) / 1e3:.0f} KB).")
+            print(f"     The built things for the fused model: {int((sk_ == 6).sum() * SQ):,} sq ft where the lidar's built thing is not; {int((sk_ == 4).sum() * SQ):,} sq ft solid (tops in the middle {np.median(tp_[sk_ == 4]) / 10 * FT if (sk_ == 4).any() else 0:.0f} ft), {int((sk_ == 5).sum() * SQ):,} sq ft open (boards in the middle {np.median(tp_[sk_ == 5]) / 10 * FT if (sk_ == 5).any() else 0:.1f} ft up); kept as structures.json ({os.path.getsize(os.path.join(os.path.dirname(keep) or '.', 'structures.json')) / 1e3:.0f} KB).")
             json.dump({"v": 1, "cellM": CELL, "i0": i0, "j0": j0, "w": int(W), "h": int(H), "from": "the walk's ground points by the phone's own labels",
                        "what": "one byte a square, rows south to north: 0 not called, 1 grass, 2 paved, 3 porous ground: bare soil, woodchips, moss (a patch of 4 sq ft or more), 4 solid structure (walls, pillars, what stands under a roof), 5 open structure (a deck's boards: rain passes through); 9 grass and 10 paved GUESSED (a gap filled, not seen)", "enc": "zlib+base64",
                        "kinds": base64.b64encode(zlib.compress(g8.tobytes(), 9)).decode()}, open(keep, "w"))

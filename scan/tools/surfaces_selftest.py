@@ -162,6 +162,9 @@ def main():
         assert "THE LIDAR'S SHAPES, CHECKED BY THE WALKS: 2 shapes" in r.stdout and "confirmed with their walls placed 1" in r.stdout and "a deck, not a building 1" in r.stdout, "the shapes' verdicts"
         assert at(0.0, WALL_Z + 0.45) != 4, f"under the eaves, between the roof's edge and the wall: not solid ({at(0.0, WALL_Z + 0.45)})"
         assert at(-5.0, WALL_Z + 0.1) == 4, "the wall, all along the lidar's shape"
+        sj = json.load(open(os.path.join(tmp, "structures.json")))
+        sk = np.frombuffer(zlib.decompress(base64.b64decode(sj["kinds"])), np.uint8).reshape(sj["h"], sj["w"])
+        assert not (sk == 6).any(), "no lidar shape here is a tree: nothing taken away"
         kinds = np.bincount(g.ravel(), minlength=11)
         print("surfaces selftest with the lidar: ok;", ", ".join(f"{k}: {v}" for k, v in enumerate(kinds) if v))
 
