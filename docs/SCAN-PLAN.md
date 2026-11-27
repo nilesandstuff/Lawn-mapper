@@ -5793,3 +5793,25 @@ the walks-against-each-other line); the owner's naming of the home walk and what
 performance diagnosis: the app (Kotlin, ARCore) hands frames to a web page in a WebView over a bridge. The question
 for that work is whether that shape itself is the cost (copies across the bridge, the page's main thread, the
 WebView's own compositor) rather than any one step in it, and what apps doing AR with a web view do instead.
+
+## 99. The first map with walks from app 1.28 (the site's own run 46069719957, 4:21-4:53 pm Fri Eastern)
+
+HARD, MAP 1 (six newest walks; the two 1.28 walks, of 288 and 509 pictures, are walks 1 and 2, both placed through
+the reference, 12 of 12 and 15 of 17 stretches; walk 3, from 2026-11-26, shares no squares with them):
+  - THE WALKS' WALLS AGAINST EACH OTHER: walk 1 +0.3 ft east, -0.2 north; walk 2 -0.3, +0.2 (388 edge squares each;
+    left over 0.9 ft). In step, as in section 97.
+  - THE LIDAR'S SHAPES, CHECKED BY THE WALKS (one offset a face, section 97's commit): 6 shapes, 2 confirmed, the
+    walls in the middle +0.5 ft in from the lidar's edge, from -0.5 to +1.8 (section 97's run: +1.0, -1.0 to +2.5).
+    593 sq ft taken off, 281 added; 23 edge squares two walks agree are more than 1 ft out (additions?). SOLID 4,821
+    sq ft (section 95's map about 6,500), OPEN 77. Decks inside a shape 17 sq ft: the owner's deck is still in the
+    house's shape (CLIPSeg calls shape 1 "garage" 62%, as in section 95: its words are not to be trusted).
+  - ARCORE'S SURFACES: 4 walls in all (walk 1 six walls, 14 up, 0 down; walk 2 no walls, 17 up, 2 down), 3 of them
+    along built things; 22 edge squares placed by a wall plane. Almost nothing.
+FOUND (the page, scan/public/app.js notePlanes): the page kept only the LATEST set the app sent, and the app sends the
+planes ARCore holds now. ARCore stops tracking a plane it has left behind and folds one into another as it goes, so a
+walk's planes.json held only what was alive at its end. Fixed in the page (no new app needed): scan/lib/planes.js
+mergePlanes keeps every id the walk saw, at its latest outline; one no longer held is marked tracking 2. The next walk
+after the scan deploy is the test.
+MODAL (the AR allotment, $15 of 2026-11-20): the naming page's SAM shapes on walk 1795728070119 (run 46057798039),
+1,835 s on the L4 for 319 pictures (82 s of SAM a picture... the whole run's GPU time), about $0.45. Running total
+about $1.15.

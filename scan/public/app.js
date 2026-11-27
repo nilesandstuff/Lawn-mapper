@@ -13,6 +13,7 @@ import { newWalk, step, dropPin, checkPin, measure, tapeFor, undo, far, summary,
 import { makeDrawer, lidarMeshes, OCC_RANGE, OCC_RANGE_FULL } from '/lib/draw.js';
 import { lookMeshes } from '/lib/look.js';
 import { snapTo } from '/lib/lidar-marks.js';
+import { mergePlanes } from '/lib/planes.js';
 import { levelDist, toLocal, fromLocal } from '/lib/frames.js';
 import { frameFor, bboxOf, toPx, fromPx, ringsOf, toMerc } from '/lib/photo.js';
 import { newLocate, mark, noteGround, addDepth, nextAsk, answer, fitFor, fitSource, leftOutOf, mapOf, sessionOf, checkError, nearestNamed, agreement, groundOffset, groundUnder, status as fixStatus, summaryOf } from '/lib/locate.js';
@@ -1164,10 +1165,14 @@ function geoSummary() {
    lot with that, atleast for walls. My north wall is a solid wall, the front porch... has pillars that might trick the
    plane finding so that's a good test"). The app sends every plane it holds every 2 s; the latest set is kept with the
    walk (planes.json, in the session's own metres, private like the rest of the twin) every 30 s and at the end, for
-   scan/tools/surfaces.py to put walls and floors off the ground on the map. Nothing is drawn from them yet. */
+   scan/tools/surfaces.py to put walls and floors off the ground on the map. Nothing is drawn from them yet.
+   EVERY PLANE THE WALK SAW, NOT ONLY THOSE HELD AT THE END (2026-11-27): the app's set is what ARCore holds NOW, and
+   ARCore drops a plane it stops tracking and folds one into another as it goes, so keeping only the latest set lost
+   most of a walk's walls (the first two walks on 1.28: 6 walls and 0, on walks of 288 and 509 pictures). Each id keeps
+   its latest outline; one the app no longer sends stays, marked tracking 2 (no longer held). */
 function notePlanes(list) {
   if (!Array.isArray(list) || !st.walk) return;
-  st.planes = list;
+  st.planes = mergePlanes(st.planes, list);
   const now = Date.now();
   if (now - (st.planesSentAt || 0) >= 30000) sendPlanes(now);
 }
