@@ -35,6 +35,8 @@ async function main() {
     const b = await readObject(BUCKET, k).catch(() => null);
     if (!b) continue;
     const doc = JSON.parse(Buffer.from(b).toString('utf8'));
+    const next = JSON.stringify({ ...doc, structures, at });
+    if (k.endsWith('-record.json') && Buffer.byteLength(next) > 180000) { console.log(`Built things NOT put into the record's copy: it would be ${(Buffer.byteLength(next) / 1e3).toFixed(0)} KB, over the 180 KB the plants may take of the record.`); continue; }
     await writeObject(BUCKET, k, Buffer.from(next), 'application/json', { walk: String(doc.walk || walk) });
     n++;
   }

@@ -859,6 +859,12 @@ def main():
                       + f"; of their squares {100 * (sp & (nsrc <= 1)).sum() / max(1, sp.sum()):.0f}% rest on ONE source (a picture or a walk's kept points), of all ground called {100 * one.sum() / max(1, called.sum()):.0f}%"
                       + (f"; the pictures' cells in them seen from {np.median(RNG[spk]) * FT:.0f} ft in the middle (all: {np.median(rg_all) * FT:.0f} ft)" if spk.any() and len(rg_all) else "")
                       + "; by walk, of their points: " + ", ".join(f"walk {q + 1} {100 * (sp[cj, ci] & (WI == q)).sum() / max(1, sp[cj, ci].sum()):.0f}%" for q in range(len(Es))) + ".")
+                # THE ROOT OF MOST (S4 run of 2026-11-27, 8:11 pm Thu Eastern: of the far specks' squares 43% rested on one
+                # source against 17% of all, and their cells were seen from 23 ft in the middle against 7 ft): a far
+                # speck that rests on one source is one picture's long look, and is not called
+                lone = sp & (nsrc <= 1) & np.isin(g8, (1, 2))
+                g8[lone] = 0
+                print(f"     FAR SPECKS ON ONE SOURCE, not called: {int(lone.sum() * SQ):,} sq ft.")
             g8, ch, pcs = GF.despeckle(g8, SQ)
             print(f"     SPECKS OF TURF INSIDE PAVING (a patch of {GF.SPECK_SQFT} sq ft or less, {100 * GF.SURROUND:.0f}% of what is called round it paving): {pcs:,} patches, {int(ch * SQ):,} sq ft, made paving.")
             # THE GAPS FILLED (the lawn mapper's rules under a tree, public/lib/stage3.js: bridge and reach), never into an

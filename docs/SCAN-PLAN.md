@@ -5431,3 +5431,29 @@ them, which would be taken for a wall if the labels saw the pillars along 30% of
 
 THE FUSED MODEL: the walk's built things are not in it yet. Roofs and low structures are the lidar's alone by a light
 rule the features session holds (docs/MAPS.md), so it is asked first.
+
+## 81. The first run of section 80 on the owner's lot (S4, 8:11-9:09 pm Thu Eastern, head 786507c)
+
+HARD (six walks asked for by hand; five put on the map, the 17-picture walk having no fit):
+
+  The large labeller's classes on the lot, by pictures that hold them (the walk of 4:21 pm): tree 199, grass 181,
+  earth 142, sky 142, building 120, plant 77, house 60, wall 39, ... stairs 13, bannister 6, stairway 5, floor 5,
+  ceiling 3, column 3. Floors and ceilings are rare: the walks hardly looked at a deck or under the porch roof.
+
+  BUILT: 1,573,870 cells on walls, pillars, doors; 48,923 floors, steps, railings; 1,746 roofs from under.
+    SOLID 5,765 sq ft (75 of it under a roof seen from below), tops 11 ft in the middle; OPEN 39 sq ft, boards 2.3 ft up.
+    Walks two by two: where both call a square built, the same kind on 93-100%; but of one walk's built squares only
+    23-77% lie within a foot of the other's (the walls seen from different places, and at different ranges, land in
+    different squares). No ARCore planes yet: these walks are all from before app 1.28.
+  SPECKS FAR FROM THEIR KIND: turf 108 sq ft, paving 12; 43% of their squares rest on ONE source against 17% of all
+    ground called; the pictures' cells in them were seen from 23 ft in the middle against 7 ft for all; walks 3 and 5
+    gave 77% of their points. So the root of most of them is ONE picture's long look. Now (this commit) a far speck
+    resting on one source is not called. Turf inside paving, 6 sq ft or less: 1 sq ft made paving.
+  THE FILL, held out: of 611 turf squares hidden in 3 ft blocks, 69% put back turf, 1% as paving, 30% left empty; of
+    94 paving squares, 90% put back paving, none as turf. Filled: turf 1,434 sq ft, paving 280 sq ft, as GUESSED.
+  The built things for the fused model were made (structures.json, 16 KB) but NOT put with the plants: surfaces-keep
+  stopped on a variable that had not been written in ("next is not defined"; the S4 step ends in || true). Fixed.
+
+SPECULATION: that 5,765 sq ft of solid is too much. It holds the neighbours' houses across the yard as well as the
+owner's, and walls seen from 30-39 ft away smear by a foot or two. The owner's eyes on the map will say; the lidar's
+buildings would measure it (fuse-check has them).
