@@ -39,7 +39,7 @@ on:
         required: true
         default: tests
         type: choice
-        options: [tests, deploy, walks, twin, disagree, segment, view, classes, mend, jumps, corners, trunks, crownsky, semcheck, surfaces, placed, prunerecordings, name, learn, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks, naip, drive, thermalindex]
+        options: [tests, deploy, walks, twin, disagree, segment, view, classes, mend, jumps, corners, trunks, crownsky, semcheck, surfaces, placed, prunerecordings, name, score, learn, fix, place, depth, study, skyline, pavement, checks, repeat, register, walkfix, walkfixjs, reference, warp, marks, naip, drive, thermalindex]
       walk:
         description: 'For twin, fix or depth: the walk id, or latest'
         default: latest
@@ -283,7 +283,7 @@ jobs:
       # CAN THE SKYLINE PLACE A WALK (scan/tools/skyline_study.py, SCAN-H11 option 1): the sky in each picture against
       # the shade map's model seen from every placement; scored against the check points. CPU, free.
       - name: Run actions/setup-python@v5 (skyline)
-        if: ${{ inputs.task == 'trunks' || inputs.task == 'crownsky' || inputs.task == 'semcheck' || inputs.task == 'surfaces' || inputs.task == 'skyline' || inputs.task == 'pavement' || inputs.task == 'place' || inputs.task == 'checks' || inputs.task == 'register' || inputs.task == 'walkfix' || inputs.task == 'segment' || inputs.task == 'view' || inputs.task == 'classes' || inputs.task == 'mend' || inputs.task == 'jumps' || inputs.task == 'name' || inputs.task == 'learn' }}
+        if: ${{ inputs.task == 'trunks' || inputs.task == 'crownsky' || inputs.task == 'semcheck' || inputs.task == 'surfaces' || inputs.task == 'skyline' || inputs.task == 'pavement' || inputs.task == 'place' || inputs.task == 'checks' || inputs.task == 'register' || inputs.task == 'walkfix' || inputs.task == 'segment' || inputs.task == 'view' || inputs.task == 'classes' || inputs.task == 'mend' || inputs.task == 'jumps' || inputs.task == 'name' || inputs.task == 'score' || inputs.task == 'learn' }}
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
@@ -481,6 +481,24 @@ jobs:
           # the kinds voted onto the walk, from above, for the owner's eyes (studies.py study_vote)
           python scan/tools/studies.py twin --study vote 2>&1 | grep -v '^Shapes tidied' | tee -a learn.txt
           node scan/tools/twin-r2.mjs put "$WALK" twin/study-vote.json twin/study-vote-points.png twin/study-vote-filled.png | grep -c ': kept (' | sed 's/^/Study parts kept: /' | tee -a learn.txt
+      # EVERY LABELLER AGAINST THE OWNER'S NAMES, KIND BY KIND (scan/tools/names_score.py, 2026-11-27): the phone's
+      # scene labels, the panoptic model, SegFormer-B0, CLIPSeg and OWLv2 on the pixels of the shapes the owner named,
+      # and the phone's broad labels broken up by each. CPU, free. Counts, shares and kind names only.
+      - name: Every labeller scored against the owner's names
+        if: ${{ inputs.task == 'score' }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          WALK: ${{ inputs.walk }}
+        run: |
+          set -o pipefail
+          pip install --quiet pillow numpy scipy
+          pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu > /dev/null
+          pip install --quiet "transformers>=4.45,<5" > /dev/null
+          node scan/tools/twin-r2.mjs parts "$WALK" twin seg.json seg-names.json 'seg-*.png' segments-masks.npz 'key-*.sem' 'key-*.jpg' | tail -1 | tee score.txt
+          python scan/tools/names_score.py twin 2>&1 | grep -v -i "warn\|slow image processor" | tee -a score.txt
+
       - name: A walk's shapes made ready to be named
         if: ${{ inputs.task == 'name' }}
         env:
@@ -911,6 +929,7 @@ jobs:
             mend) cat mend.txt 2>/dev/null || echo "nothing mended: see the step above" ;;
             classes) cat classes.txt 2>/dev/null || echo "no classes: see the step above" ;;
             learn) cat learn.txt 2>/dev/null || echo "nothing learned: see the step above" ;;
+            score) cat score.txt 2>/dev/null || echo "nothing scored: see the step above" ;;
             name) cat name.txt 2>/dev/null || echo "nothing made ready to name: see the step above" ;;
             segment) grep -v '^Twin read' segment.txt 2>/dev/null | tail -60 || echo "no segment trial: see the step above" ;;
             fix) cat fix.txt 2>/dev/null || echo "no fix: see the step above" ;;
