@@ -55,6 +55,11 @@ def train(data: bytes, epochs: int = 14) -> dict:
     z = np.load(io.BytesIO(data), allow_pickle=False)
     blob, cuts, target, walk = z["jpeg"].tobytes(), z["cuts"], z["target"], z["walk"]
     base_map = json.loads(str(z["base_map"]))     # B0's own 150 ADE classes -> our kinds, for the yardstick
+    # THE YARD LABELLER (2026-11-28, yard_distill_prep.py): its own kinds, the owner's names apart as the answer key
+    # (taught three times as hard), and a held-out run of the walk by time
+    kinds = json.loads(str(z["kinds"])) if "kinds" in z else KINDS
+    owner = z["owner"] if "owner" in z else None
+    hold_mask = z["hold"] if "hold" in z else None
     n = len(cuts) - 1
     mean = torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1); std = torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1)
     imgs = np.zeros((n, TH, TW, 3), np.uint8)
@@ -64,11 +69,12 @@ def train(data: bytes, epochs: int = 14) -> dict:
     X = torch.from_numpy(imgs).permute(0, 3, 1, 2).float().div(255)
     X = (X - mean) / std
     Y = torch.from_numpy(target.astype(np.int64))
+    O = torch.from_numpy(owner.astype(np.int64)) if owner is not None else None
     dev = "cuda"
     walks = sorted(set(int(w) for w in walk))
 
     def make():
-        m = SegformerForSemanticSegmentation.from_pretrained(BASE, num_labels=len(KINDS), ignore_mismatched_sizes=True)
+        m = SegformerForSemanticSegmentation.from_pretrained(BASE, num_labels=len(kinds), ignore_mismatched_sizes=True)
         return m.to(dev)
 
     def fit(m, idx, ep):
@@ -80,30 +86,35 @@ def train(data: bytes, epochs: int = 14) -> dict:
             for b in range(0, len(perm), 8):
                 j = perm[b:b + 8]
                 x, y = X[j].to(dev), Y[j].to(dev)
+                wt = (1.0 + 2.0 * (O[j] != 255).float()).to(dev) if O is not None else torch.ones_like(y, dtype=torch.float32)
                 if torch.rand(1).item() < 0.5:
-                    x, y = x.flip(3), y.flip(2)
+                    x, y, wt = x.flip(3), y.flip(2), wt.flip(2)
                 x = x * (0.8 + 0.4 * torch.rand(len(j), 1, 1, 1, device=dev)) + 0.2 * (torch.rand(len(j), 3, 1, 1, device=dev) - 0.5)
                 lo = m(pixel_values=x).logits
                 lo = F.interpolate(lo, size=y.shape[-2:], mode="bilinear", align_corners=False)
-                loss = F.cross_entropy(lo, y, ignore_index=255)
+                ce = F.cross_entropy(lo, y, ignore_index=255, reduction="none")
+                ok = (y != 255).float()
+                loss = (ce * wt * ok).sum() / (wt * ok).sum().clamp(min=1)
                 opt.zero_grad(); loss.backward(); opt.step(); sched.step()
             print(f"  pass {e + 1} of {ep}: loss {loss.item():.3f} ({round(time.time() - t0)} s)", flush=True)
         return m
 
     @torch.no_grad()
-    def judge(predict, idx):
-        conf = np.zeros((len(KINDS), len(KINDS)), np.int64)
+    def judge(predict, idx, key=None):
+        key = Y if key is None else key
+        conf = np.zeros((len(kinds), len(kinds)), np.int64)
         for b in range(0, len(idx), 16):
             j = idx[b:b + 16]
-            p = predict(X[j].to(dev)).cpu().numpy(); y = Y[j].numpy()
+            p = predict(X[j].to(dev)).cpu().numpy(); y = key[j].numpy()
             ok = y != 255
             np.add.at(conf, (y[ok], p[ok]), 1)
         acc = conf.trace() / max(1, conf.sum())
         ground = [1, 2, 3, 4]
         gi = np.ix_(ground, ground); gacc = conf[gi].trace() / max(1, conf[ground].sum())
-        per = {KINDS[k]: round(float(conf[k, k] / max(1, conf[k].sum())), 3) for k in range(len(KINDS))}
+        per = {kinds[k]: round(float(conf[k, k] / max(1, conf[k].sum())), 3) for k in range(len(kinds)) if conf[k].sum()}
+        said = {kinds[k]: kinds[int(np.argmax(np.where(np.arange(len(kinds)) == k, -1, conf[k])))] for k in range(len(kinds)) if conf[k].sum() > conf[k, k]}
         return {"agree": round(float(acc), 3), "ground_kinds_agree": round(float(gacc), 3), "per_kind_recall": per,
-                "large_says": {KINDS[k]: int(conf[k].sum()) for k in range(len(KINDS))}}
+                "large_says": {kinds[k]: int(conf[k].sum()) for k in range(len(kinds)) if conf[k].sum()}, "else_mostly": said}
 
     out = {"pictures": n, "walks": len(walks)}
     # THE YARDSTICK: B0 off the shelf, its 150 classes mapped to ours
@@ -113,7 +124,15 @@ def train(data: bytes, epochs: int = 14) -> dict:
     def base_pred(x):
         lo = F.interpolate(base(pixel_values=x).logits, size=(TTH, TTW), mode="bilinear", align_corners=False)
         return lut[lo.argmax(1)]
-    if len(walks) >= 2:
+    if hold_mask is not None and hold_mask.any():
+        tr = torch.tensor([i for i in range(n) if not hold_mask[i]]); te = torch.tensor([i for i in range(n) if hold_mask[i]])
+        m = fit(make(), tr, epochs).eval()
+        pred = lambda x: F.interpolate(m(pixel_values=x).logits, size=(TTH, TTW), mode="bilinear", align_corners=False).argmax(1)
+        out["held_out"] = {"pictures": len(te), "taught_against_lessons": judge(pred, te)}
+        if O is not None:
+            out["held_out"]["taught_against_owner"] = judge(pred, te, O)
+        del m
+    elif len(walks) >= 2:
         hold = walks[-1]
         tr = torch.tensor([i for i in range(n) if int(walk[i]) != hold]); te = torch.tensor([i for i in range(n) if int(walk[i]) == hold])
         out["held_out"] = {"pictures": len(te), "off_the_shelf": judge(base_pred, te)}
@@ -142,16 +161,16 @@ def train(data: bytes, epochs: int = 14) -> dict:
         q = open("/tmp/m8.onnx", "rb").read()
     except Exception as e:
         qwhy = f"{type(e).__name__}: {str(e)[:160]}"
-    out.update({"kinds": KINDS, "size": [TW, TH], "seconds": round(time.time() - t0), "onnx_mb": round(len(onnx_bytes) / 1e6, 1), "onnx8_mb": round(len(q) / 1e6, 1) if q else None, "onnx8_failed": qwhy})
+    out.update({"kinds": kinds, "size": [TW, TH], "seconds": round(time.time() - t0), "onnx_mb": round(len(onnx_bytes) / 1e6, 1), "onnx8_mb": round(len(q) / 1e6, 1) if q else None, "onnx8_failed": qwhy})
     return {"numbers": out, "onnx": onnx_bytes, "onnx8": q}
 
 
 @app.local_entrypoint()
-def main(data: str = "data.npz", out: str = "out", epochs: int = 14):
+def main(data: str = "data.npz", out: str = "out", epochs: int = 14, name: str = "ground-labeller"):
     os.makedirs(out, exist_ok=True)
     r = train.remote(open(data, "rb").read(), epochs)
-    open(os.path.join(out, "ground-labeller.onnx"), "wb").write(r["onnx"])
+    open(os.path.join(out, f"{name}.onnx"), "wb").write(r["onnx"])
     if r["onnx8"]:
-        open(os.path.join(out, "ground-labeller-8bit.onnx"), "wb").write(r["onnx8"])
+        open(os.path.join(out, f"{name}-8bit.onnx"), "wb").write(r["onnx8"])
     json.dump(r["numbers"], open(os.path.join(out, "numbers.json"), "w"))
     print("DISTILL " + json.dumps(r["numbers"]))
