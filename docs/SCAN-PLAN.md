@@ -5869,3 +5869,23 @@ added where walls stand outside the lidar's edge, 14 cut where a tree touches; S
 ARCore's surfaces: 4 walls (3 along built things), 5 raised floors, 2 ceilings. These walks predate the planes fix
 (section 99), so the next walk is the test of it.
 The ground: 7 walks; walk 1 against walk 2, both call 2,688 sq ft and agree on 96.1%.
+
+## 104. Every labeller against the owner's names (scan-deploy run 46117988264, Sat 2026-11-28, about 2 am Eastern)
+
+HARD (the owner, of their naming): shapes poorly seen or holding two unrelated things were left unnamed; a low plant in
+a ground shape was named for the ground; deck boards and windows named for the whole (deck, house); an evergreen in a
+shape with leafless trees called tree; ground "the least reliably segmented"; and "arcore's scene semantics was by far
+the best in both categories, just that it lacks the specific object classes that we need".
+HARD (scan/tools/names_score.py on the home walk 1795728070119): 1,092 of 7,469 shapes named with a kind, in 223 of
+319 photos ("movable thing", 57, was left out: mapped since). Scored on the PIXELS of the named shapes, BROAD kind /
+FINE kind, all kinds together: phone 75/38, panoptic 85/65, SegFormer-B0 78/58, CLIPSeg 85/71, OWLv2 82/68. The phone
+broken up by a finer labeller (phone+X) scores below X alone (56-60 fine): its broad errors gate the finer one.
+By kind, the best (fine): house all 87-98; grass CLIPSeg 90; paving CLIPSeg 97; tree the phone 89; bare ground CLIPSeg
+73; shrub panoptic 64 (the phone calls shrubs tree); rock (boulders) panoptic 95; stairs panoptic 75; mulch only OWLv2 56
+(the rest call it bare ground); DECK none above 37 (OWLv2; most call it house); hot tub CLIPSeg 34; POOL and SHED none
+above 14 (all call them house: an above-ground pool's side is a wall to them).
+The cut, as the owner saw it: of what the phone calls ground, 49% of the pixels lie in any shape (built 89%, plant 66%).
+The phone's grid sits the right way (75% the same broad kind as the panoptic model; 31% upside down).
+SPECULATION: the phone's lower broad score may be its grid (72 x 128, unsure cells dropped) rather than its eye; the
+owner judged it by looking, where it reads smooth. A labeller chosen per kind would beat every single one; deck, pool,
+shed and hot tub need a model taught on these names (the next step: distill_prep.py / distill_modal.py).

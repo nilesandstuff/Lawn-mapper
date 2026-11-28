@@ -64,7 +64,7 @@ for kind, words in {
     "equipment": ["ac unit", "air conditioner", "air conditioner unit", "utility box", "electrical box", "transformer",
                   "machine", "machinery", "grill", "trash can", "trash bin", "bin", "ashcan", "barrel", "hose",
                   "garden hose", "box", "tank", "pole", "light", "streetlight", "signboard", "mailbox", "equipment",
-                  "machine/equipment", "lamp", "pot", "potted plant", "vase", "basket", "bucket", "plaything", "toy"],
+                  "machine/equipment", "movable thing", "movable", "lamp", "pot", "potted plant", "vase", "basket", "bucket", "plaything", "toy"],
     "fence": ["fence merged", "privacy fence", "gate", "chain link", "chain-link", "chain link fence", "wooden fence",
               "vinyl fence", "wooden or vinyl privacy fence"],
     "pool": ["swimming pool", "pool cover", "above ground pool"],
