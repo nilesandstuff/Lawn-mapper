@@ -12,7 +12,7 @@
  *           its map); its meta.json as it was is kept beside it as meta-before.json.
  *
  *   node scan/tools/after-walk.mjs plan [out file]
- *   node scan/tools/after-walk.mjs done <walk,walk,...> <the first walk's twin dir>
+ *   node scan/tools/after-walk.mjs done <walk,walk,...|left,left,...> <the first walk's twin dir> [placed.txt]
  *   node scan/tools/after-walk.mjs adopt <walk> <walk whose map it takes>
  *
  * Prints walk ids, counts and times only: a map's id is a place, and this log is public.
@@ -21,8 +21,8 @@ import { writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { BUCKET, API, account, list, readObject, writeObject, walkOk } from './twin-r2.mjs';
 
-import { SETTLED_MS, RECENT_MS, POOL_MAX, FROM_MS, prefixesOf, planOf } from '../lib/afterplan.js';
-export { SETTLED_MS, RECENT_MS, POOL_MAX, FROM_MS, prefixesOf, planOf };
+import { SETTLED_MS, RECENT_MS, POOL_MAX, FROM_MS, prefixesOf, planOf, markerOf } from '../lib/afterplan.js';
+export { SETTLED_MS, RECENT_MS, POOL_MAX, FROM_MS, prefixesOf, planOf, markerOf };
 
 const json = async (key) => { const b = await readObject(BUCKET, key).catch(() => null); if (!b) return null; try { return JSON.parse(Buffer.from(b).toString('utf8')); } catch { return null; } };
 
@@ -38,18 +38,28 @@ async function plan(outFile = 'after-plan.txt') {
   const walks = [];
   for (const [id, t] of newest) { const meta = await json(`twins/${id}/meta.json`); walks.push({ id, map: meta?.map || null, settled: now - t > SETTLED_MS }); }
   const markers = new Map();
-  for (const map of new Set(walks.map((w) => w.map).filter(Boolean))) markers.set(map, (await json(`auto/${map}.json`))?.walks || []);
-  const due = planOf(walks, markers);
-  writeFileSync(outFile, due.map((ids) => ids.join(',')).join('\n') + (due.length ? '\n' : ''));
-  console.log(`AFTER A WALK: ${walks.length} walk${walks.length === 1 ? '' : 's'} begun in the last ${RECENT_MS / 86400000} days; ${walks.filter((w) => !w.settled).length} still being sent, ${walks.filter((w) => !w.map).length} name no map; ${due.length} map${due.length === 1 ? '' : 's'} due${due.length ? `: ${due.map((ids) => `walks ${ids.join(', ')}`).join('; ')}` : ''}.`);
+  for (const map of new Set(walks.map((w) => w.map).filter(Boolean))) markers.set(map, await json(`auto/${map}.json`));
+  const due = planOf(walks, markers, { repool: process.env.REPOOL === '1' });
+  // a line a map: the pool, then | and the walks left out of it (the marker names them so they do not make it due again)
+  writeFileSync(outFile, due.map(([pool, left]) => `${pool.join(',')}|${left.join(',')}`).join('\n') + (due.length ? '\n' : ''));
+  console.log(`AFTER A WALK: ${walks.length} walk${walks.length === 1 ? '' : 's'} begun in the last ${RECENT_MS / 86400000} days; ${walks.filter((w) => !w.settled).length} still being sent, ${walks.filter((w) => !w.map).length} name no map; ${due.length} map${due.length === 1 ? '' : 's'} due${due.length ? `: ${due.map(([pool, left]) => `walks ${pool.join(', ')}${left.length ? ` (${left.length} older or placed worse left out)` : ''}`).join('; ')}` : ''}.`);
 }
 
-async function done(idsArg, dir) {
-  const ids = String(idsArg || '').split(',').filter(walkOk);
+/** The marker: the walks pooled, the walks left out, and how each walk was placed (a file of "<walk> ref|own|none"
+ *  lines from the run, over what the marker said before). planOf ranks the next pool by it. */
+async function done(lineArg, dir, placedFile) {
+  const [poolPart, leftPart = ''] = String(lineArg || '').split('|');
+  const ids = poolPart.split(',').filter(walkOk), left = leftPart.split(',').filter(walkOk);
   const meta = JSON.parse(readFileSync(join(dir, 'meta.json'), 'utf8'));
   if (!meta?.map || !ids.length) throw new Error('which walks, and which map?');
-  await writeObject(BUCKET, `auto/${meta.map}.json`, Buffer.from(JSON.stringify({ v: 1, walks: ids, at: new Date().toISOString() })), 'application/json');
-  console.log(`Marked: this map's plants and ground are made from ${ids.length} walk${ids.length === 1 ? '' : 's'} (${ids.join(', ')}).`);
+  const before = markerOf(await json(`auto/${meta.map}.json`));
+  const placed = { ...before.placed };
+  if (placedFile) {
+    try { for (const l of readFileSync(placedFile, 'utf8').split('\n')) { const [w, how] = l.trim().split(/\s+/); if (walkOk(w) && ['ref', 'own', 'none'].includes(how)) placed[w] = how; } } catch { /* none */ }
+  }
+  await writeObject(BUCKET, `auto/${meta.map}.json`, Buffer.from(JSON.stringify({ v: 2, walks: ids, left, placed, at: new Date().toISOString() })), 'application/json');
+  const by = (k) => ids.filter((w) => placed[w] === k).length;
+  console.log(`Marked: this map's plants and ground are made from ${ids.length} walk${ids.length === 1 ? '' : 's'} (${ids.join(', ')}): ${by('ref')} placed through the reference, ${by('own')} by their own corners, ${by('none')} not placed; ${left.length} left out.`);
 }
 
 async function adopt(walk, from) {
@@ -72,6 +82,6 @@ async function editsOf(dir, out) {
 }
 
 if (process.argv[1] && process.argv[1].endsWith('after-walk.mjs')) {
-  const [cmd, a, b] = process.argv.slice(2);
-  (cmd === 'plan' ? plan(a) : cmd === 'done' ? done(a, b) : cmd === 'edits' ? editsOf(a, b) : cmd === 'adopt' ? adopt(a, b) : Promise.reject(new Error('plan, done or adopt'))).catch((e) => { console.log(`After a walk: ${e.message}`); process.exit(1); });
+  const [cmd, a, b, c] = process.argv.slice(2);
+  (cmd === 'plan' ? plan(a) : cmd === 'done' ? done(a, b, c) : cmd === 'edits' ? editsOf(a, b) : cmd === 'adopt' ? adopt(a, b) : Promise.reject(new Error('plan, done or adopt'))).catch((e) => { console.log(`After a walk: ${e.message}`); process.exit(1); });
 }

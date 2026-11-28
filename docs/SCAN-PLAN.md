@@ -5841,3 +5841,14 @@ up" every hour, for ever. It also left no gap for a deploy or the naming prep (o
 FIXED (scan/lib/afterplan.js planOf, used by the workflow's own planner and the site's clock): when a map's marker
 is full, only a walk newer than its oldest walk counts as new. The workflow's planner reads it from the branch at
 once; the site's clock from the next scan deploy.
+
+## 102. Ten walks a map, the well placed first (Fri 2026-11-27, about 7 pm Eastern)
+
+HARD (the owner): "Is the 6 limit something we can raise? While we're still developing things, it's useful to actually
+keep individual walks... But for the live app will we just merge them so the 6 walk limit won't actually matter?" and
+then "Yes, raise it to 10 and pick the well-aligned ones." (No walk was ever deleted: the limit is how many walks the
+map's plants and ground are rebuilt from. In the live app each walk is to add to what is kept, so no count is needed.)
+BUILT: POOL_MAX 10. S4 writes how it placed each walk ('ref' through the reference, 'own' by its own corners, 'none')
+into the map's marker (auto/<map>.json v2: walks, left, placed). An old marker does not set a run going by itself; S4 run by hand with walks "repool" chooses the ten anew. The next pool: new walks first (they must be tried),
+then those placed through the reference, then untried, then own-corner-only, newest first in each; never-placed ones
+only while new. The rest are named as left out, so they never make the map due again (section 101's loop).

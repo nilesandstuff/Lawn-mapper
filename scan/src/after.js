@@ -37,7 +37,7 @@ export async function afterWalks(env, now = Date.now(), fetcher = fetch) {
   const walks = [];
   for (const [id, t] of newest) walks.push({ id, map: (await readJson(B, `twins/${id}/meta.json`))?.map || null, settled: now - t > SETTLED_MS });
   const markers = new Map();
-  for (const map of new Set(walks.map((w) => w.map).filter(Boolean))) markers.set(map, (await readJson(B, `auto/${map}.json`))?.walks || []);
+  for (const map of new Set(walks.map((w) => w.map).filter(Boolean))) markers.set(map, await readJson(B, `auto/${map}.json`));
   const due = planOf(walks, markers);
   if (!due.length) return { due: 0, walks: walks.length, dispatched: false, why: 'nothing new' };
   const last = await readJson(B, 'auto/_dispatch.json');

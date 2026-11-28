@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       walks:
-        description: 'Walks of ONE map, newest first, comma separated; empty to look for new walks'
+        description: 'Walks of ONE map, newest first, comma separated; empty to look for new walks; repool to choose every map''s ten again'
         default: ''
       adopt:
         description: 'A walk that names no map takes another walk''s: "<walk>:<walk whose map it takes>"; empty for none'
@@ -51,7 +51,8 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           WALKS: ${{ inputs.walks }}
         run: |
-          if [[ "$WALKS" =~ ^[0-9,]+$ ]]; then echo "$WALKS" > after-plan.txt; echo "AFTER A WALK: asked by hand for walks ${WALKS//,/, }."; else node scan/tools/after-walk.mjs plan after-plan.txt; fi
+          # "repool": every map's pool chosen again (ten walks, the well placed first; 2026-11-27)
+          if [[ "$WALKS" =~ ^[0-9,]+$ ]]; then echo "$WALKS" > after-plan.txt; echo "AFTER A WALK: asked by hand for walks ${WALKS//,/, }."; elif [ "$WALKS" = repool ]; then REPOOL=1 node scan/tools/after-walk.mjs plan after-plan.txt; else node scan/tools/after-walk.mjs plan after-plan.txt; fi
           echo "DUE=$(grep -c . after-plan.txt || true)" >> "$GITHUB_ENV"
       - uses: actions/setup-python@v5
         if: ${{ env.DUE != '0' }}
@@ -73,9 +74,11 @@ jobs:
           if pip install --quiet torch --index-url https://download.pytorch.org/whl/cpu > /dev/null 2>&1 && pip install --quiet "transformers>=4.45,<5" > /dev/null 2>&1; then TORCH=1; fi
           : > after.txt
           n=0
-          while IFS= read -r LINE; do
-            [ -z "$LINE" ] && continue
-            n=$((n + 1)); FIRST="${LINE%%,*}"; DIRS=""
+          while IFS= read -r RAW; do
+            [ -z "$RAW" ] && continue
+            # a plan line: the pool, then | and the walks left out of it (scan/lib/afterplan.js planOf)
+            LINE="${RAW%%|*}"
+            n=$((n + 1)); FIRST="${LINE%%,*}"; DIRS=""; : > "placed-$n.txt"
             echo "MAP $n: walks ${LINE//,/, }" | tee -a after.txt
             for W in ${LINE//,/ }; do
               D="m$n-$W"
@@ -94,6 +97,9 @@ jobs:
               # so placed is in the one frame of the shape the walks built, not each in its own corners' fit
               node scan/tools/twin-onref.mjs "$D" | tee -a after.txt || true
               if [ -f "$D/onref.json" ]; then node scan/tools/twin-r2.mjs put "$W" "$D/onref.json" > /dev/null || true; fi
+              # how the walk was placed, for the next pool (well placed walks first; the owner, 2026-11-27: "pick the
+              # well-aligned ones")
+              if [ -f "$D/onref.json" ]; then echo "$W ref"; elif grep -q '"ok":true' "$D/fit.json" 2>/dev/null; then echo "$W own"; else echo "$W none"; fi >> "placed-$n.txt"
               # the pictures' own tree cells (their depth to 12 m, the smoothed depth in the raw one's holes) beside the walk's
               # points for plants.py, then taken away again before the ground is read (cast_plants.py)
               python scan/tools/cast_plants.py "$D" | tee -a after.txt || true
@@ -131,7 +137,7 @@ jobs:
             # each walk names the walks of its map, for the 3D view of them all together
             node -e "require('fs').writeFileSync('mapwalks.json', JSON.stringify({ v: 1, walks: process.argv[1].split(',') }))" "$LINE"
             for W in ${LINE//,/ }; do node scan/tools/twin-r2.mjs put "$W" mapwalks.json > /dev/null || true; done
-            node scan/tools/after-walk.mjs done "$LINE" "m$n-$FIRST" | tee -a after.txt
+            node scan/tools/after-walk.mjs done "$RAW" "m$n-$FIRST" "placed-$n.txt" | tee -a after.txt
             rm -rf m$n-*
           done < after-plan.txt
       - name: The answer
