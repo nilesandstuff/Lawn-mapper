@@ -5889,3 +5889,21 @@ The phone's grid sits the right way (75% the same broad kind as the panoptic mod
 SPECULATION: the phone's lower broad score may be its grid (72 x 128, unsure cells dropped) rather than its eye; the
 owner judged it by looking, where it reads smooth. A labeller chosen per kind would beat every single one; deck, pool,
 shed and hot tub need a model taught on these names (the next step: distill_prep.py / distill_modal.py).
+
+## 105. The yard labeller, taught on the owner's names (S5 run 46126843007, Sat 2026-11-28, 3:39-3:57 am Eastern)
+
+HARD (the owner: "Sounds good, keep going"): SegFormer-B0 (phone-sized) taught on the home walk's 319 pictures, 17 kinds
+(yard_distill_prep.py): the owner's names where given (36% of the cells, taught three times as hard), elsewhere the best
+labeller by kind (CLIPSeg on grass, paving, bare ground, house, sky; the panoptic model on rock, stairs, shrub, tree,
+house, movable; the two at odds, nothing). 80 pictures, one run of the walk by time, held out and judged on the owner's
+names there:
+    the taught model 84% of the owner's cells given the owner's kind (93% among the kinds of ground)
+    the yardstick, the same cells: CLIPSeg 75%, the teacher 62%, the panoptic model 59%
+    by kind: grass 96, deck 93, tree 91, house 86, paving 81 (few cells), bare ground 74, movable 26; POOL 0 (nearly every
+    pool cell of the walk fell in the held-out run, so it was never taught pool there), mulch and shrub 0 (too few held-out
+    cells to say: 135 and 1,614).
+Files: models/yard-labeller-v1.onnx 15.2 MB, the 8-bit copy 8.0 MB, yard-labeller-v1.json. 189 s on the L4.
+MODAL: about $0.15 for this run. RUNNING TOTAL of the $15: about $1.30.
+SPECULATION: deck at 93% is this deck seen from other places in the walk, not decks in general: one walk of one yard.
+The final model (taught on all 319) has seen the pool; whether it knows it is unmeasured. More named walks, other yards
+above all, are what would tell.
