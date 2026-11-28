@@ -5852,3 +5852,20 @@ BUILT: POOL_MAX 10. S4 writes how it placed each walk ('ref' through the referen
 into the map's marker (auto/<map>.json v2: walks, left, placed). An old marker does not set a run going by itself; S4 run by hand with walks "repool" chooses the ten anew. The next pool: new walks first (they must be tried),
 then those placed through the reference, then untried, then own-corner-only, newest first in each; never-placed ones
 only while new. The rest are named as left out, so they never make the map due again (section 101's loop).
+
+## 103. The ten-walk rebuild (S4 run 46088070908, Fri 2026-11-27, 7:28-9:04 pm Eastern)
+
+HARD: 10 walks pooled, 2 left out. Marked 7 through the reference, 0 by own corners alone, 3 not placed (corners: fewer
+than two marks twice; only two corners agreeing once). Of the 7, one was "0 of 0 stretches matched": nothing of it was
+moved onto the map, yet it wrote fit.json ok and onref.json and was marked 'ref'. FIXED in twin-onref.mjs: no stretch
+matched means not done. The other six matched 12/12, 15/17, 18/18, 15/16, 19/19 and 25/26 stretches; where their own
+corners also fit, the reference puts them 11-27 in (middle) from that fit, at most 64 in.
+Walls against each other (six walks with walls on a confirmed shape's faces): shifts 0.0-0.4 ft east and 0.0-0.3 ft
+north, 140-462 edge squares each, 0.8-1.0 ft left over after the shift. The walks agree with one another on walls to
+within half a foot.
+The lidar's 7 shapes: 3 confirmed with walls placed (walls in the middle 0.5 ft inside the lidar's edge, -0.5 to +2.5),
+4 not looked at enough to judge; no deck, tree or missing wall. Made again: 851 sq ft taken off outside the walls, 410
+added where walls stand outside the lidar's edge, 14 cut where a tree touches; SOLID 6,900 sq ft, OPEN 36.
+ARCore's surfaces: 4 walls (3 along built things), 5 raised floors, 2 ceilings. These walks predate the planes fix
+(section 99), so the next walk is the test of it.
+The ground: 7 walks; walk 1 against walk 2, both call 2,688 sq ft and agree on 96.1%.

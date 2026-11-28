@@ -158,6 +158,8 @@ async function main() {
   const own = fitOf(live);
   const at = placerOf(res.windows, ref.P || { theta: 0, tx: 0, ty: 0 }, own.ok ? own.T : null);
   const ok = res.windows.filter((w) => w.T);
+  // a walk with no stretch at all (0 of 0) was taken as placed and ranked with the well placed (2026-11-27 repool run)
+  if (!ok.length) { console.log(`On the reference: NOT done (no stretch of it could be matched: ${res.windows.length} tried); left by its own fit.`); return; }
   if (ok.length < res.windows.length / 2) { console.log(`On the reference: NOT done (only ${ok.length} of ${res.windows.length} stretches matched); left by its own fit.`); return; }
   // how far the reference puts the walk from where its own corners did, along the walk (the gap the old way left)
   const gaps = own.ok ? ok.map((w) => { const M = compose({ ...(ref.P || {}), s: 1 }, w.T); const pc = w.part.stand[Math.floor(w.part.stand.length / 2)]; if (!pc) return null; const a = place(M, pc[0], pc[1]), b = place(own.T, pc[0], pc[1]); return Math.hypot(a[0] - b[0], a[1] - b[1]); }).filter((x) => x != null).sort((a, b) => a - b) : [];
